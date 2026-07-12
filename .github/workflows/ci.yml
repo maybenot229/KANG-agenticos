@@ -1,0 +1,58 @@
+# CI — commit tier per 11_CODING §17: format → lint contracts → unit,
+# in order of cost. Red = no merge. CI config changes are reviewed like code.
+# Later tiers (integration, normative suites per cadence) grow here with
+# their components (18 §1.5: every stage pays its own testing bill).
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  commit-tier:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      # 1 — format (zero config debates, ever)
+      - name: Format (black)
+        run: black --check src tests tools
+      - name: Lint (ruff)
+        run: ruff check src tests tools
+
+      # 2 — lint contracts (imports, sizes, banned patterns, tree hygiene)
+      - name: Import contracts (17 §4)
+        run: lint-imports --config tools/importlinter.toml
+      - name: Size limits (11 §4)
+        run: python tools/lint_sizes.py src
+      - name: Banned patterns (11 §25)
+        run: python tools/lint_banned_patterns.py src
+      - name: Tree hygiene (PS-002)
+        run: python tools/lint_tree_hygiene.py .
+      - name: Root docs current (14 header rule)
+        run: python tools/build_root_docs.py --check
+
+      # 3 — unit + architecture suite (13 §2.1 runs on every commit)
+      - name: Unit tests
+        run: pytest tests/unit tests/suites -q
+
+  integration:
+    runs-on: windows-latest
+    needs: commit-tier
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Integration tests (real SQLite in temp dirs — 13 §2.3)
+        run: pytest tests/integration -q

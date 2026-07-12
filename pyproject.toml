@@ -1,0 +1,54 @@
+# KANG core packaging + tool configuration.
+# Root-level file: packaging metadata has no other possible home; noted in the
+# M0 build report (17 §2's list governs architectural directories).
+# Languages fixed by D002: Python 3.12+ core.
+
+[project]
+name = "kang"
+version = "0.1.0.dev0"
+description = "KANG — local-first agentic personal OS (core)"
+requires-python = ">=3.12"
+# Runtime dependencies: none yet. Every addition needs the E10 justification
+# paragraph in its PR (11_CODING §25).
+dependencies = []
+
+[project.optional-dependencies]
+# Dev toolchain named by the constitution itself:
+# black/ruff (11 §17 CI: "format (black/ruff)"), import-linter (11 §2),
+# pytest (13_TESTING harness).
+dev = [
+    "black>=24.0",
+    "ruff>=0.4",
+    "import-linter>=2.0",
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+src = ["src", "tests", "tools"]
+
+[tool.ruff.lint]
+# E/F: correctness. I: import order. T20: print ban (11 §6/§25).
+# BLE: bare/blind except ban (11 §9). DTZ: naive datetime.now surface (11 §14).
+select = ["E", "F", "I", "T20", "BLE"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests and dev tools are the sanctioned omnivores; tools may print (they are
+# CLIs, not src/ — the print ban is "print in src", 11 §25).
+"tools/*" = ["T20"]
+"tests/*" = ["T20"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

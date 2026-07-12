@@ -1,0 +1,138 @@
+# Import contracts — the executable form of 17_PROJECT_STRUCTURE §4.
+# This file translates the §4.2 legality matrix and the §4.3 named forbidden
+# list 1:1 into import-linter contracts (17 §4.4: "this document is the
+# contracts' specification of record"). Anything not explicitly legal is
+# illegal; a new package lands with its contract entry in the same PR or the
+# build is red by omission.
+#
+# Run: lint-imports --config tools/importlinter.toml   (CI commit tier, 11 §2)
+# No noqa, no negotiation (11 §2, 14 §11).
+
+[tool.importlinter]
+root_packages = ["kang"]
+
+# 17 §4.3 rules 1, 2 — domain asks the machinery for nothing; the firewall.
+[[tool.importlinter.contracts]]
+name = "17 §4.3.1-2: domain imports nothing outer"
+type = "forbidden"
+source_modules = ["kang.domain"]
+forbidden_modules = [
+    "kang.kernel",
+    "kang.adapters",
+    "kang.api",
+    "kang.agents",
+    "kang.plugins_sdk",
+]
+
+# 17 §4.3 rules 3, 4 — kernel executes agent *definitions* (data), never agent
+# code; kernel receives adapter instances by injection, never imports them.
+# The single composition-root exemption (src/kang/kernel/runtime/composition.py,
+# 17 §4.3) will be added as ignore_imports entries when that module exists.
+[[tool.importlinter.contracts]]
+name = "17 §4.3.3-4: kernel never imports agents, adapters, or api"
+type = "forbidden"
+source_modules = ["kang.kernel"]
+forbidden_modules = [
+    "kang.agents",
+    "kang.adapters",
+    "kang.api",
+    "kang.plugins_sdk",
+]
+
+# 17 §4.3 rule 5 — adapters translate at the port line; importing a domain
+# service is a hidden control-flow inversion. Ports (and domain-root
+# vocabulary modules, PS-003) stay importable; the capability areas do not.
+[[tool.importlinter.contracts]]
+name = "17 §4.3.5: adapters import ports, never domain services"
+type = "forbidden"
+source_modules = ["kang.adapters"]
+forbidden_modules = [
+    "kang.domain.planner",
+    "kang.domain.projects",
+    "kang.domain.tasks",
+    "kang.domain.competitions",
+    "kang.domain.learning",
+    "kang.domain.memory",
+    "kang.domain.vault",
+    "kang.domain.calendar",
+    "kang.domain.notifications",
+    "kang.kernel",
+    "kang.api",
+    "kang.agents",
+    "kang.plugins_sdk",
+]
+
+# 17 §4.3 rule 6 — cross-tech coupling welds recovery domains together.
+[[tool.importlinter.contracts]]
+name = "17 §4.3.6: adapter tech folders are independent"
+type = "independence"
+modules = [
+    "kang.adapters.sqlite",
+    "kang.adapters.eventlog",
+    "kang.adapters.obsidian",
+    "kang.adapters.anthropic",
+    "kang.adapters.openai",
+    "kang.adapters.ollama",
+    "kang.adapters.github",
+    "kang.adapters.gcal",
+    "kang.adapters.web",
+    "kang.adapters.os_windows",
+    "kang.adapters.fakes",
+    "kang.adapters.config",
+]
+
+# 17 §4.3 rule 8 — the API triggers agents through the Orchestrator, never
+# directly; and per the §4.2 matrix the api row has no adapters column.
+[[tool.importlinter.contracts]]
+name = "17 §4.3.8: api never imports agents or adapters"
+type = "forbidden"
+source_modules = ["kang.api"]
+forbidden_modules = ["kang.agents", "kang.adapters", "kang.plugins_sdk"]
+
+# 17 §4.2 plugins_sdk row — the SDK sees ports only.
+[[tool.importlinter.contracts]]
+name = "17 §4.2: plugins_sdk imports ports only"
+type = "forbidden"
+source_modules = ["kang.plugins_sdk"]
+forbidden_modules = [
+    "kang.kernel",
+    "kang.adapters",
+    "kang.api",
+    "kang.agents",
+    "kang.domain.planner",
+    "kang.domain.projects",
+    "kang.domain.tasks",
+    "kang.domain.competitions",
+    "kang.domain.learning",
+    "kang.domain.memory",
+    "kang.domain.vault",
+    "kang.domain.calendar",
+    "kang.domain.notifications",
+]
+
+# 17 §4.2 agents row — domain services + SDK-visible kernel surfaces only.
+# M0 forbids all of kernel (stricter than the matrix); when agents/runtime
+# lands at M7, the exact SDK-visible surfaces are carved out here by name.
+[[tool.importlinter.contracts]]
+name = "17 §4.2: agents never import adapters, api, or (pre-M7) kernel"
+type = "forbidden"
+source_modules = ["kang.agents"]
+forbidden_modules = ["kang.adapters", "kang.api", "kang.kernel"]
+
+# 17 §4.2 ports row — the firewall imports nothing but itself and pure libs;
+# a port importing a capability area would invert the whole diagram.
+[[tool.importlinter.contracts]]
+name = "17 §4.2: ports import no domain areas"
+type = "forbidden"
+source_modules = ["kang.domain.ports"]
+forbidden_modules = [
+    "kang.domain.planner",
+    "kang.domain.projects",
+    "kang.domain.tasks",
+    "kang.domain.competitions",
+    "kang.domain.learning",
+    "kang.domain.memory",
+    "kang.domain.vault",
+    "kang.domain.calendar",
+    "kang.domain.notifications",
+]
