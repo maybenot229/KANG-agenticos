@@ -1,0 +1,20 @@
+# Tree hygiene (PS-002): the repository holds zero runtime state.
+# These patterns are ALSO lint-failures (tools/lint_tree_hygiene.py) —
+# ignoring them is the second line of defence, not permission.
+*.db
+*.db-wal
+*.db-shm
+*.jsonl
+!docs/**/*.jsonl
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
