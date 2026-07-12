@@ -14,10 +14,11 @@ dependencies = []
 
 [project.optional-dependencies]
 # Dev toolchain named by the constitution itself:
-# black/ruff (11 §17 CI: "format (black/ruff)"), import-linter (11 §2),
+# ruff for format+lint (11 §17 names "black/ruff"; ruff format is the
+# black-compatible half chosen because black refuses to run on CPython
+# 3.12.5 — one formatter, zero config debates), import-linter (11 §2),
 # pytest (13_TESTING harness).
 dev = [
-    "black>=24.0",
     "ruff>=0.4",
     "import-linter>=2.0",
     "pytest>=8.0",

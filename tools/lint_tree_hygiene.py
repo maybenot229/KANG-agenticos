@@ -16,10 +16,31 @@ import sys
 from pathlib import Path
 
 BANNED_FILE_PATTERNS = ("*.db", "*.db-wal", "*.db-shm", "*.sqlite", "*.jsonl", ".env")
-SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".ruff_cache",
-             "node_modules", "build", "dist"}
-TEXT_SUFFIXES = {".py", ".toml", ".md", ".sql", ".yml", ".yaml", ".json", ".ts",
-                 ".tsx", ".cfg", ".ini", ".txt"}
+SKIP_DIRS = {
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+    "node_modules",
+    "build",
+    "dist",
+}
+TEXT_SUFFIXES = {
+    ".py",
+    ".toml",
+    ".md",
+    ".sql",
+    ".yml",
+    ".yaml",
+    ".json",
+    ".ts",
+    ".tsx",
+    ".cfg",
+    ".ini",
+    ".txt",
+}
 
 SECRET_PATTERNS = [
     ("Anthropic key", re.compile(r"sk-ant-[A-Za-z0-9-]{8,}")),

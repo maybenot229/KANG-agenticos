@@ -23,8 +23,8 @@ jobs:
         run: pip install -e ".[dev]"
 
       # 1 — format (zero config debates, ever)
-      - name: Format (black)
-        run: black --check src tests tools
+      - name: Format (ruff format)
+        run: ruff format --check src tests tools
       - name: Lint (ruff)
         run: ruff check src tests tools
 
