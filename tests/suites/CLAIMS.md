@@ -26,3 +26,12 @@ claim-bearing test. One line per claim; the test proves it or the line lies.
 | 12 §5 / D015 — one correlation id threads the execution context; logs are JSON lines | `unit/kang/kernel/runtime/test_structured_logging.py` |
 | D003 / PS-002 — %KANG_HOME% resolves from environment; no silent default into the checkout | `unit/kang/adapters/config/test_env_config.py` |
 | 12 §16 — the registry is machine-readable, deterministic, the contract's source of truth | `unit/kang/api/registry/test_registry.py` |
+| SEC-013 — audit is append-only JSONL, monthly, hash-chained per file; tampering is evident | `fixtures/audit_log_contract.py` (fake + jsonl) + `integration/jsonl/test_audit_log.py` (bit-flip and deletion break the chain loudly — 13 §2.9) |
+| SEC-006 — anonymous action is architecturally impossible; every entry carries principal + correlation id | `unit/kang/kernel/audit/test_service.py` |
+| 15 §5.1/§5.2 — the envelope is a closed field list; the eventlog DDL is exact; nothing invalid enters the log | `fixtures/event_log_contract.py` (fake + sqlite) + `integration/eventlog/test_event_log.py` (DDL column-exact, indexes cited) |
+| EB-003 / DB-001 — eventlog runs synchronous=FULL on its own connection; recovery-grade payloads are self-sufficient | `integration/eventlog/test_event_log.py::test_connection_runs_synchronous_full` + contract self-sufficiency rejection test |
+| 15 §4 — pending → confirmed \| orphaned; orphans are never deleted | `fixtures/event_log_contract.py` state-machine tests |
+| 07 Part XII — VACUUM INTO is the only backup method; integrity gate before snapshot; corruption detected loudly | `integration/sqlite/test_backup.py` |
+| EB-003 — re-application is idempotent, keyed by entity id + revision | `suites/replay/test_crash_replay.py::test_recovery_is_idempotent_run_twice` + `suites/backup_restore/test_restore_drill.py::test_restore_replay_is_idempotent` |
+| **C1 (18 §3 M1)** — kill between every M1 write-order step pair ⇒ reconciliation converges, zero partial truth (13 §2.5) | `suites/replay/test_crash_replay.py` (subprocess fault injection, all four kill points + clean run) |
+| **C1 (18 §3 M1)** — snapshot → corrupt live → restore → field-equality → gap replay (13 §2.15) | `suites/backup_restore/test_restore_drill.py::test_the_c1_restore_drill` |

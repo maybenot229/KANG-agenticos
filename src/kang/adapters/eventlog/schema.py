@@ -70,6 +70,7 @@ def open_eventlog(db_path: Path | str) -> sqlite3.Connection:
     """Open eventlog.db: own connection, synchronous=FULL (the write-ahead
     net must survive what kang.db is allowed to lose), schema applied
     idempotently."""
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path), isolation_level=None)
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA synchronous = FULL")
