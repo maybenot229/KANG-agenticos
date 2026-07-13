@@ -79,6 +79,7 @@ modules = [
     "kang.adapters.os_windows",
     "kang.adapters.fakes",
     "kang.adapters.config",
+    "kang.adapters.jsonl",
 ]
 
 # 17 §4.3 rule 8 — the API triggers agents through the Orchestrator, never
