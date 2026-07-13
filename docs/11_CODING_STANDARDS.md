@@ -30,11 +30,13 @@ kang/
 │   └── plugins_sdk/         #   the versioned public SDK
 ├── ui/                      # TypeScript/React client (pure client, UI-P1)
 ├── cli/                     # thin client of the same API
+├── plugins/                 # first-party plugin source (PS-004)
 ├── migrations/              # NNNN_description.sql (07_DATABASE Part 13)
 ├── tests/                   # mirrors src/ structure + suites/ (conformance, synthetic-corpus, injection)
 ├── config/                  # example/default TOML (real config lives in %KANG_HOME%)
 └── tools/                   # dev scripts, linters, corpus generator
 ```
+The authoritative expansion of this tree is 17_PROJECT_STRUCTURE.md §2 — that document is binding on layout questions; this one is illustrative.
 
 - Top-level directories are constitutional: adding one requires an ADR; nothing lives at root that isn't listed.
 - `src/kang/` subpackage names map 1:1 to the D005 layer diagram. A file that doesn't obviously belong to one layer is a design smell, not a filing problem.
@@ -108,7 +110,8 @@ Hard-limit exceptions require an inline justification comment naming the ADR or 
 ## 11. Dependency Injection
 
 - Constructor injection of ports only. No service locators, no global singletons, no import-time side effects (lint: module import MUST be side-effect-free — enforced by an import-under-test harness).
-- The composition root (one module, `kang/app.py`) is the only place concrete adapters meet interfaces. If wiring appears anywhere else, the architecture is leaking.
+- The composition root (one module, `kernel/runtime/composition.py`) is the only place concrete adapters meet interfaces. If wiring appears anywhere else, the architecture is leaking.
+- (see 17_PROJECT_STRUCTURE.md §4.3 for the authoritative definition)
 - No DI frameworks (E10): the composition root is plain constructor calls, readable top to bottom.
 
 ## 12. Concurrency

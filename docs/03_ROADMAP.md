@@ -180,6 +180,9 @@ The single lookup table this roadmap promised. Sources cited; between triggers, 
 | Multi-user anything | **Vision-level amendment first** | Vision, PRD §8 |
 | Remote execution | **Deliberately unreserved** — Vision amendment before any seam is built | 10_SEC §13 |
 | Auto-updater | Never, probably — deliberate updates are a feature | D016 |
+| Event bus socket transport | First sidecar process | 15_EVENT_BUS §15.1 |
+| Event-sync hazard (cross-device event ordering) | 16_SYNC design | 15_EVENT_BUS §17 |
+| Time-travel replay (user-facing "system as of date X") | Real need post-sync | 15_EVENT_BUS §9 |
 
 ---
 

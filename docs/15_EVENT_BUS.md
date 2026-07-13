@@ -409,14 +409,14 @@ Same answer as sidecars: a cursor over a transport, with the Orchestrator remain
 
 Per Kang's instruction, no upstream file is edited in this pass. The following additive changes are owed and tracked:
 
-| Doc | Delta | Nature |
+| Doc | Delta | Status |
 |---|---|---|
-| 07_DATABASE Part V | Adopt §5.2's `eventlog.db` DDL (the event-table DDL was absent) | Gap-fill, additive |
-| 12_API §6 | Envelope gains `causation_id`, `type_version`, `provenance` (additive; API-005-compliant); note the Event Type Registry served beside the Operation Registry | Additive |
-| 12_API §12 | One sentence: `explain.invocation` MUST NOT depend on the event log (§8.3 here) | Clarifying constraint |
-| 05_AGENTS §6 | Event-trigger idempotency key: derived from `event_id` (making AGP-3's "trigger-derived" concrete for this mode) | Clarifying |
-| 08_PLUGIN §7 / App A | Dead-lettered deliveries count toward the 3-failure quarantine accounting | Clarifying |
-| 03_ROADMAP §8 | Register RESERVED triggers: socket transport (first sidecar); event-sync hazard (16_SYNC); time-travel replay (post-sync need) | Registry entries |
+| 07_DATABASE Part V | Adopt §5.2's `eventlog.db` DDL | **Resolved** |
+| 12_API §6 | Envelope gains `causation_id`, `type_version`, `provenance` | **Resolved** |
+| 12_API §12 | `explain.invocation` MUST NOT depend on the event log | **Resolved** (apply per Problem 3 Step A first) |
+| 05_AGENTS §6 | Event-trigger idempotency key derived from `event_id` | **Resolved** |
+| 08_PLUGIN §7 / App A | Dead-lettered deliveries count toward quarantine | **Resolved** |
+| 03_ROADMAP §8 | Register RESERVED triggers | **Resolved** (apply per #6 above first) |
 
 Until applied, this table is the authoritative record of the divergence — filed openly, per the house rule below.
 

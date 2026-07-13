@@ -1,4 +1,4 @@
-# KANG — Plugin System Specification
+    # KANG — Plugin System Specification
 
 **Document:** 08_PLUGIN_SYSTEM.md
 **Version:** 0.1

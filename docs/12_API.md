@@ -188,6 +188,7 @@ First-class, versioned, stability-guaranteed:
 - `explain.plan_item {item_id}` · `explain.notification {id}` · `explain.suggestion {id}` — the 09_UI §11 table, one operation per row class, each returning `{ one_sentence, full_reference }` (the two-level contract).
 - `explain.memory {record_id}` → the six provenance answers, structured.
 - If reconstruction is impossible: `internal` error with the mandated honesty (`explanation unavailable — this is a bug`) — the API MUST NOT synthesize a narrative (A4).
+- explain.invocation MUST NOT depend on the event log — its ≥180-day guarantee would silently break at day 91 (the event log's compaction boundary); it reconstructs from invocation rows, manifests, and audit in permanent storage.
 
 ## 13. Health, Audit, Notification, Export
 

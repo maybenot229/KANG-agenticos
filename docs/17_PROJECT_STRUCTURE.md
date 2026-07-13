@@ -151,6 +151,19 @@ kang/                                  # the monorepo (one repo — D001: parts 
 
 **What is deliberately absent:** `shared/`, `utils/`, `common/`, `lib/`, `core/` (§7); `scripts/` at root (lives in `tools/`); empty reserved folders (§16, PS-007); any directory named after a person, a date, or a version.
 
+### 2.1 Root Tooling Allowlist
+
+The following root-level files are permitted without an ADR — they are
+   project metadata/tooling config, not architecture, and every Python
+   repository requires them:
+   
+   - pyproject.toml
+   - .gitignore
+   - .github/            (CI workflow definitions)
+   
+   A new entry to this list requires no ADR; a new entry that is NOT
+   tooling config (i.e. anything with runtime behavior) does.
+
 ---
 
 ## 3. Ownership Rules
@@ -471,7 +484,7 @@ No other reservations. A future need not on this list follows §15's recipes or 
 
 ## 17. Constitutional Rules of the Repository
 
-1. **The tree is law.** Top-level directories and `src/kang/` layer packages are constitutional; adding, removing, or moving one requires an ADR (11 §1, extended to layers).
+1. **The tree is law.** Top-level directories and `src/kang/` layer packages are constitutional; adding, removing, or moving one requires an ADR (11 §1, extended to layers) — except the tooling allowlist in §2.1.
 2. **Two trees, never confused.** The repository holds no runtime state, no secrets, no databases; `%KANG_HOME%` holds no code (PS-002).
 3. **Dependencies flow inward only**, per the exhaustive matrix; unlisted imports are illegal; enforcement is CI, not convention (§4, 11 §2).
 4. **Every directory has exactly one owner** and one governing document (§3).
@@ -491,13 +504,13 @@ No other reservations. A future need not on this list follows §15's recipes or 
 
 ## 18. Deltas to Upstream Documents (owed, tracked, not silently applied)
 
-| Doc | Delta | Nature |
+| Doc | Delta | Status |
 |---|---|---|
-| 07_DATABASE Part I | Add `exports/` as the ninth `%KANG_HOME%` entry: default export target, excluded from snapshots/retention (§9) | Additive |
-| 11_CODING §1 | Annotate the seed tree: "authoritative expansion in 17_PROJECT_STRUCTURE.md"; add `plugins/` to the top-level list (PS-004) | Additive |
-| 03_ROADMAP §8 | Mirror §16's reservation triggers into the consolidated registry | Registry entries |
-| docs/ | Create `docs/INDEX.md` numbering registry seeded with 00–17 + slot-16 reservation (§12.4) | New artifact |
-| 15_EVENT_BUS §17 | Unchanged — its six deltas remain owed alongside these | Reminder |
+| 07_DATABASE Part I | Add `exports/` as ninth `%KANG_HOME%` entry | **Resolved** |
+| 11_CODING §1 | Annotate seed tree + add `plugins/` | **Resolved** (apply per #8 above first) |
+| 03_ROADMAP §8 | Mirror reservation triggers | **Resolved** (same as above) |
+| docs/ | Create `docs/INDEX.md` | **Resolved** |
+| 15_EVENT_BUS §17 | Its own six deltas | **Resolved** (see 15 §17) |
 
 ---
 
