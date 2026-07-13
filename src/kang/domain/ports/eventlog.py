@@ -129,7 +129,13 @@ class EventLog(Protocol):
 
     def read_from(self, seq_exclusive: int) -> list[StoredEvent]:
         """Events with seq greater than the watermark, oldest first —
-        the snapshot gap-fill source (EB-009 form 2)."""
+        the snapshot gap-fill source (EB-009 form 2) and the per-subscriber
+        delivery source (EB-007)."""
+        ...
+
+    def find_by_event_id(self, event_id: str) -> StoredEvent | None:
+        """The event with this id, or None — the substrate the runtime
+        causation-depth guard walks (EB-011.2)."""
         ...
 
     def last_seq(self) -> int:

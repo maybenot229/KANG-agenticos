@@ -35,3 +35,12 @@ claim-bearing test. One line per claim; the test proves it or the line lies.
 | EB-003 — re-application is idempotent, keyed by entity id + revision | `suites/replay/test_crash_replay.py::test_recovery_is_idempotent_run_twice` + `suites/backup_restore/test_restore_drill.py::test_restore_replay_is_idempotent` |
 | **C1 (18 §3 M1)** — kill between every M1 write-order step pair ⇒ reconciliation converges, zero partial truth (13 §2.5) | `suites/replay/test_crash_replay.py` (subprocess fault injection, all four kill points + clean run) |
 | **C1 (18 §3 M1)** — snapshot → corrupt live → restore → field-equality → gap replay (13 §2.15) | `suites/backup_restore/test_restore_drill.py::test_the_c1_restore_drill` |
+| EB-004 — the five-step write order is event-first; a lost state commit becomes a recoverable ghost, never a silent miss | `suites/replay/test_crash_replay.py` (real `EventBus.publish` killed at every boundary) |
+| EB-004 §4 — the caged reconciliation pass: re-apply recovery-grade & confirm; confirm-or-orphan the rest; report the window | `unit/kang/kernel/bus/test_reconciliation.py` |
+| EB-007 — per-subscriber cursors, FIFO by seq, retry ×5 → dead-letter, cursor advances past a poison event; consumers dedup on event_id | `unit/kang/kernel/bus/test_delivery.py` (incl. poison-event §16.4) |
+| EB-007 — cursors are delivery truth, per-subscriber, monotonic, durable across reopen | `fixtures/delivery_store_contract.py` (fake + sqlite) + `integration/eventlog/test_delivery_store.py` |
+| EB-011.1 — a declared event→job→event cycle is rejected and named (static lint) | `unit/kang/kernel/bus/test_cycle_defense.py` |
+| EB-011.2 — a causation chain deeper than 16 must not publish further (runtime depth guard) | `unit/kang/kernel/bus/test_cycle_defense.py` |
+| §6.3 — publishing an unregistered type is rejected; recovery_grade is the registry's not the publisher's; payload schema checked | `unit/kang/kernel/bus/test_event_registry.py` |
+| §16.2 / EB-003 — every recovery-grade type's payload reconstructs its row on an empty store (registry-driven — a new type without the proof fails CI) | `suites/replay/test_payload_sufficiency.py` |
+| **C2 (18 §3 M2)** — kill between every EB-004 step pair ⇒ the REAL reconciliation + delivery resume converge, zero partial truth, at-least-once + idempotent delivery (13 §2.5) | `suites/replay/test_crash_replay.py` |

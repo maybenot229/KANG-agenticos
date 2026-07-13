@@ -57,5 +57,11 @@ class FakeEventLog:
     def read_from(self, seq_exclusive: int) -> list[StoredEvent]:
         return [event for event in self._events if event.seq > seq_exclusive]
 
+    def find_by_event_id(self, event_id: str) -> StoredEvent | None:
+        for event in self._events:
+            if event.envelope.event_id == event_id:
+                return event
+        return None
+
     def last_seq(self) -> int:
         return len(self._events)

@@ -14,6 +14,30 @@ from kang.domain.ports.eventlog import (
 )
 
 
+def task_payload(index: int = 0, **overrides) -> dict:
+    """A self-sufficient task payload (EB-003): the full 07 §5.2 field set,
+    so a recovery-grade replay reconstructs the row exactly."""
+    payload = {
+        "id": f"task-{index:04d}",
+        "project_id": None,
+        "title": "prove the log",
+        "notes": None,
+        "status": "open",
+        "priority": 3,
+        "due": None,
+        "plan_date": None,
+        "estimate_min": None,
+        "actual_min": None,
+        "completed_at": None,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00",
+        "device_id": "device-test",
+        "revision": 1,
+    }
+    payload.update(overrides)
+    return payload
+
+
 def make_envelope(index: int = 0, **overrides) -> EventEnvelope:
     fields = dict(
         event_id=f"event-{index:04d}",
@@ -22,7 +46,7 @@ def make_envelope(index: int = 0, **overrides) -> EventEnvelope:
         principal="kang",
         correlation_id=f"corr-{index:04d}",
         device_id="device-test",
-        payload={"id": f"task-{index:04d}", "title": "prove the log"},
+        payload=task_payload(index),
         recovery_grade=True,
         entity_refs=({"kind": "task", "id": f"task-{index:04d}"},),
     )

@@ -15,11 +15,16 @@ carries the proof.
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
 
 from kang.domain.ports.eventlog import EventEnvelope
+from kang.domain.ports.recovery import ReapplyOutcome, RecoveryError
 
-__all__ = ["ReapplyOutcome", "RecoveryError", "apply_recovery_event"]
+__all__ = [
+    "ReapplyOutcome",
+    "RecoveryError",
+    "SqliteRecoveryApplier",
+    "apply_recovery_event",
+]
 
 _TASK_FIELDS = (
     "id",
@@ -40,16 +45,12 @@ _TASK_FIELDS = (
 )
 
 
-class RecoveryError(Exception):
-    """The event cannot be re-applied. Loud, never half-applied (07 F3)."""
+# RecoveryError / ReapplyOutcome are defined by the port (domain/ports/
+# recovery.py) and imported above — one datatype, owned by the interface.
 
-
-@dataclass(frozen=True)
-class ReapplyOutcome:
-    """What re-application did: 'applied' | 'noop' (already committed)."""
-
-    event_id: str
-    outcome: str
+# Entity kinds this adapter can answer existence for (the orphan decision,
+# §4.3). Grows with the schema; unknown kinds are a registry defect, loud.
+_EXISTS_TABLE = {"task": "task"}
 
 
 def _payload_task_row(envelope: EventEnvelope) -> tuple:
@@ -119,3 +120,26 @@ def apply_recovery_event(
             "type without an applier is a registry defect (EB-006 §6.3)"
         )
     return ReapplyOutcome(event_id=envelope.event_id, outcome=applier(conn, envelope))
+
+
+class SqliteRecoveryApplier:
+    """RecoveryApplier over kang.db — the port the caged reconciliation
+    module depends on, keeping reconciliation adapter-free (17 §4.3)."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def reapply(self, envelope: EventEnvelope) -> ReapplyOutcome:
+        return apply_recovery_event(self._conn, envelope)
+
+    def entity_exists(self, kind: str, entity_id: str) -> bool:
+        table = _EXISTS_TABLE.get(kind)
+        if table is None:
+            raise RecoveryError(
+                f"no existence check for entity kind {kind!r} — an entity "
+                "ref the reconciler cannot verify is a registry defect (§4.3)"
+            )
+        row = self._conn.execute(
+            f"SELECT 1 FROM {table} WHERE id = ?", (entity_id,)
+        ).fetchone()
+        return row is not None

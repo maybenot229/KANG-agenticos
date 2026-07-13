@@ -124,6 +124,12 @@ class SqliteEventLog:
         ).fetchall()
         return [_row_to_stored(row) for row in rows]
 
+    def find_by_event_id(self, event_id: str) -> StoredEvent | None:
+        row = self._conn.execute(
+            f"SELECT {_COLUMNS} FROM event WHERE event_id = ?", (event_id,)
+        ).fetchone()
+        return _row_to_stored(row) if row is not None else None
+
     def last_seq(self) -> int:
         row = self._conn.execute("SELECT MAX(seq) FROM event").fetchone()
         return int(row[0]) if row[0] is not None else 0
