@@ -30,12 +30,18 @@ def conn(tmp_path):
 
 def test_full_chain_applies_on_empty_database(conn):
     applied = apply_migrations(conn, MIGRATIONS_DIR, FakeClock())
-    assert applied == [1]
+    assert applied == [1, 2]  # 0001_initial, 0002_held_action
     tables = {
         row[0]
         for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
     }
-    assert {"schema_version", "change_log", "tombstone", "task"} <= tables
+    assert {
+        "schema_version",
+        "change_log",
+        "tombstone",
+        "task",
+        "held_action",
+    } <= tables
 
 
 def test_applied_checksum_matches_the_file(conn):

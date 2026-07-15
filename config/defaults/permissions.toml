@@ -1,0 +1,17 @@
+# permissions.toml — grant truth (D003: diffable, hand-editable in recovery).
+# Shipped default the installer copies to %KANG_HOME%/config/ (17 §8). The
+# file is truth; the loaded engine is a snapshot (05 §8, drift: file wins).
+#
+# Each principal maps to its granted capability scopes (family:qualifier).
+# Default-deny: a principal absent here, or a scope absent from its list, is
+# denied (SEC-004). Wildcards (`*`) are reserved for `kang` (pairing lint).
+
+[grants]
+# Kang acting through the UI holds all authority — the one exempt principal.
+"kang" = ["*"]
+
+# The kernel bus publishes core-namespace facts on the truth the kernel owns
+# (EB-010: domain services and the kernel publish; agents never publish
+# directly). Domain-service principals gain their own events.publish grants
+# as those services arrive (M5).
+"kernel:bus" = ["events.publish:kang"]

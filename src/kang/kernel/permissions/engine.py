@@ -18,9 +18,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from kang.kernel.permissions.pairing import lint_grants
 from kang.kernel.permissions.scope import Scope, parse_scope
 
-__all__ = ["Grants", "PermissionDenied", "PermissionEngine"]
+__all__ = ["Grants", "PermissionDenied", "PermissionEngine", "build_checked_engine"]
 
 # principal -> the raw scope strings granted to it (permissions.toml shape).
 Grants = Mapping[str, tuple[str, ...]]
@@ -63,3 +64,12 @@ class PermissionEngine:
         """Raise PermissionDenied unless `principal` is authorized."""
         if not self.allows(principal, scope):
             raise PermissionDenied(principal, scope)
+
+
+def build_checked_engine(grants: Grants) -> PermissionEngine:
+    """Pairing-lint the grants (10 §2.6, 05 §8 — the "lint at load" step,
+    kept in the kernel where the scope policy lives), then construct the
+    engine. Raises PairingViolation on a forbidden grant set; the caller
+    (composition root) fails closed to Kang-only on failure (07 F8)."""
+    lint_grants(grants)
+    return PermissionEngine(grants)

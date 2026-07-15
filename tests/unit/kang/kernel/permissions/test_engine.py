@@ -8,7 +8,12 @@ from __future__ import annotations
 
 import pytest
 
-from kang.kernel.permissions.engine import PermissionDenied, PermissionEngine
+from kang.kernel.permissions.engine import (
+    PermissionDenied,
+    PermissionEngine,
+    build_checked_engine,
+)
+from kang.kernel.permissions.pairing import PairingViolation
 
 
 @pytest.fixture
@@ -71,3 +76,16 @@ def test_snapshot_is_immutable_to_source_mutation():
     engine = PermissionEngine(source)
     source["agent:x"] = ("*",)  # mutate the source after construction
     assert not engine.allows("agent:x", "vault.write:anywhere")
+
+
+def test_build_checked_engine_lints_pairings():
+    # "Pairing lint at load" (05 §8, 10 §2.6) runs here, in the kernel — a
+    # forbidden grant set is refused before the engine is trusted.
+    with pytest.raises(PairingViolation, match="wildcard"):
+        build_checked_engine({"agent:x": ("*",)})
+
+
+def test_build_checked_engine_returns_a_usable_engine():
+    engine = build_checked_engine({"kang": ("*",), "agent:x": ("vault.read",)})
+    engine.check("agent:x", "vault.read")
+    assert not engine.allows("agent:x", "vault.write:notes")
