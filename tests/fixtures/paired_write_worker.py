@@ -35,6 +35,7 @@ from kang.kernel.audit.service import AuditService
 from kang.kernel.bus.bus import EventBus, Subscriber
 from kang.kernel.bus.delivery import Delivery
 from kang.kernel.bus.reconciliation import Reconciliation
+from kang.kernel.permissions.engine import PermissionEngine
 
 KILL_POINTS = (
     "before_append",
@@ -187,7 +188,12 @@ def _build_bus(workdir: Path, kill_at: str) -> _Wiring:
     )
     reconciliation = Reconciliation(log, applier, audit, clock)
     handler = _recorder_handler(workdir / "deliveries.log", kill_at)
-    bus = EventBus(log, delivery, reconciliation, [Subscriber(SUBSCRIBER, handler)])
+    # Publisher principal on these envelopes is `kang` (Kang's own action);
+    # the `*` grant authorizes publishing the core namespace (EB-010).
+    permissions = PermissionEngine({"kang": ("*",)})
+    bus = EventBus(
+        log, delivery, reconciliation, permissions, [Subscriber(SUBSCRIBER, handler)]
+    )
     task = create_task(
         TaskDraft(title="crash me"), task_id=TASK_ID, clock=clock, device_id=DEVICE
     )

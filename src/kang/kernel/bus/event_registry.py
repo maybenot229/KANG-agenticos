@@ -22,9 +22,14 @@ __all__ = [
     "EventType",
     "UnregisteredEventTypeError",
     "is_recovery_grade",
+    "namespace_of",
     "require_registered",
     "validate_registration",
 ]
+
+# The core namespace: core event types are unprefixed (EB-005 §5.1). Plugin
+# types are `plugin.{id}.*` and belong to namespace `plugin.{id}`.
+CORE_NAMESPACE = "kang"
 
 CATEGORIES = ("domain", "system", "lifecycle", "integration", "plugin", "notification")
 
@@ -109,6 +114,20 @@ def require_registered(type_name: str) -> EventType:
             "an unregistered type is a bug-level failure"
         )
     return entry
+
+
+def namespace_of(type_name: str) -> str:
+    """The publish namespace a type belongs to (EB-005 §5.1 / EB-010): core
+    types → `kang`; `plugin.{id}.*` → `plugin.{id}`. This is the qualifier
+    of the `events.publish:{namespace}` capability the publisher must hold."""
+    if type_name.startswith("plugin."):
+        parts = type_name.split(".")
+        if len(parts) < 3:
+            raise UnregisteredEventTypeError(
+                f"plugin event type {type_name!r} must be plugin.{{id}}.{{name}}"
+            )
+        return f"plugin.{parts[1]}"
+    return CORE_NAMESPACE
 
 
 def is_recovery_grade(type_name: str) -> bool:

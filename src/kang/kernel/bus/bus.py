@@ -22,8 +22,9 @@ from typing import Callable
 from kang.domain.ports.eventlog import EventEnvelope, EventLog
 from kang.kernel.bus.cycle_defense import guard_causation_depth
 from kang.kernel.bus.delivery import Delivery, Handler
-from kang.kernel.bus.event_registry import validate_registration
+from kang.kernel.bus.event_registry import namespace_of, validate_registration
 from kang.kernel.bus.reconciliation import Reconciliation, ReconciliationReport
+from kang.kernel.permissions.engine import PermissionEngine
 
 __all__ = ["EventBus", "Subscriber"]
 
@@ -46,17 +47,25 @@ class EventBus:
         event_log: EventLog,
         delivery: Delivery,
         reconciliation: Reconciliation,
+        permissions: PermissionEngine,
         subscribers: list[Subscriber] | None = None,
     ) -> None:
         self._event_log = event_log
         self._delivery = delivery
         self._reconciliation = reconciliation
+        self._permissions = permissions
         self._subscribers = list(subscribers or [])
 
     def publish(self, envelope: EventEnvelope, commit_state: Callable[[], None]) -> int:
         """The five-step write order (EB-004). `commit_state` is the caller's
         kang.db transaction — the truth the event is about. Returns seq."""
-        # 1. validate (registry: registered, schema, recovery_grade contract)
+        # 1. validate: publish authority (EB-010 checkpoint 1) + registry
+        #    (registered, schema, recovery_grade) + causation-depth guard.
+        #    All gate step 1 — an unauthorized or invalid publish never
+        #    reaches the log (default-deny; nothing persisted on denial).
+        self._permissions.check(
+            envelope.principal, f"events.publish:{namespace_of(envelope.type)}"
+        )
         validate_registration(envelope)
         guard_causation_depth(self._event_log, envelope.causation_id)
         # 2. append to eventlog.db (pending; synchronous=FULL; seq assigned)
