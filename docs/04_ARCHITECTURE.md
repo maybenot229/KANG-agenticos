@@ -1,4 +1,4 @@
-# KANG — System Architecture
+    # KANG — System Architecture
 
 **Document:** 04_ARCHITECTURE.md
 **Version:** 0.1
@@ -584,7 +584,7 @@ Extension points (versioned, in `plugins_sdk/`): `IntegrationAdapter`, `Monitor`
 
 **Decision.** A DB-backed job scheduler in the kernel:
 
-- Jobs are rows (`job`, `schedule`, `last_run`, `next_run`, `catch_up_policy`); schedules are cron-like + event-triggered.
+- Jobs are rows (`job`, `schedule`, `catch_up_policy`); schedules are cron-like + event-triggered. Last-processed-slot and next-run are derived from `job_run.started`, not stored as columns on `job` — see 07_DATABASE §5.5 for the authoritative schema (built M3).
 - **Catch-up semantics (NFR-008):** on startup after downtime, each job's policy decides: `run_once_latest` (morning plan: generate today's, skip missed days), `run_all_missed` (repetition reviews: queue them), `skip` (news digest: stale is worthless). *This is the "survives weeks of neglect" requirement made concrete.*
 - Jobs execute as supervised tasks: timeout, retry-with-backoff, failure quarantine, health status on the dashboard.
 - Monitors (competition sources, deadlines, GitHub trending) are just recurring jobs that publish events; the relevance filter (FR-071) sits between monitor events and notifications.
