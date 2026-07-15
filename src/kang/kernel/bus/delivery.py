@@ -10,22 +10,20 @@ stream; consumers dedup on event_id — at-least-once). Only CONFIRMED events
 are delivered (EB-004 step 5 follows confirmation); orphaned events are
 never delivered (§4.3); a pending event stops the sweep to preserve FIFO.
 
-Scope note (phase-ordered, not debt — 18 §1.4 infrastructure-precedes-
-consumer): the durable, testable part of EB-007.4 — bounded attempts,
-dead-lettering, cursor advance — is complete here. The *timed* exponential
-spacing between attempts is honored by the async delivery loop the
-supervised-task runtime drives; that runtime does not exist until M3, so at
-M2 attempts are inline. `retry_delay_seconds` is that schedule, defined and
-tested now, ready for the loop to consume.
+Timed backoff (M3): between failed attempts the delivery waits
+`retry_delay_seconds(attempt)` via the injected Sleeper (the real one sleeps
+wall-time; the fake records the delays so tests prove the wait without
+waiting — 13 §1.4). This closes the M2 deferral: redelivery no longer fires
+immediately, it honors the exponential schedule.
 """
 
 from __future__ import annotations
 
 from typing import Callable
 
-from kang.domain.ports.clock import Clock
 from kang.domain.ports.delivery import DeliveryStore
 from kang.domain.ports.eventlog import EventEnvelope, EventLog
+from kang.domain.ports.sleeper import Sleeper
 from kang.kernel.audit.service import AuditService
 
 __all__ = ["Delivery", "Handler", "MAX_ATTEMPTS", "retry_delay_seconds"]
@@ -54,15 +52,15 @@ class Delivery:
         event_log: EventLog,
         delivery_store: DeliveryStore,
         audit: AuditService,
-        clock: Clock,
         dead_letter_id: Callable[[], str],
+        sleeper: Sleeper,
         max_attempts: int = MAX_ATTEMPTS,
     ) -> None:
         self._event_log = event_log
         self._store = delivery_store
         self._audit = audit
-        self._clock = clock
         self._dead_letter_id = dead_letter_id
+        self._sleeper = sleeper
         self._max_attempts = max_attempts
 
     def deliver(self, subscriber: str, handler: Handler) -> int:
@@ -89,6 +87,10 @@ class Delivery:
                 return
             except Exception as exc:  # supervision point (11 §9)
                 last_error = f"{type(exc).__name__}: {exc}"
+                if attempt < self._max_attempts:
+                    # Wait the exponential backoff before the next attempt
+                    # (EB-007.4). Fake sleeper records; real one waits.
+                    self._sleeper.sleep(retry_delay_seconds(attempt))
         self._dead_letter(subscriber, seq, last_error)
 
     def _dead_letter(self, subscriber: str, seq: int, last_error: str) -> None:

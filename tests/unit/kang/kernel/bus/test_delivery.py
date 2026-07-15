@@ -15,6 +15,7 @@ from kang.adapters.fakes.audit_log import FakeAuditLog
 from kang.adapters.fakes.clock import FakeClock
 from kang.adapters.fakes.delivery_store import FakeDeliveryStore
 from kang.adapters.fakes.event_log import FakeEventLog
+from kang.adapters.fakes.sleeper import FakeSleeper
 from kang.kernel.audit.service import AuditService
 from kang.kernel.bus.delivery import MAX_ATTEMPTS, Delivery, retry_delay_seconds
 from tests.fixtures.event_log_contract import make_envelope
@@ -36,14 +37,19 @@ def delivery_store(clock) -> FakeDeliveryStore:
 
 
 @pytest.fixture
-def delivery(event_log, delivery_store, clock) -> Delivery:
+def sleeper() -> FakeSleeper:
+    return FakeSleeper()
+
+
+@pytest.fixture
+def delivery(event_log, delivery_store, clock, sleeper) -> Delivery:
     ids = (f"dl-{n}" for n in itertools.count())
     return Delivery(
         event_log,
         delivery_store,
         AuditService(FakeAuditLog(), clock),
-        clock,
         dead_letter_id=lambda: next(ids),
+        sleeper=sleeper,
     )
 
 
@@ -95,6 +101,30 @@ def test_cursors_are_independent_per_subscriber(delivery, event_log):
     delivery.deliver("a", lambda env: a_seen.append(env.event_id))
     delivery.deliver("b", lambda env: b_seen.append(env.event_id))
     assert a_seen == b_seen == ["event-0000"]
+
+
+def test_retries_wait_the_exponential_backoff_between_attempts(
+    delivery, event_log, sleeper
+):
+    """Closes M2 deferral 2: a failing handler's redelivery WAITS the
+    configured backoff (0.5, 1, 2, 4 between the 5 attempts) instead of
+    firing immediately. The fake sleeper records the waits (13 §1.4)."""
+    event_log.append(make_envelope(0))
+    _confirm_all(event_log)
+
+    def always_fails(env):
+        raise RuntimeError("nope")
+
+    delivery.deliver("s", always_fails)
+    # 5 attempts ⇒ 4 inter-attempt waits, exponential from 0.5s
+    assert sleeper.delays == [0.5, 1.0, 2.0, 4.0]
+
+
+def test_successful_delivery_never_sleeps(delivery, event_log, sleeper):
+    event_log.append(make_envelope(0))
+    _confirm_all(event_log)
+    delivery.deliver("s", lambda env: None)
+    assert sleeper.delays == []  # no failure ⇒ no backoff
 
 
 def test_poison_event_dead_letters_and_stream_continues(

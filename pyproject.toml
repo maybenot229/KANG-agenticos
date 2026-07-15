@@ -56,6 +56,10 @@ select = ["E", "F", "I", "T20", "BLE"]
 # whatever an arbitrary handler raises. Scoped to this one module so the
 # exemption cannot spread (the same discipline as the composition root).
 "src/kang/kernel/bus/delivery.py" = ["BLE001"]
+# The scheduler is the "job runner" named verbatim in 11 §9's closed list of
+# supervision points: a failing job body is captured, recorded, and counted
+# toward quarantine — it never escapes to abort catch-up of other jobs.
+"src/kang/kernel/scheduler/scheduler.py" = ["BLE001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

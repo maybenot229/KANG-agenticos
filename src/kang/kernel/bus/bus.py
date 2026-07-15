@@ -8,11 +8,12 @@ missed fact), EB-006 §6.3 (validate registration at publish), EB-011.2
 (causation-depth guard before publishing), §4.4 (startup: reconcile, then
 resume per-subscriber delivery from cursors).
 
-Publish authority (`events.publish:{namespace}`, §10) is a permission-engine
-check that arrives with the engine at M3; noted, not silently skipped. The
-depth guard here refuses to extend a runaway chain; the "append + alert +
-suppress would-be triggers" variant activates when event-triggered jobs
-exist (M3).
+Publish authority (`events.publish:{namespace}`, EB-010 checkpoint 1) is
+enforced here (M3): the publisher principal must hold the scope or the
+publish is denied, audited, and nothing is appended. The depth guard
+refuses to extend a runaway chain; the "append + alert + suppress would-be
+triggers" variant activates when event-triggered jobs exist (M3+ scheduler
+wiring).
 """
 
 from __future__ import annotations
@@ -20,11 +21,12 @@ from __future__ import annotations
 from typing import Callable
 
 from kang.domain.ports.eventlog import EventEnvelope, EventLog
+from kang.kernel.audit.service import AuditService
 from kang.kernel.bus.cycle_defense import guard_causation_depth
 from kang.kernel.bus.delivery import Delivery, Handler
 from kang.kernel.bus.event_registry import namespace_of, validate_registration
 from kang.kernel.bus.reconciliation import Reconciliation, ReconciliationReport
-from kang.kernel.permissions.engine import PermissionEngine
+from kang.kernel.permissions.engine import PermissionDenied, PermissionEngine
 
 __all__ = ["EventBus", "Subscriber"]
 
@@ -48,12 +50,14 @@ class EventBus:
         delivery: Delivery,
         reconciliation: Reconciliation,
         permissions: PermissionEngine,
+        audit: AuditService,
         subscribers: list[Subscriber] | None = None,
     ) -> None:
         self._event_log = event_log
         self._delivery = delivery
         self._reconciliation = reconciliation
         self._permissions = permissions
+        self._audit = audit
         self._subscribers = list(subscribers or [])
 
     def publish(self, envelope: EventEnvelope, commit_state: Callable[[], None]) -> int:
@@ -63,9 +67,18 @@ class EventBus:
         #    (registered, schema, recovery_grade) + causation-depth guard.
         #    All gate step 1 — an unauthorized or invalid publish never
         #    reaches the log (default-deny; nothing persisted on denial).
-        self._permissions.check(
-            envelope.principal, f"events.publish:{namespace_of(envelope.type)}"
-        )
+        scope = f"events.publish:{namespace_of(envelope.type)}"
+        try:
+            self._permissions.check(envelope.principal, scope)
+        except PermissionDenied:
+            # Denials are audited, never silent (05 §8, SEC-006) — then the
+            # typed error propagates; nothing was appended.
+            self._audit.record(
+                envelope.principal,
+                "events.publish.denied",
+                {"scope": scope, "type": envelope.type},
+            )
+            raise
         validate_registration(envelope)
         guard_causation_depth(self._event_log, envelope.causation_id)
         # 2. append to eventlog.db (pending; synchronous=FULL; seq assigned)
