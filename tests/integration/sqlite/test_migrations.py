@@ -30,7 +30,7 @@ def conn(tmp_path):
 
 def test_full_chain_applies_on_empty_database(conn):
     applied = apply_migrations(conn, MIGRATIONS_DIR, FakeClock())
-    assert applied == [1, 2, 3]  # 0001_initial, 0002_held_action, 0003_scheduler
+    assert applied == [1, 2, 3, 4]  # initial, held_action, scheduler, api
     tables = {
         row[0]
         for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -44,6 +44,9 @@ def test_full_chain_applies_on_empty_database(conn):
         "job",
         "job_run",
         "app_state",
+        "invocation",
+        "idempotency_key",
+        "session",
     } <= tables
 
 

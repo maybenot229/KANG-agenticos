@@ -10,6 +10,13 @@ from kang.domain.tasks.task_service import (
     TaskValidationError,
     complete_task,
     create_task,
+    task_event_payload,
 )
 
-__all__ = ["TaskDraft", "TaskValidationError", "complete_task", "create_task"]
+__all__ = [
+    "TaskDraft",
+    "TaskValidationError",
+    "complete_task",
+    "create_task",
+    "task_event_payload",
+]

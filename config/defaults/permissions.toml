@@ -13,5 +13,10 @@
 # The kernel bus publishes core-namespace facts on the truth the kernel owns
 # (EB-010: domain services and the kernel publish; agents never publish
 # directly). Domain-service principals gain their own events.publish grants
-# as those services arrive (M5).
+# as those services arrive.
 "kernel:bus" = ["events.publish:kang"]
+
+# The task domain service publishes task.* truth (task.created / task.updated)
+# on the task list it owns (EB-010). The API's task.create handler publishes
+# under this principal, not the requester's.
+"kernel:tasks" = ["events.publish:kang"]

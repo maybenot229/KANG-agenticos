@@ -50,6 +50,9 @@ select = ["E", "F", "I", "T20", "BLE"]
 # CLIs, not src/ — the print ban is "print in src", 11 §25).
 "tools/*" = ["T20"]
 "tests/*" = ["T20"]
+# The CLI is a client; stdout is its output surface — print is its job, not
+# a stray debug line (the src print-ban is "print in src", 11 §25).
+"cli/*" = ["T20"]
 # The bus dispatcher is a DOCUMENTED supervision point: 11 §9 permits broad
 # `except` at supervision points, and 15_EVENT_BUS §7/§13 (frozen) makes the
 # bus one — "a failing handler never blocks siblings" requires capturing
@@ -60,6 +63,10 @@ select = ["E", "F", "I", "T20", "BLE"]
 # supervision points: a failing job body is captured, recorded, and counted
 # toward quarantine — it never escapes to abort catch-up of other jobs.
 "src/kang/kernel/scheduler/scheduler.py" = ["BLE001"]
+# The API dispatch is the ingress supervision point: API-006 requires EVERY
+# failure to return the one error model — an unexpected exception becomes the
+# `internal` envelope, never a dropped connection or a synthesized success.
+"src/kang/api/dispatch.py" = ["BLE001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

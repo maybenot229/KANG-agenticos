@@ -56,3 +56,14 @@ class AuditService:
             details=details,
         )
         return self._log.append(entry)
+
+    def records_for_correlation(self, correlation_id: str) -> list[AuditRecord]:
+        """Every audit record threaded by this correlation id, oldest first —
+        the permanent chain `explain.invocation` reconstructs from (12 §12).
+        Reads audit only; never the event log (15 §8.3)."""
+        matched: list[AuditRecord] = []
+        for month in self._log.months():
+            for record in self._log.records(month):
+                if record.entry.correlation_id == correlation_id:
+                    matched.append(record)
+        return matched

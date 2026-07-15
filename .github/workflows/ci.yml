@@ -24,9 +24,9 @@ jobs:
 
       # 1 — format (zero config debates, ever)
       - name: Format (ruff format)
-        run: ruff format --check src tests tools
+        run: ruff format --check src tests tools cli
       - name: Lint (ruff)
-        run: ruff check src tests tools
+        run: ruff check src tests tools cli
 
       # 2 — lint contracts (imports, sizes, banned patterns, tree hygiene)
       - name: Import contracts (17 §4)

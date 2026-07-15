@@ -12,7 +12,13 @@ from dataclasses import dataclass, replace
 from kang.domain.ports.clock import Clock
 from kang.domain.ports.task_store import TASK_STATUSES, Task
 
-__all__ = ["TaskDraft", "TaskValidationError", "complete_task", "create_task"]
+__all__ = [
+    "TaskDraft",
+    "TaskValidationError",
+    "complete_task",
+    "create_task",
+    "task_event_payload",
+]
 
 
 class TaskValidationError(Exception):
@@ -66,3 +72,26 @@ def complete_task(task: Task, clock: Clock) -> Task:
     if task.status == "done":
         raise TaskValidationError(f"task {task.id} is already done")
     return replace(task, status="done", completed_at=clock.now())
+
+
+def task_event_payload(task: Task) -> dict:
+    """The self-sufficient task payload for task.* events (EB-003): the full
+    field set, so a recovery-grade replay reconstructs the row exactly. One
+    source both the event producer (api) and the recovery applier agree on."""
+    return {
+        "id": task.id,
+        "project_id": task.project_id,
+        "title": task.title,
+        "notes": task.notes,
+        "status": task.status,
+        "priority": task.priority,
+        "due": task.due,
+        "plan_date": task.plan_date,
+        "estimate_min": task.estimate_min,
+        "actual_min": task.actual_min,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+        "created_at": task.created_at.isoformat(),
+        "updated_at": task.updated_at.isoformat(),
+        "device_id": task.device_id,
+        "revision": task.revision,
+    }
