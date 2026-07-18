@@ -105,7 +105,7 @@ Hard-limit exceptions require an inline justification comment naming the ADR or 
 
 - All config through the typed config loader (TOML → validated dataclasses at startup; fail-fast on invalid). Reading environment variables or files ad hoc anywhere else is banned (lint: `os.environ` allowed only in the config module and test fixtures).
 - Constants that are really policy (thresholds, weights, retention) live in config files per 06_MEMORY App. A / 07_DATABASE Part 18 — a magic number in code that the docs list as tunable is a defect.
-- Config keys appear in exactly one of: files or `setting` table (07_DATABASE §3.4 disjointness, linted).
+- Config keys appear in exactly one of: files or `setting` table (07 §5.5, linted).
 
 ## 11. Dependency Injection
 

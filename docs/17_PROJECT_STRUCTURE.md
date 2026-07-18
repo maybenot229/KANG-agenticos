@@ -102,7 +102,7 @@ kang/                                  # the monorepo (one repo — D001: parts 
 │   ├── agents/                        # definitions + the shared runtime (AR5: agents are data)
 │   │   ├── definitions/               #   one folder per agent: {name}.toml + prompts/ (05 AG-002)
 │   │   ├── pipelines/                 #   pipeline definitions (bounded DAGs — AG-001)
-│   │   └── runtime/                   #   the ONE executor: lifecycle phases 1–8 (05 §3)
+│   │   └── runtime/                   #   the ONE executor: lifecycle phases 1–9 (05 §3)
 │   │
 │   ├── adapters/                      # all I/O, implementing ports; one folder per technology
 │   │   ├── sqlite/                    #   stores/repositories — the ONLY home of SQL (DB-002)

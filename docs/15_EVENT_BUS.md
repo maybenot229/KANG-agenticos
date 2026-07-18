@@ -163,48 +163,7 @@ Crash outcomes, exhaustively:
 
 ### 5.2 `eventlog.db` schema (fills the DDL gap in 07_DATABASE Part V)
 
-```sql
-CREATE TABLE event (
-  seq            INTEGER PRIMARY KEY,          -- single-writer monotonic
-  event_id       TEXT NOT NULL UNIQUE,          -- UUIDv7
-  type           TEXT NOT NULL,
-  type_version   INTEGER NOT NULL DEFAULT 1,
-  occurred_at    TEXT NOT NULL,
-  recorded_at    TEXT NOT NULL,
-  principal      TEXT NOT NULL,
-  correlation_id TEXT NOT NULL,
-  causation_id   TEXT,                          -- parent event_id, nullable
-  entity_refs    TEXT NOT NULL,                 -- JSON array
-  payload        TEXT NOT NULL,                 -- JSON, schema-validated
-  provenance     TEXT NOT NULL CHECK (provenance IN
-                   ('kang','derived','external_untrusted')),
-  recovery_grade INTEGER NOT NULL DEFAULT 0,
-  device_id      TEXT NOT NULL,
-  state          TEXT NOT NULL DEFAULT 'pending' CHECK (state IN
-                   ('pending','confirmed','orphaned'))                -- §4
-);
-CREATE INDEX idx_event_type       ON event(type, seq);      -- consumer: typed resume
-CREATE INDEX idx_event_corr       ON event(correlation_id); -- consumer: explain chains
-CREATE INDEX idx_event_pending    ON event(state) WHERE state = 'pending';
-                                                            -- consumer: reconciliation
-
-CREATE TABLE subscription_cursor (                           -- §7: delivery truth
-  subscriber   TEXT PRIMARY KEY,                -- principal-qualified name
-  last_seq     INTEGER NOT NULL DEFAULT 0,
-  updated_at   TEXT NOT NULL
-);
-
-CREATE TABLE dead_letter (                                   -- §7.3
-  id           TEXT PRIMARY KEY,               -- UUIDv7
-  event_seq    INTEGER NOT NULL REFERENCES event(seq),
-  subscriber   TEXT NOT NULL,
-  attempts     INTEGER NOT NULL,
-  last_error   TEXT NOT NULL,                  -- one honest sentence + class
-  created_at   TEXT NOT NULL,
-  resolved     TEXT CHECK (resolved IN ('redelivered','discarded')),
-  resolved_at  TEXT
-);
-```
+DDL: 07_DATABASE §5.0 (cite-only per this document's anti-duplication rule). EB-005 retains authority over envelope semantics; 07 owns the physical schema.
 
 Index doctrine per 07 Part VI: every index cites its consumer; speculative indexes forbidden. Compaction (90 days, D006) deletes `confirmed` events below every subscriber's cursor; `orphaned` rows and unresolved `dead_letter` rows are **never compacted away silently** — they are surfaced until Kang resolves them.
 

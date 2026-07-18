@@ -156,7 +156,9 @@ PRAGMA cache_size  = -65536;       -- 64 MB page cache per connection
 
 ## Part V — Schema
 
-## Part V — Event Log Schema (15_EVENT_BUS.md §5.2)
+### 5.0 Event Log Schema (15_EVENT_BUS.md §5.2)
+
+Adopted from 15_EVENT_BUS EB-005 at authoring; 07 is now the DDL's home; amendments land here.
 
 ```sql
 CREATE TABLE event (
@@ -200,7 +202,7 @@ CREATE TABLE dead_letter (
 );
 ```
 
-Index doctrine per 07 Part VI: every index cites its consumer; speculative indexes forbidden. Compaction (90 days, D006) deletes `confirmed` events below every subscriber's cursor; `orphaned` rows and unresolved `dead_letter` rows are **never compacted away silently** — they are surfaced until Kang resolves them.
+Index doctrine per Part VI: every index cites its consumer; speculative indexes forbidden.
 ### 5.1 Memory domain (implements `06_MEMORY.md`)
 
 ```sql
@@ -486,9 +488,9 @@ CREATE TABLE principal (             -- registry; grants live in permissions.tom
   created_at TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1
 );
 
-CREATE TABLE app_state (             -- runtime-mutable UI/system state ONLY
+CREATE TABLE setting (             -- runtime-mutable UI/system state ONLY
   key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL
-);  -- Config truth stays in TOML (D003). app_state holds window layouts,
+);  -- Config truth stays in TOML (D003). setting holds window layouts,
     -- last-seen markers, product state (§PRD 11) — never policy.
 
 CREATE TABLE schema_version (

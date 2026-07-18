@@ -100,7 +100,7 @@ Lives in **Know**. This is the UI half of the four covenants (06_MEMORY §1.5) �
 
 - **Browse:** filterable by type, status, tier, sensitivity, date, provenance kind (06_MEMORY Part X modes: default/deep/structured). Superseded and archived records are reachable (deep mode) and visibly badged.
 - **Record view:** content · type · tier · confidence · full provenance (source, reason, creator, dates) · revision history · links (typed, navigable) · access stats. Every field of the six provenance questions (06_MEMORY §8.1) MUST be visible without extra clicks.
-- **Actions:** edit (creates revision), pin, archive, restore, delete (with the 30-day-recovery note, 06_MEMORY §7.2), "never propose this again."
+- **Actions:** edit (creates revision), pin, archive, restore, delete (the confirmation states both the 30-day single-record recovery window and the snapshot-retention persistence of deleted content, 06_MEMORY §7.2), "never propose this again."
 - **Approval queue:** a dedicated tab, surfaced by count on the Dashboard (Zone 2) — never by interrupting notification (06_MEMORY §4.3). Each item MUST show: content, type, source, reason, confidence, and dup/conflict context side-by-side, with single-keystroke approve / edit-approve / reject.
 - **Contested view:** records `under_review` with their contradictions displayed as pairs, resolution actions per the protocol (06_MEMORY §6.2.4).
 - **The search here is Kang-facing search** (06_MEMORY Part X): zero-hit results say "nothing in memory matches" — the UI MUST NOT pad results (P3 applies to interfaces).

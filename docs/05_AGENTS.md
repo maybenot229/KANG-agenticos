@@ -107,8 +107,10 @@ sequenceDiagram
 5. **Tool execution.** Every call re-checked against the snapshot; consequential actions require a live confirmation token (S1) — there is no batch pre-approval of consequential actions.
 6. **Validation.** Machine-consumed outputs are schema-validated (D010); memory-derived claims are attribution-spot-checked (06_MEMORY §5.4); tool outputs feeding further steps are type-checked.
 7. **Memory proposal.** Anything durable becomes a *candidate* via the write gate (AG-010). Direct writes to memory or truth tables from agent code are architecturally absent — the agent runtime has no store handle, only the gate client and the domain service APIs.
-8. **Completion.** `invocation` row finalized (outcome ∈ ok | degraded | failed | denied | cancelled); chained successors enqueued by the Orchestrator if the pipeline defines them.
-9. **Failure handling.** Any phase may fail; §10 governs. Failures are outcomes, not exceptions to the lifecycle.
+8. **Completion.** `invocation` row finalized (outcome ∈ ok | degraded | failed | denied | cancelled); chained successors enqueued by the Orchestrator if the   pipeline defines them.
+9. **Audit finalization.** Every phase logged as it ran; the invocation's audit trail closes with the outcome.
+
+**Failure handling (cross-cutting).** Any phase may fail; §10 governs. Failures are outcomes, not exceptions to the lifecycle.
 
 ---
 
@@ -175,7 +177,7 @@ Six invocation modes, all normalized to the same lifecycle:
 | **Chained** | Orchestrator executing a pipeline step | Inherits pipeline correlation id; budgeted as pipeline |
 | **Confirmation-resume** | Kang approves a held consequential action | Resumes the *held invocation*, same correlation id — approval is a lifecycle event, not a new invocation |
 
-Rules: every mode produces an `invocation` row (07_DATABASE §3.4); synchronous modes MAY stream partial output but MUST still complete validation before any consequential effect; scheduled and event modes MUST NOT assume UI presence (headless-safe by construction).
+Rules: every mode produces an `invocation` row (07 §5.5); synchronous modes MAY stream partial output but MUST still complete validation before any consequential effect; scheduled and event modes MUST NOT assume UI presence (headless-safe by construction).
 
 **Event-trigger idempotency key is derived from `event_id`** (making AGP-3's "trigger-derived" concrete for this mode).
 
@@ -228,7 +230,7 @@ Implements D013 for agents; normative specifics:
 | `fs.*` | Path-prefix-scoped reads; writes only within `%KANG_HOME%` staging + granted vault folders. No agent holds general filesystem write. |
 | `vault.*` | Reads scoped by folder; writes per-folder; deletes are consequential (confirmation). Tier-0-input agents write only to the inbox quarantine (§8 pairing). |
 | `web.*` | Fetch + search; all returned content wrapped UNTRUSTED (S6); domain allowlists per agent where the mandate permits (monitors get source lists, the Researcher gets `any`). |
-| `db.*` | **Does not exist as a tool.** Agents touch structured state only via domain service tools (`tasks.complete`, `projects.create`, `deadlines.set`) — verbs with validation, not table access (AGP-6; DB-002's spirit). |
+| `db.*` | **Does not exist as a tool.** Agents touch structured state only via domain service tools (`tasks.complete`, `projects.create`, `deadlines.set`, `deadlines.mark_alerted`) — verbs with validation, not table access (AGP-6; DB-002's spirit). |
 | `calendar.*` | Read free; write consequential. |
 | `email.*` | `email.read:{folders}` and `email.draft` only. `email.send` is not a tool. Kang sends from his mail client — permanently (P6; PRD §15). |
 | `clipboard.*` | Write-only (`clipboard.put`), user-initiated modes only. Clipboard *read* is not a tool (it is a surveillance primitive; nothing in the mission needs it). |
@@ -375,7 +377,7 @@ Legend: kind C=cognitive, M=mechanical. Timeouts = hard invocation timeout. Retr
 | **memory_steward** | M→C | Janitor, dedup, weekly consolidation, pattern extraction (06_MEMORY Part VI) | sched (nightly/weekly/monthly) | stores → transitions, merge products, queued proposals | gate client, notify≤digest | web, vault.write, calendar, email | 30m (Sleeping) | 1 | mechanical passes always run; cognitive extraction skips | memory.propose:lesson,preference,observation (promotions queued) |
 | **vault_indexer** | M | Chunk/embed/index vault; link_index merge; broken-link detection | sched (sweep) + fs watcher events | vault files → derived indexes | fs.read:vault, vault.read | ALL writes except derived tables (via indexer service) | 10m | 1 | FTS-only indexing if embedder down | — |
 | **vault_organizer** | C | File inbox captures into conventions; propose links (FR-062, FR-063) | sched (daily); kang | inbox items → filed notes, link proposals | vault.read, vault.write:{conventions}, notify≤digest | web, calendar, email | 10m | 1 | leaves items in inbox, flags backlog | memory.read:vault-view; memory.propose:observation |
-| **deadline_sweep** | M | Lead-time alerts; missed-deadline detection (FR-031) | sched (hourly) | deadline table → alerts, status transitions | deadlines.read, notify≤**critical** | everything else | 2m | 2 | none needed (pure SQL); its failure is itself critical-alerted | — |
+| **deadline_sweep** | M | Lead-time alerts; missed-deadline detection (FR-031) | sched (hourly) | deadline table → alerts, status transitions | deadlines.read, deadlines.mark_alerted, notify≤**critical** | everything else | 2m | 2 | none needed (pure SQL); its failure is itself critical-alerted | — |
 | **web_monitor** | M→C | Configured monitors: news, GitHub trending, scholarships (FR-070/071) | sched (per-monitor) | sources → filtered digest items | web.fetch:{sources}, notify≤digest | vault.write, calendar, email, projects | 5m | 1 | skip cycle (stale news worthless — `skip` catch-up) | model.call:classification |
 | **notifier** | M | Deliver notifications per state ladder (§13, FR-074) | event: notification.requested | queued items → delivered/batched/suppressed | OS notification port | everything else | 30s | 2 | queue for next allowed window | — |
 | **backup_monitor** | M | Snapshot execution + verification (07_DATABASE Part 12) | sched (daily, Sleeping; monthly verify) | kang.db → snapshots, verification reports | fs (backup dirs), db admin port, notify≤attention | web, vault, calendar, email | 20m | 1 | alert on any failure — no silent skip, ever | — |

@@ -5,7 +5,7 @@
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Living — the only Phase-0 document *expected* to be revised at every version boundary; revisions follow the review ritual in §9
 **Last updated:** 2026-07-11
-**Upstream (binding):** the entire constitution (00–13). This document sequences it; it never overrides it.
+**Upstream (binding):** the entire constitution (00–18, per docs/INDEX.md). This document sequences it; it never overrides it.
 
 > This is not a feature checklist. It is the plan for how KANG grows from zero lines to potentially several hundred thousand lines over a decade **without becoming a system nobody understands** — including the person who wrote all of it.
 
@@ -136,7 +136,7 @@
 
 **How 300k lines stays understandable — the actual mechanism, stated once:**
 
-1. **The constitution fits in an evening.** Fourteen documents answer why/what/how-decided. Anyone (Future Kang, an AI assistant, a hypothetical contributor) reads docs, not code, first — and the docs are true because drift is a CI failure (CLAIMS.md) and a review gate (in-PR doc updates).
+1. **The constitution fits in an evening.** The constitutional set (see INDEX) answer why/what/how-decided. Anyone (Future Kang, an AI assistant, a hypothetical contributor) reads docs, not code, first — and the docs are true because drift is a CI failure (CLAIMS.md) and a review gate (in-PR doc updates).
 2. **The registries are the map:** operations, agents, pipelines, plugins, grants, jobs, ADRs — machine-readable, exhaustively enumerating what the system can do. Understanding scales because *enumeration* scales where memorization doesn't.
 3. **Boundaries make locality:** dependency direction + ports mean any question lives in one layer; design-for-deletion means any feature is a bounded file list. 300k lines is fine when every question touches 3k of them.
 4. **The kernel stays small forever:** growth goes to adapters, agents-as-config, and plugins — the parts that are individually disposable. The trusted core that must be *understood deeply* stays within one person's grasp by constitutional force (AR1), not by hope.

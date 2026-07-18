@@ -363,7 +363,15 @@ Consolidation is how memory gets **better** instead of merely bigger. It is also
 - **Archival** = out of default retrieval + vector index; in FTS deep search. Reversible by Kang in one click.
 - **Deletion** = destruction + tombstone. Only Kang, or a purge policy that was itself Kang-visible in `memory.toml`. **The janitor cites the policy line in its audit entry for every purge.**
 
-**Recovery:** daily DB snapshots (D016) mean a mistaken deletion is recoverable for 30 days via backup restore of the record (memory browser: "restore from snapshot" for single records — implemented as snapshot-attach + row copy). After 30 days, deletion is final. This window is documented to Kang in the deletion confirmation.
+**Recovery:** daily DB snapshots (D016) mean a mistaken deletion is recoverable
+for 30 days via backup restore of the record (memory browser: "restore from
+snapshot" for single records — implemented as snapshot-attach + row copy).
+After 30 days, single-record restore is no longer offered. Deleted content
+additionally persists inside backup snapshots until those snapshots age out
+(30 daily + 12 monthly, 07 Part XII); true destruction completes when the last
+containing snapshot rotates. The deletion confirmation dialog states both facts.
+
+Deleted content additionally persists inside backup snapshots until those snapshots age out (30 daily + 12 monthly, 07 Part XII); true destruction completes when the last containing snapshot rotates. The deletion confirmation dialog states this.
 
 ### 7.3 What never expires — stated plainly
 
@@ -474,7 +482,7 @@ The Context Assembler executes a **recipe** per agent/task: which deterministic 
 
 ### 12.2 Memory scopes (permission engine, D013)
 
-Grants are `memory.read:{type-list or view}` and `memory.write:{type-list}` per principal, default-deny. Concrete floor: the Research agent holds `web.fetch` and therefore MUST NOT hold `memory.read:sensitive` — **the read/act separation from D013 §14.2 applied to memory**: no principal combines untrusted-input tools with sensitive-memory reads. This pairing rule is validated at grant time (permissions.toml linter), not just at runtime.
+Grants are `memory.read:{type-list or view}` and `memory.propose:{type-list}` per principal, default-deny. Concrete floor: the Research agent holds `web.fetch` and therefore MUST NOT hold `memory.read:sensitive` — **the read/act separation from D013 §14.2 applied to memory**: no principal combines untrusted-input tools with sensitive-memory reads. This pairing rule is validated at grant time (permissions.toml linter), not just at runtime.
 
 ### 12.3 Audit specifics for memory
 
