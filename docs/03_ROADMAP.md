@@ -183,6 +183,7 @@ The single lookup table this roadmap promised. Sources cited; between triggers, 
 | Event bus socket transport | First sidecar process | 15_EVENT_BUS §15.1 |
 | Event-sync hazard (cross-device event ordering) | 16_SYNC design | 15_EVENT_BUS §17 |
 | Time-travel replay (user-facing "system as of date X") | Real need post-sync | 15_EVENT_BUS §9 |
+| Cursor tombstoning for permanently-removed subscribers | First agent definition deletion or plugin uninstall | 15_EVENT_BUS §18 |
 
 ---
 

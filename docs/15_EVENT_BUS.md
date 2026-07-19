@@ -390,6 +390,7 @@ Until applied, this table is the authoritative record of the divergence — file
 | User-facing time-travel over events | Rejected-for-now | Real need after sync; episodic memory answers the human-level question today |
 | Inter-plugin event coupling | Dormant (owned by 08 §7) | ADR with real cases — cited, not duplicated |
 | Configurable core-subscriber ordering | Pre-rejected | Never, probably — priority systems are conflict systems |
+| Cursor tombstoning for permanently-removed subscribers | Dormant (§7.2's cursor is lazily created on first delivery; no removal path exists — nothing removes agents/plugins yet) | First agent definition deletion or plugin uninstall (05_AGENTS §5, 08_PLUGIN §4) — decide then whether the cursor is deleted outright or tombstoned for `explain` |
 
 ---
 
