@@ -183,11 +183,8 @@ Adopt **Option B.**
    failures into one error code would make an audit reader unable to tell
    *which* gate refused without re-deriving it from the denial detail — the
    opposite of SEC-010 ("explanations are mandatory for authority"). A new,
-   distinct code is added to the closed enum (API-006). Proposed name:
-   **`first_party_required`** — mirrors the existing `confirmation_required`
-   naming pattern (states what the request is missing, not who was denied),
-   distinct on sight from `permission_denied` in logs and audit entries.
-   **This name is proposed, not final** — held for Kang's confirmation before
-   being treated as settled in the registry (per the follow-through task's
-   explicit instruction); the mechanism (a distinct code exists) is accepted
-   regardless of the exact string chosen.
+   distinct code is added to the closed enum (API-006): **`first_party_required`**
+   — mirrors the existing `confirmation_required` naming pattern (states what
+   the request is missing, not who was denied), distinct on sight from
+   `permission_denied` in logs and audit entries. **Confirmed by Kang,
+   2026-07-20** — settled in the registry (`src/kang/api/errors.py`).

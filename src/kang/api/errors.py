@@ -7,8 +7,7 @@ retryable, details?, remedy?}`; `code` is a closed registry-published enum;
 `permission_denied` names the missing scope; `confirmation_required` returns
 the held-action reference; `conflict` returns the current revision.
 `first_party_required` (ADR 002 Amendment §3): the CHANNEL denial, distinct
-from `permission_denied` — a capability grant cannot satisfy it. Name is
-PROPOSED, not yet confirmed by Kang; flagged in-line until it is.
+from `permission_denied` — a capability grant cannot satisfy it.
 """
 
 from __future__ import annotations
@@ -24,7 +23,7 @@ ERROR_CODES: tuple[str, ...] = (
     "not_found",
     "conflict",
     "permission_denied",
-    "first_party_required",  # PROPOSED name (ADR 002 Amendment) — pending
+    "first_party_required",  # channel denial (ADR 002 Amendment §3)
     "confirmation_required",
     "budget_exhausted",
     "degraded_result",
