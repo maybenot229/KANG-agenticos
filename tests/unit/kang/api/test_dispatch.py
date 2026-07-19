@@ -24,6 +24,7 @@ from kang.kernel.audit.service import AuditService
 from kang.kernel.permissions.engine import PermissionEngine
 
 VALID_TOKEN = "tok-kang"
+PLUGIN_TOKEN = "tok-plugin"
 
 
 def _build(grants=None):
@@ -31,6 +32,14 @@ def _build(grants=None):
     sessions = FakeSessionStore()
     sessions.create(
         Session(token=VALID_TOKEN, principal="kang", first_party=True, created_at="t")
+    )
+    sessions.create(
+        Session(
+            token=PLUGIN_TOKEN,
+            principal="plugin:sample",
+            first_party=False,
+            created_at="t",
+        )
     )
     audit_log = FakeAuditLog()
     invocations = FakeInvocationStore()
@@ -46,6 +55,7 @@ def _build(grants=None):
         "registry.get": ok_handler,
         "task.create": ok_handler,
         "task.get": ok_handler,
+        "held_action.approve": ok_handler,
     }
     dispatcher = Dispatcher(
         handlers,
@@ -140,6 +150,36 @@ def test_handler_apierror_becomes_the_error_envelope_and_records_failure():
     assert response["error"]["code"] == "conflict"
     invocation = invocations.by_correlation(response["error"]["correlation_id"])
     assert invocation.outcome == "failed"
+
+
+def test_plugin_session_is_refused_first_party_only_operation():
+    # ADR 002: held_action.approve is channel-gated. A plugin session holds
+    # no scope for it (scope=None) so a plain permission check would pass —
+    # the channel check is what refuses it, with its own distinct code.
+    dispatcher, *_ = _build()
+    response = dispatcher.dispatch(
+        ApiRequest(
+            "held_action.approve",
+            {"id": "held-1"},
+            PLUGIN_TOKEN,
+            idempotency_key="k-plugin-approve",
+        )
+    )
+    assert response["error"]["code"] == "first_party_required"
+    assert response["error"]["code"] != "permission_denied"
+
+
+def test_first_party_session_may_call_first_party_only_operation():
+    dispatcher, *_ = _build()
+    response = dispatcher.dispatch(
+        ApiRequest(
+            "held_action.approve",
+            {"id": "held-1"},
+            VALID_TOKEN,
+            idempotency_key="k-kang-approve",
+        )
+    )
+    assert response["ok"] is True
 
 
 def test_unexpected_exception_becomes_internal():

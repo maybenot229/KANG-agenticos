@@ -10,6 +10,12 @@ port is the data plumbing beneath it, built now per 18 M3).
 
 The store transitions status; it does NOT decide who may approve — that
 authority check is the API's (a plugin session MUST NOT approve, 12 §7).
+
+Lifecycle per ADR 001 (held-action crash-semantics): `approved` means Kang
+said yes, not that the effect happened. `executed` is the terminal state
+recording the effect actually committed. Which of the two `commit_mode`s
+(`transactional` | `redrive`, ADR 001 Amendment) governs the approved→executed
+step is registry metadata for `operation` — not stored on the row.
 """
 
 from __future__ import annotations
@@ -25,7 +31,7 @@ __all__ = [
     "HeldActionStore",
 ]
 
-HELD_ACTION_STATUSES = ("pending", "approved", "cancelled")
+HELD_ACTION_STATUSES = ("pending", "approved", "executed", "cancelled")
 
 
 @dataclass(frozen=True)
@@ -33,6 +39,9 @@ class HeldAction:
     """A consequential action held pending confirmation (12 §7 fields)."""
 
     id: str
+    operation: str  # registry operation name (e.g. 'memory.delete') —
+    #   resolves `commit_mode` on approval/recovery (ADR 001 Amendment);
+    #   distinct from `action`'s free-text description below
     action: str  # what: the command/effect held (e.g. 'task.delete task-1')
     principal: str  # who asked
     reason: str  # why: the requester's stated reasoning (one paragraph)
@@ -69,11 +78,30 @@ class HeldActionStore(Protocol):
 
     def approve(self, held_action_id: str, now: str) -> HeldAction:
         """Transition pending → approved. Raises HeldActionExpired if `now`
-        is past expiry (the window closed), HeldActionNotFound if absent."""
+        is past expiry (the window closed), HeldActionNotFound if absent.
+        `approved` records intent only — the effect has not necessarily
+        committed yet (ADR 001); the caller drives it to `executed`."""
         ...
 
     def cancel(self, held_action_id: str) -> HeldAction:
         """Transition pending → cancelled (Kang declined, or superseded)."""
+        ...
+
+    def mark_executed(self, held_action_id: str) -> HeldAction:
+        """Transition approved → executed: the held effect committed
+        (ADR 001). Raises HeldActionNotFound if the action is not currently
+        `approved` (guards against marking a pending or cancelled action
+        executed)."""
+        ...
+
+    def approved_not_executed(self) -> list[HeldAction]:
+        """Every action stuck at `approved` — the redrive-mode reconciliation
+        sweep's input on restart (ADR 001 Amendment). Transactional-mode
+        actions never appear here: their approve step and effect commit
+        together, so a crash before commit leaves them `approved` with
+        nothing to redrive, indistinguishable from freshly-approved — the
+        sweep re-attempts those too, which is safe by definition of
+        transactional mode (§Amendment)."""
         ...
 
     def expire_due(self, now: str) -> int:

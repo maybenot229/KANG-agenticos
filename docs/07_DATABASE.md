@@ -450,6 +450,27 @@ CREATE TABLE job_run (
   detail TEXT, correlation_id TEXT NOT NULL
 );
 
+CREATE TABLE held_action (            -- consequential-action gate (12 §7, D-owed;
+                                      --   docs/adr/001-held-action-crash-semantics.md)
+  id            TEXT PRIMARY KEY,     -- UUIDv7
+  operation     TEXT NOT NULL,        -- registry operation name — resolves
+                                      --   commit_mode on approval/recovery
+  action        TEXT NOT NULL,        -- what will happen (exact)
+  principal     TEXT NOT NULL,        -- who asked
+  reason        TEXT NOT NULL,        -- why (one paragraph max)
+  reversibility TEXT NOT NULL,        -- the reversibility statement
+  correlation_id TEXT NOT NULL,       -- thread to invocation/audit
+  created_at    TEXT NOT NULL,
+  expires_at    TEXT NOT NULL,        -- created_at + 24h (12 §7)
+  status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN
+                  ('pending','approved','executed','cancelled'))
+                                      -- 'approved' = intent recorded, not done;
+                                      --   'executed' = the held effect committed
+                                      --   (ADR 001: approved != done)
+);
+CREATE INDEX idx_held_action_pending ON held_action(status, created_at)
+  WHERE status = 'pending';
+
 CREATE TABLE agent_invocation (      -- execution history (observability, D015)
   id TEXT PRIMARY KEY, correlation_id TEXT NOT NULL,
   agent TEXT NOT NULL, task_class TEXT NOT NULL,

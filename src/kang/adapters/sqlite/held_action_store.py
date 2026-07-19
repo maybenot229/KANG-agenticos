@@ -3,8 +3,9 @@
 Layer: adapters/sqlite (SQL confined here — DB-002).
 Constitutional home: 12_API §7 (held_action lifecycle), 07 §5.5-style
 transactional writes (BEGIN IMMEDIATE, DB-003). Status transitions are
-guarded: only a pending action approves/cancels; approval past expiry is
-refused (the window closed).
+guarded: only a pending action approves/cancels, only an approved action
+executes; approval past expiry is refused (the window closed). Lifecycle
+(pending → approved → executed | pending → cancelled) is ADR 001's.
 """
 
 from __future__ import annotations
@@ -20,22 +21,23 @@ from kang.domain.ports.held_action import (
 __all__ = ["SqliteHeldActionStore"]
 
 _COLUMNS = (
-    "id, action, principal, reason, reversibility, correlation_id, "
-    "created_at, expires_at, status"
+    "id, operation, action, principal, reason, reversibility, "
+    "correlation_id, created_at, expires_at, status"
 )
 
 
 def _row_to_held_action(row: tuple) -> HeldAction:
     return HeldAction(
         id=row[0],
-        action=row[1],
-        principal=row[2],
-        reason=row[3],
-        reversibility=row[4],
-        correlation_id=row[5],
-        created_at=row[6],
-        expires_at=row[7],
-        status=row[8],
+        operation=row[1],
+        action=row[2],
+        principal=row[3],
+        reason=row[4],
+        reversibility=row[5],
+        correlation_id=row[6],
+        created_at=row[7],
+        expires_at=row[8],
+        status=row[9],
     )
 
 
@@ -50,9 +52,10 @@ class SqliteHeldActionStore:
         try:
             self._conn.execute(
                 f"INSERT INTO held_action ({_COLUMNS}) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     held_action.id,
+                    held_action.operation,
                     held_action.action,
                     held_action.principal,
                     held_action.reason,
@@ -94,6 +97,21 @@ class SqliteHeldActionStore:
                 f"{held_action_id} is {current.status}, not pending"
             )
         return self._set_status(held_action_id, "cancelled")
+
+    def mark_executed(self, held_action_id: str) -> HeldAction:
+        current = self.get(held_action_id)
+        if current.status != "approved":
+            raise HeldActionNotFound(
+                f"{held_action_id} is {current.status}, not approved"
+            )
+        return self._set_status(held_action_id, "executed")
+
+    def approved_not_executed(self) -> list[HeldAction]:
+        rows = self._conn.execute(
+            f"SELECT {_COLUMNS} FROM held_action WHERE status = 'approved' "
+            "ORDER BY created_at, id"
+        ).fetchall()
+        return [_row_to_held_action(row) for row in rows]
 
     def expire_due(self, now: str) -> int:
         self._conn.execute("BEGIN IMMEDIATE")

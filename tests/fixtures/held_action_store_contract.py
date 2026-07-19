@@ -20,6 +20,7 @@ EXPIRES = "2026-01-02T09:00:00+00:00"  # +24h (12 §7)
 def _held(index: int = 0, created: str = CREATED, expires: str = EXPIRES) -> HeldAction:
     return HeldAction(
         id=f"held-{index:04d}",
+        operation="task.delete",
         action=f"task.delete task-{index:04d}",
         principal="agent:planner",
         reason="the plan no longer needs it",
@@ -65,6 +66,35 @@ class HeldActionStoreContract:
         store.cancel("held-0000")
         with pytest.raises(HeldActionNotFound):
             store.approve("held-0000", now="2026-01-01T12:00:00+00:00")
+
+    def test_mark_executed_after_approve(self, store):
+        store.create(_held(0))
+        store.approve("held-0000", now="2026-01-01T12:00:00+00:00")
+        executed = store.mark_executed("held-0000")
+        assert executed.status == "executed"
+        assert store.get("held-0000").status == "executed"
+
+    def test_cannot_mark_executed_before_approval(self, store):
+        store.create(_held(0))
+        with pytest.raises(HeldActionNotFound):
+            store.mark_executed("held-0000")
+
+    def test_cannot_mark_executed_twice(self, store):
+        store.create(_held(0))
+        store.approve("held-0000", now="2026-01-01T12:00:00+00:00")
+        store.mark_executed("held-0000")
+        with pytest.raises(HeldActionNotFound):
+            store.mark_executed("held-0000")
+
+    def test_approved_not_executed_excludes_other_states(self, store):
+        store.create(_held(0))
+        store.create(_held(1))
+        store.create(_held(2))
+        store.approve("held-0000", now="2026-01-01T12:00:00+00:00")
+        store.approve("held-0001", now="2026-01-01T12:00:00+00:00")
+        store.mark_executed("held-0001")
+        # held-0002 stays pending
+        assert [h.id for h in store.approved_not_executed()] == ["held-0000"]
 
     def test_expire_due_cancels_only_past_pending(self, store):
         store.create(_held(0, expires="2026-01-02T00:00:00+00:00"))

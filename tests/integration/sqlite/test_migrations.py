@@ -30,7 +30,7 @@ def conn(tmp_path):
 
 def test_full_chain_applies_on_empty_database(conn):
     applied = apply_migrations(conn, MIGRATIONS_DIR, FakeClock())
-    assert applied == [1, 2, 3, 4]  # initial, held_action, scheduler, api
+    assert applied == [1, 2, 3, 4, 5]  # initial, held_action, scheduler, api, held_action_lifecycle
     tables = {
         row[0]
         for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")

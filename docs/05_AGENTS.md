@@ -424,7 +424,9 @@ stateDiagram-v2
 
 ## Appendix D — Tool matrix: consequential actions (closed list)
 
-`calendar.write` · `vault.delete` · `email.draft→(send does not exist)` · `projects.delete` · `memory.delete` · `plugin.install/enable` · `grant.modify` · any `fs.write` outside staging/vault-granted. Each requires live per-action confirmation; each is audited with full context; none is grantable as auto-approved.
+`calendar.write` · `vault.delete` · `email.draft→(send does not exist)` · `projects.delete` · `memory.delete` · `plugin.install/enable` · `grant.modify` · any `fs.write` outside staging/vault-granted · `job.enable`/`job.disable` (core jobs) · `restore.run` · `export.key_backup` · `private.unlock` · `held_action.approve` · `held_action.cancel`. Each requires live per-action confirmation; each is audited with full context; none is grantable as auto-approved.
+
+`held_action.approve` and `held_action.cancel` are additionally **`first_party_only`** (ADR 002): out-of-band confirmation for every other item in this list is enforced by requiring a `held_action` record and a distinct approval step; for these two items specifically, the *approval step itself* is the consequential action, so the first-party channel check (not a permission scope — §8) is what stands in for that second layer. A plugin session cannot approve, decline, or drain Kang's approval queue regardless of its grants.
 
 ## Appendix E — Scheduling table
 

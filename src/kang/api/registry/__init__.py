@@ -16,6 +16,7 @@ each milestone adds domain surface. Event types mirror the bus registry
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any
 
 from kang.api.errors import ERROR_CODES
@@ -34,15 +35,43 @@ __all__ = [
 CONTRACT_VERSION = 1
 
 
+COMMIT_MODES = ("transactional", "redrive")  # ADR 001 Amendment
+
+
+@dataclass(frozen=True)
+class OperationChannel:
+    """ADR 001/002 metadata, bundled to keep `_op` under the size lint's
+    parameter limit (11 §4 — beyond a few params, a dataclass).
+
+    `first_party_only` (ADR 002): a channel control, checked by the
+    dispatcher after the scope check, independent of `scope` — NOT a
+    permission (API-003: no second authorization vocabulary lives here).
+
+    `commit_mode` (ADR 001 Amendment): REQUIRED for every consequential
+    command (one that can return `confirmation_required`); `None` for
+    everything else. `transactional` — approval-flip and effect commit in
+    one kang.db transaction. `redrive` — effect crosses into `adapters/`
+    (world-touching); the target adapter MUST have a proven idempotency
+    contract before an operation may register with this mode (validated
+    below, at import time — not at runtime)."""
+
+    first_party_only: bool = False
+    commit_mode: str | None = None
+
+
 def _op(
     name: str,
     kind: str,
     scope: str | None,
     idempotent: bool,
     summary: str,
+    channel: OperationChannel | None = None,
 ) -> dict[str, Any]:
     """One operation registry entry (12 §2/§16): name, kind, required scope,
     idempotency class, version-introduced. Schemas harden as domain grows."""
+    channel = channel or OperationChannel()
+    if channel.commit_mode is not None and channel.commit_mode not in COMMIT_MODES:
+        raise ValueError(f"commit_mode {channel.commit_mode!r} not in {COMMIT_MODES}")
     return {
         "name": name,
         "kind": kind,  # 'command' | 'query'
@@ -51,6 +80,8 @@ def _op(
         "version_introduced": "0.1",
         "deprecated": False,
         "summary": summary,
+        "first_party_only": channel.first_party_only,
+        "commit_mode": channel.commit_mode,
     }
 
 
@@ -71,7 +102,41 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
     _op("explain.notification", "query", None, False, "Explain a notification."),
     _op("explain.suggestion", "query", None, False, "Explain a suggestion."),
     _op("explain.memory", "query", None, False, "Explain a memory record."),
+    # held_action.* (ADR 001, ADR 002): channel-gated, not scope-gated — no
+    # `kang`-only scope exists for these (API-003/SEC-004: first-party-only
+    # is a channel, never a grant). Handlers are not yet wired into the
+    # composition root (no held-action feature is live end-to-end); these
+    # entries register the contract shape ahead of that wiring, per 17 §4's
+    # "ports/registry first" ordering discipline.
+    _op(
+        "held_action.approve",
+        "command",
+        None,
+        True,
+        "Approve a pending held action; drives its effect per commit_mode.",
+        channel=OperationChannel(first_party_only=True),
+    ),
+    _op(
+        "held_action.cancel",
+        "command",
+        None,
+        True,
+        "Decline a pending held action.",
+        channel=OperationChannel(first_party_only=True),
+    ),
 )
+
+# ADR 001 Amendment's registration-time gate: an operation MUST NOT declare
+# commit_mode="redrive" until its target adapter has a proven idempotency
+# contract + conformance test. No such adapter exists yet (M4) — this loop
+# is the enforcement point for when one first tries to register.
+for _entry in OPERATIONS:
+    if _entry["commit_mode"] == "redrive":
+        raise NotImplementedError(
+            f"{_entry['name']}: commit_mode='redrive' requires a proven "
+            "adapter idempotency contract + conformance test before "
+            "registration (ADR 001 Amendment) — none exist yet at M4"
+        )
 
 # Event types are the bus vocabulary (12 §6: the API adds no second event
 # language) — served here as records for client subscription.

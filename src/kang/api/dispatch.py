@@ -103,6 +103,7 @@ class Dispatcher:
             if cached is not None:
                 return cached
         self._authorize(entry, principal)
+        self._authorize_channel(entry, first_party)
         context = HandlerContext(
             principal=principal,
             correlation_id=correlation_id,
@@ -149,6 +150,19 @@ class Dispatcher:
                 f"missing scope {scope}",
                 details={"scope": scope},
             ) from denied
+
+    def _authorize_channel(self, entry: dict[str, Any], first_party: bool) -> None:
+        """ADR 002: first_party_only is a CHANNEL control, checked here after
+        _authorize's capability check — independent of it, both required.
+        Deliberately a distinct error code from permission_denied (ADR 002
+        Amendment §3): collapsing the two would hide which gate refused."""
+        if not entry["first_party_only"]:
+            return
+        if not first_party:
+            raise ApiError(
+                "first_party_required",
+                f"{entry['name']} may only be approved from a first-party session",
+            )
 
     def _execute(
         self, entry: dict[str, Any], request: ApiRequest, context: HandlerContext

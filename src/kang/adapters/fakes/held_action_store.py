@@ -48,6 +48,18 @@ class FakeHeldActionStore:
             raise HeldActionNotFound(f"{held_action_id} is {current.status}")
         return self._set_status(held_action_id, "cancelled")
 
+    def mark_executed(self, held_action_id: str) -> HeldAction:
+        current = self.get(held_action_id)
+        if current.status != "approved":
+            raise HeldActionNotFound(f"{held_action_id} is {current.status}")
+        return self._set_status(held_action_id, "executed")
+
+    def approved_not_executed(self) -> list[HeldAction]:
+        return sorted(
+            (a for a in self._actions.values() if a.status == "approved"),
+            key=lambda a: (a.created_at, a.id),
+        )
+
     def expire_due(self, now: str) -> int:
         expired = 0
         for held_action_id, action in list(self._actions.items()):
