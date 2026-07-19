@@ -371,8 +371,6 @@ additionally persists inside backup snapshots until those snapshots age out
 (30 daily + 12 monthly, 07 Part XII); true destruction completes when the last
 containing snapshot rotates. The deletion confirmation dialog states both facts.
 
-Deleted content additionally persists inside backup snapshots until those snapshots age out (30 daily + 12 monthly, 07 Part XII); true destruction completes when the last containing snapshot rotates. The deletion confirmation dialog states this.
-
 ### 7.3 What never expires — stated plainly
 
 Lessons, retrospectives, reviews, decisions, rules, profile, relationships, and reflections are **permanent by default**. They are the distilled decade. Everything else exists to eventually produce them or to serve the operational present. If storage ever mattered (it won't — Part XIII), everything *except* these classes is negotiable.

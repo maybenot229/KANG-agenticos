@@ -2,8 +2,12 @@
 """Verifies that every 'NN_DOC §X.Y' citation in docs/ resolves to a real heading.
 
 Scope (v1): numeric-section citations only ('07_DATABASE §5.5', '15 §11.2').
-Out of scope: 'Part IX' word-numeral cites, decision IDs (D004, EB-003) —
-those are registry-checked concepts, not section anchors.
+Out of scope: 'Part IX'/'Part X' word-numeral cites, decision IDs (D004,
+EB-003) — those are registry-checked concepts, not section anchors. Prefer
+Part-numeral or Decision-ID citations over plain §-numbers when citing content
+that has both, since decimal sections renumber under document restructuring
+and Part/Decision identifiers don't (see docs/INDEX.md §2.2's numbering-
+stability rationale, generalized to sub-document citations).
 Exit 1 on any unresolved citation. Allowlist: tools/citation_allowlist.txt.
 """
 import re

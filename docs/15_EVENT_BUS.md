@@ -161,11 +161,11 @@ Crash outcomes, exhaustively:
 
 **Deliberately absent:** per-event hash chaining or signatures (tamper evidence is the audit log's single responsibility — SEC-013; duplicating it here is duplicated truth and false comfort, since eventlog.db is honest-limits tamper-*evident* at best); per-event TTL (retention is a log policy, not an envelope field); priority (priority systems are conflict systems — 08 §7's reasoning, adopted).
 
-### 5.2 `eventlog.db` schema (fills the DDL gap in 07_DATABASE Part V)
+### 5.2 `eventlog.db` schema (DDL home: 07_DATABASE §5.0)
 
-DDL: 07_DATABASE §5.0 (cite-only per this document's anti-duplication rule). EB-005 retains authority over envelope semantics; 07 owns the physical schema.
-
-Index doctrine per 07 Part VI: every index cites its consumer; speculative indexes forbidden. Compaction (90 days, D006) deletes `confirmed` events below every subscriber's cursor; `orphaned` rows and unresolved `dead_letter` rows are **never compacted away silently** — they are surfaced until Kang resolves them.
+DDL: 07_DATABASE §5.0 (cite-only per this document's anti-duplication rule).
+EB-005 retains authority over envelope semantics (§5.1); 07 owns the physical
+schema, index doctrine, and compaction mechanics.
 
 ---
 

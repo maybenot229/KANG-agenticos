@@ -329,7 +329,7 @@ Import enforcement: an import-hook guard denies non-blessed imports and raw prim
 | Marketplace/distribution | Nothing, deliberately — distribution is out of scope until a Vision-level multi-user change | Vision amendment first |
 | MCP servers as backends | Tools are transport-agnostic (05_AGENTS §17) | MCP adapter implementing the tool port; manifests unchanged |
 | Credentialed integrations | RESERVED `credential:{name}` + core-side injection | First credentialed plugin |
-| Plugin data sync | `plugin_kv` already carries the sync quartet (07_DATABASE §3.4) | 16_SYNC |
+| Plugin data sync | `plugin_kv` already carries the sync quartet (07_DATABASE Part X) | 16_SYNC |
 | Inter-plugin events/deps | Namespaced events exist; coupling deliberately dormant | ADR revising PL-005/§7 with real cases |
 | UI-rendering plugins | Panel slots + data contract isolate today's plugins from tomorrow's renderer | Phase-2 sandbox ADR |
 

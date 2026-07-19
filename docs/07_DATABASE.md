@@ -202,7 +202,7 @@ CREATE TABLE dead_letter (
 );
 ```
 
-Index doctrine per Part VI: every index cites its consumer; speculative indexes forbidden.
+Index doctrine per Part VI: every index cites its consumer; speculative indexes forbidden. Compaction (90 days, D006) deletes `confirmed` events below every subscriber's cursor; `orphaned` rows and unresolved `dead_letter` rows are **never compacted away silently** — they are surfaced until Kang resolves them.
 ### 5.1 Memory domain (implements `06_MEMORY.md`)
 
 ```sql

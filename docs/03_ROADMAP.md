@@ -136,7 +136,7 @@
 
 **How 300k lines stays understandable — the actual mechanism, stated once:**
 
-1. **The constitution fits in an evening.** The constitutional set (see INDEX) answer why/what/how-decided. Anyone (Future Kang, an AI assistant, a hypothetical contributor) reads docs, not code, first — and the docs are true because drift is a CI failure (CLAIMS.md) and a review gate (in-PR doc updates).
+1. **The constitution fits in an evening.** The constitutional set (see INDEX) answers why/what/how-decided. Anyone (Future Kang, an AI assistant, a hypothetical contributor) reads docs, not code, first — and the docs are true because drift is a CI failure (CLAIMS.md) and a review gate (in-PR doc updates).
 2. **The registries are the map:** operations, agents, pipelines, plugins, grants, jobs, ADRs — machine-readable, exhaustively enumerating what the system can do. Understanding scales because *enumeration* scales where memorization doesn't.
 3. **Boundaries make locality:** dependency direction + ports mean any question lives in one layer; design-for-deletion means any feature is a bounded file list. 300k lines is fine when every question touches 3k of them.
 4. **The kernel stays small forever:** growth goes to adapters, agents-as-config, and plugins — the parts that are individually disposable. The trusted core that must be *understood deeply* stays within one person's grasp by constitutional force (AR1), not by hope.

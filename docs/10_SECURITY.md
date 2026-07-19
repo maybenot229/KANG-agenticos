@@ -156,7 +156,7 @@ Format: Decision / Why / Alternatives / Trade-offs. (Scaling implications where 
 
 ### SEC-011 — Secrets never leave the credential boundary
 
-**Decision.** Raw secrets exist in exactly one place (OS keychain) and transit exactly one component (adapter-internal credential injection). They MUST NOT appear in: prompts, manifests, logs, memory, config files, `plugin_kv`, exports, backups, error messages, or the database. A scrubber provides defense-in-depth on all log/audit paths; scrubber hits are themselves incidents (something tried). Plugins never see raw credentials — RESERVED `credential:{name}` injection (08_PLUGIN §9.5).
+**Decision.** Raw secrets exist in exactly one place (OS keychain) and transit exactly one component (adapter-internal credential injection). They MUST NOT appear in: prompts, manifests, logs, memory, config files, `plugin_kv`, exports, backups, error messages, or the database. A scrubber provides defense-in-depth on all log/audit paths; scrubber hits are themselves incidents (something tried). Plugins never see raw credentials — RESERVED `credential:{name}` injection (08_PLUGIN §9.8).
 **Why.** S7, unified. Secrets are the one data class where a single leak is unrecoverable by restore.
 **Alternatives.** Encrypted secrets in config (rejected: the key management recursion lands in the keychain anyway — skip the middle step).
 

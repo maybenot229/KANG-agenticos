@@ -107,7 +107,7 @@ sequenceDiagram
 5. **Tool execution.** Every call re-checked against the snapshot; consequential actions require a live confirmation token (S1) — there is no batch pre-approval of consequential actions.
 6. **Validation.** Machine-consumed outputs are schema-validated (D010); memory-derived claims are attribution-spot-checked (06_MEMORY §5.4); tool outputs feeding further steps are type-checked.
 7. **Memory proposal.** Anything durable becomes a *candidate* via the write gate (AG-010). Direct writes to memory or truth tables from agent code are architecturally absent — the agent runtime has no store handle, only the gate client and the domain service APIs.
-8. **Completion.** `invocation` row finalized (outcome ∈ ok | degraded | failed | denied | cancelled); chained successors enqueued by the Orchestrator if the   pipeline defines them.
+8. **Completion.** `invocation` row finalized (outcome ∈ ok | degraded | failed | denied | cancelled); chained successors enqueued by the Orchestrator if the pipeline defines them.
 9. **Audit finalization.** Every phase logged as it ran; the invocation's audit trail closes with the outcome.
 
 **Failure handling (cross-cutting).** Any phase may fail; §10 governs. Failures are outcomes, not exceptions to the lifecycle.
