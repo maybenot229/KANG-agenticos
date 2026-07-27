@@ -318,6 +318,23 @@ CREATE TABLE milestone (
   device_id TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1
 );
 
+```
+
+**Initial seed data** (`quarter` and `year` only — per `docs/adr/003-goal-
+horizon-5yr.md`, accepted): `horizon='quarter'` → "Ship KANG v0.1" (this
+quarter's aim); `horizon='year'` → ranked list, 1 = highest — KANG v0.1
+shipped and used daily, Olympiad result/medal, grades locked in, money saved
+(rank order is the content; do not flatten it into an unranked set).
+`horizon='life'` stays intentionally empty, per the intake's own finding
+(Kang: "unresolved, honestly" — do not fabricate a life-goal narrative;
+revisit quarterly). Source: `docs/guides/user-profile-intake-2026-07.md`
+D15. Not a migration; not applied here — this is intent for M5's first
+runtime population. The intake also names a 5-year candidate goal (NUS
+admission, explicitly "candidate not committed") — ADR-003 decided it stays
+in the vault/guide, not the `goal` table, until it becomes a real
+commitment; `horizon` above deliberately has no slot for it.
+
+```sql
 CREATE TABLE goal (
   id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT,
   horizon TEXT NOT NULL CHECK (horizon IN ('quarter','year','life')),

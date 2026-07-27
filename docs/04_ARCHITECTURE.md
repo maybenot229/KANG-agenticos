@@ -691,7 +691,7 @@ This table is the anti-overengineering contract. Each row cites its trigger so f
 1. **Embedding model choice** (local-first candidate vs. API quality) — needs a small evaluation on Kang's real vault before v0.2. Decision by benchmark, not vibes.
 2. **UI shell final call** (Tauri assumed; validate global-hotkey + tray behavior on Windows 11 in a spike before committing v0.1 UI work).
 3. **SQLCipher vs. app-level encryption** for sensitive partitions — decide with `07_DATABASE.md`.
-4. **Kang's actual morning routine** — still unanswered (asked at PRD stage). The Planner's trigger times and plan shape are guesses until this lands.
+4. ~~**Kang's actual morning routine**~~ — **Resolved** per `docs/guides/user-profile-intake-2026-07.md` (2026-07-19 intake). Trigger times seeded in `config/defaults/kang.toml` `[planner.triggers]`; plan shape is no longer a guess (05_AGENTS Appendix E).
 
 ---
 

@@ -163,6 +163,15 @@ class SqliteTaskStore:
             raise
         return replace(task, updated_at=now, revision=task.revision + 1)
 
+    def plannable(self) -> list[Task]:
+        # Served by idx_task_plan (07 Part VI: "Planner P0"), whose partial
+        # WHERE matches these two statuses exactly.
+        rows = self._conn.execute(
+            f"SELECT {_COLUMNS} FROM task WHERE status IN ('open', 'scheduled') "
+            "ORDER BY priority, due IS NULL, due, id"
+        ).fetchall()
+        return [_row_to_task(row) for row in rows]
+
     def delete(self, task_id: str, deleted_by: str) -> None:
         now = self._clock.now()
         self._conn.execute("BEGIN IMMEDIATE")

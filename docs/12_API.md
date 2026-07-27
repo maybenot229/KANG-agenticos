@@ -116,7 +116,7 @@ Resources mirror the truth schema (07_DATABASE) — the API invents no parallel 
 
 `project · task · milestone · goal · competition · deadline · memory_record · episode · memory_link · candidate (approval-queue item) · conversation · invocation · task (async work) · job · grant · plugin · notification · audit_entry · health_metric · setting · export`
 
-Rules: every resource carries `id` (UUIDv7), `revision`, `updated_at`; clients treat resources as **snapshots** — mutation is by command referencing `id` + expected `revision` (optimistic concurrency; mismatch ⇒ `conflict`); resource representations MUST include provenance fields where the schema has them (a memory record without its provenance is not a valid representation — 06_MEMORY §8.1); `sensitivity=private` content is never returned by any operation except the explicit unlock flow (§10).
+Rules: every resource carries `id` (UUIDv7) and `updated_at`. Synchronizable resources additionally carry `revision` (optimistic concurrency, per the sync quartet). Per-device operational resources (`invocation`, `notification` — see 07_DATABASE §1.4 / ADR-005) do not carry `revision`, since they never replicate and have no concurrent-writer conflict to detect. Clients treat resources as **snapshots** — mutation is by command referencing `id` + expected `revision` (optimistic concurrency; mismatch ⇒ `conflict`); resource representations MUST include provenance fields where the schema has them (a memory record without its provenance is not a valid representation — 06_MEMORY §8.1); `sensitivity=private` content is never returned by any operation except the explicit unlock flow (§10).
 
 ---
 

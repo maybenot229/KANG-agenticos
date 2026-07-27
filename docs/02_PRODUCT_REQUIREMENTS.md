@@ -217,6 +217,8 @@ Not all capabilities are equal. Tiers prevent scope creep and settle prioritizat
 
 A Tier 3 feature request never preempts a Tier 1 bug. Written here so it never has to be argued.
 
+> [!note] No Business/monetization capability tier exists here **by design, not omission.** Per `docs/guides/user-profile-intake-2026-07.md` (Kang, 2026-07-19): *"no business yet — it's aspirational."* Not a scoping gap to fill; revisit only if that changes.
+
 ### 10.2 Capability Dependency Map
 
 ```
@@ -727,6 +729,7 @@ Version = first release where the requirement must be satisfied.
 | FR-003 | KANG shall generate an evening review summarizing completion and carry-overs | High | 0.2 |
 | FR-004 | KANG shall generate a weekly review with patterns and adjustments | Medium | 0.3 |
 | FR-005 | KANG shall estimate daily workload and warn on overcommitment | Medium | 0.4 |
+| FR-006 | KANG shall detect commitments Kang has repeatedly deferred or avoided despite knowing about them, and surface them with escalating visibility, distinct from ordinary deadline tracking | High | 0.3+ |
 
 ### Memory
 

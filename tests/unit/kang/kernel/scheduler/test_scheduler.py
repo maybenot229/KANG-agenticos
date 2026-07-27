@@ -14,7 +14,7 @@ from kang.adapters.fakes.audit_log import FakeAuditLog
 from kang.adapters.fakes.job_store import FakeJobStore, FakeKillSwitch
 from kang.domain.ports.scheduler import Job
 from kang.kernel.audit.service import AuditService
-from kang.kernel.scheduler.scheduler import QUARANTINE_THRESHOLD, Scheduler
+from kang.kernel.scheduler.scheduler import QUARANTINE_THRESHOLD, Scheduler, SchedulerDeps
 
 ANCHOR = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
@@ -42,12 +42,14 @@ def _job(policy: str, schedule: str = "hourly") -> Job:
 
 def _scheduler(clock, job_store, kill_switch, runner):
     return Scheduler(
-        clock,
-        job_store,
-        kill_switch,
-        runner,
-        AuditService(FakeAuditLog(), clock),
-        correlation_id=lambda: "corr-sched",
+        SchedulerDeps(
+            clock=clock,
+            job_store=job_store,
+            kill_switch=kill_switch,
+            runner=runner,
+            audit=AuditService(FakeAuditLog(), clock),
+            correlation_id=lambda: "corr-sched",
+        )
     )
 
 

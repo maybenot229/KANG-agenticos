@@ -81,6 +81,19 @@ class TaskStore(Protocol):
         updated_at stamped). Raises RevisionConflictError on staleness."""
         ...
 
+    def plannable(self) -> list[Task]:
+        """Every task the Planner may schedule — status `open` or
+        `scheduled` (07 Part VI's `v_today_tasks` read shape, served by
+        `idx_task_plan`). `done`/`dropped` are finished and `deferred` is
+        Kang's explicit "not now", which the Planner does not overrule (P6).
+
+        Deterministic total order `(priority, due, id)` so the plan's input
+        is stable regardless of insertion order (13 §2.6). The Planner
+        re-sorts by its own rank anyway; ordering here means the *fetch*
+        cannot be the thing that varies between runs.
+        """
+        ...
+
     def delete(self, task_id: str, deleted_by: str) -> None:
         """Destroy the row, leaving a tombstone (07 §5.1) and a capture row."""
         ...

@@ -21,11 +21,12 @@ from datetime import datetime
 from typing import Callable
 
 from kang.domain.ports.clock import Clock
+from kang.domain.ports.schedule import ScheduleParser
 from kang.domain.ports.scheduler import Job, JobStore, KillSwitch
 from kang.kernel.audit.service import AuditService
 from kang.kernel.scheduler.schedule import parse_schedule
 
-__all__ = ["CatchUpReport", "JobRunner", "Scheduler"]
+__all__ = ["CatchUpReport", "JobRunner", "Scheduler", "SchedulerDeps"]
 
 QUARANTINE_THRESHOLD = 3  # consecutive failures (05 §11)
 
@@ -44,24 +45,38 @@ class CatchUpReport:
     paused: bool = False
 
 
+@dataclass(frozen=True)
+class SchedulerDeps:
+    """The Scheduler's collaborators (11 §4: beyond a few parameters, a
+    dataclass).
+
+    `parse` is injected rather than imported so wall-clock (`cron:`) dialects
+    can live in `adapters/scheduler/` — `kernel → adapters` is forbidden
+    (17 §4.2), and D014 placed cron parsing in the adapter. It defaults to
+    the kernel's interval forms, so a Scheduler built without a wall-clock
+    dialect behaves exactly as before (ADR-006).
+    """
+
+    clock: Clock
+    job_store: JobStore
+    kill_switch: KillSwitch
+    runner: JobRunner
+    audit: AuditService
+    correlation_id: Callable[[], str]
+    parse: ScheduleParser = parse_schedule
+
+
 class Scheduler:
     """Runs due work on startup and on tick, honoring catch-up policy."""
 
-    def __init__(
-        self,
-        clock: Clock,
-        job_store: JobStore,
-        kill_switch: KillSwitch,
-        runner: JobRunner,
-        audit: AuditService,
-        correlation_id: Callable[[], str],
-    ) -> None:
-        self._clock = clock
-        self._jobs = job_store
-        self._kill_switch = kill_switch
-        self._runner = runner
-        self._audit = audit
-        self._correlation_id = correlation_id
+    def __init__(self, deps: SchedulerDeps) -> None:
+        self._clock = deps.clock
+        self._jobs = deps.job_store
+        self._kill_switch = deps.kill_switch
+        self._runner = deps.runner
+        self._audit = deps.audit
+        self._correlation_id = deps.correlation_id
+        self._parse = deps.parse
 
     def catch_up(self) -> CatchUpReport:
         """Process every job's missed slots per its policy. First reconciles
@@ -89,7 +104,7 @@ class Scheduler:
     def _catch_up_job(
         self, job: Job, now: datetime, totals: dict, quarantined: list[str]
     ) -> None:
-        schedule = parse_schedule(job.schedule)
+        schedule = self._parse(job.schedule)
         baseline = self._jobs.last_slot(job.id) or job.created_at
         slots = schedule.occurrences_in(job.created_at, baseline, now)
         if not slots:

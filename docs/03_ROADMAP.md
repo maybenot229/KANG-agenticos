@@ -184,6 +184,10 @@ The single lookup table this roadmap promised. Sources cited; between triggers, 
 | Event-sync hazard (cross-device event ordering) | 16_SYNC design | 15_EVENT_BUS §17 |
 | Time-travel replay (user-facing "system as of date X") | Real need post-sync | 15_EVENT_BUS §9 |
 | Cursor tombstoning for permanently-removed subscribers | First agent definition deletion or plugin uninstall | 15_EVENT_BUS §18 |
+| WhatsApp ingestion connector | Kang requests it after manual gig-entry proves burdensome at nightly review | docs/guides/user-profile-intake-2026-07.md D14 |
+| Product-state-aware notification ladder (M5 assumes state == Idle) | M6's product-state machine exists | 09_UI §9 / FR-074; `RESERVED(M6 product-state machine)` in `domain/notifications/notification_service.py` |
+| Definition of "unchanged item" for the 24h no-re-notification rule (M5 uses same-entity-refs + same-priority) | Real notification volume to design against, then an ADR | 09_UI §9; `RESERVED(...)` on `is_duplicate` in `domain/notifications/notification_service.py` |
+| Definition of "deadline in danger **today**" — the `critical` escalation threshold. M5 surfaces every approaching deadline at `attention` and does not let deadline urgency reorder plan quests | Kang's ruling (a product decision, not a code one); needed when the Planner or notifier must rank by urgency | 05_AGENTS §13's `critical` row names the concept but never defines it; noted in `domain/planner/plan_service.py::build_plan` and the notifier's `DEADLINE_APPROACHING_PRIORITY` |
 
 ---
 

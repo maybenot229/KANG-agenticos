@@ -1,4 +1,12 @@
 # tools/lint_doc_citations.py
+# DEBT(#TBD): DOCS.glob("*.md") is non-recursive and won't scan docs/guides/
+# or docs/adr/ for §-style citations. Not triggered by any current guide or
+# ADR (both are cited by path only, not by internal section number, as of
+# this writing). Fix when a doc first cites a numbered section inside a
+# guide or ADR. Issue number is a placeholder — 11_CODING §26 requires a
+# real filed issue (cost/interest/payoff-trigger stated there, not just
+# here); flagging rather than inventing one, since opening it isn't mine to
+# do without asking.
 """Verifies that every 'NN_DOC §X.Y' citation in docs/ resolves to a real heading.
 
 Scope (v1): numeric-section citations only ('07_DATABASE §5.5', '15 §11.2').

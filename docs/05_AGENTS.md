@@ -259,6 +259,52 @@ Normative behavior for every failure class:
 - **User notification:** failures notify per §13 priorities — a failed morning plan is `attention`; a failed news digest is a health-panel line, not a notification.
 - **Audit:** every failure records class, phase, attempt count, and degradation taken.
 
+### 10.1 FR-006 — Planner: activation mechanics for known-but-avoided commitments
+
+The FR table (02_PRODUCT_REQUIREMENTS.md, Planner) carries only the compact
+requirement row; this is its detail, kept adjacent to the Planner's
+degradation-ladder language above since it is Planner behavior, not a
+failure class of its own.
+
+**Source:** `docs/guides/user-profile-intake-2026-07.md` — the pattern is
+stated across multiple places in the underlying intake (About Me.md's "What
+I struggle with" and "What I want to learn" sections; Intake Findings.md F1,
+"stated unprompted three times"). Empirically the strongest requirement gap
+the intake surfaced.
+
+**Statement:** KANG SHALL detect commitments Kang has repeatedly deferred or
+avoided despite knowing about them, and surface them with escalating
+visibility — distinct from ordinary deadline tracking, which already works.
+
+**Why this is distinct from FR-001/FR-031 (existing deadline tracking):**
+those assume the failure mode is *forgetting*. The intake establishes the
+actual failure mode is *avoidance of known commitments* — a different
+problem requiring a different signal (defer-count / re-plan count over
+time), not lead-time alerting.
+
+**Non-goals:** not a guilt mechanism, not a streak-shaming feature, not
+automated escalation to consequential action. Per `01_PRINCIPLES.md`
+anti-principles ("never guilt, manipulate, or pressure") and AGP-8 ("no
+engagement mechanics"), this surfaces pattern + fact, never applies
+pressure. KANG proposes visibility; Kang decides what to do with it.
+
+**Dependencies:** 06_MEMORY episodic store (Phase 2) for defer-count
+history; 06_MEMORY pattern extractor (Phase 3, ≥3 occurrences over ≥3 weeks
+— threshold already specified in 06 Part VI) for confidence before
+surfacing anything as a pattern rather than a one-off.
+
+**Acceptance (deferred to Phase 3 scoping):** a task deferred N times (N
+TBD by the pattern extractor's existing threshold) surfaces in a distinct
+dashboard treatment from ordinary tasks — visible, not urgent-styled (per
+09_UI-P2: calm is default, an urgent-looking element for non-urgent
+information is a lie). Exact UI treatment is a Phase 3 design task, not
+specified here.
+
+**Anti-pattern to avoid:** building this against M5's deterministic
+Planner. The signal doesn't exist until episodic memory does. Do not
+synthesize a fake heuristic (e.g., "task.due < today AND status=open" —
+that's just deadline tracking again) to make this look done early.
+
 ---
 
 ## 11. Scheduling
@@ -372,7 +418,7 @@ Legend: kind C=cognitive, M=mechanical. Timeouts = hard invocation timeout. Retr
 | **competition_strategist** | C | Evaluate competitions; timelines; prep support; judge sim (FR-033..037) | kang; event: competition.found (via pipeline); sched (weekly outlook) | competition entity, retrospectives, profile → briefs, timelines, prep | projects.*, deadlines.*, notify≤attention; vault.write:Competitions/ | web (separation: consumes scout's stored briefs), email | 15m | 1 | brief from cached research; timeline deterministic | memory.read:competition-view; memory.propose:fact,lesson,observation |
 | **competition_scout** | M→C | Monitor sources; classify relevance (FR-032) | sched (daily) | source list → competition.found events + stored briefs | web.fetch:{sources}, notify≤digest | vault.write, calendar, projects.write | 5m | 1 | store raw finds unclassified, flag for review | model.call:classification only |
 | **researcher** | C | Multi-source research briefs (FR-050..052) | kang; chained | question → cited brief, literature notes (inbox) | web.fetch:any, vault.write:Inbox/ only, notify≤digest | calendar, email, projects.write, memory.read:sensitive (pairing rule) | 15m | 0 | partial brief with coverage statement | memory.read:research-view; memory.propose:fact,observation |
-| **tutor** | C | Teaching, study plans, quizzes, repetition (FR-040..043) | kang; sched (repetition due) | goals, quiz history → lessons, quizzes, schedules | quiz.*, repetition.*, notify≤attention | web (uses researcher via pipeline for sources), vault.write outside Learning/ | 10m | 0 | repetition scheduling is deterministic; teaching requires model (reports unavailability) | memory.read:learning-view; memory.propose:observation |
+| **tutor** | C | Teaching, study plans, quizzes, repetition (FR-040..043); subjects locked at build time to math + faith, CS/English deferred not dropped, per `docs/guides/user-profile-intake-2026-07.md` D8 (Phase 3, no behavior change yet) | kang; sched (repetition due) | goals, quiz history → lessons, quizzes, schedules | quiz.*, repetition.*, notify≤attention | web (uses researcher via pipeline for sources), vault.write outside Learning/ | 10m | 0 | repetition scheduling is deterministic; teaching requires model (reports unavailability) | memory.read:learning-view; memory.propose:observation |
 | **critic** | C | Adversarial review: strengths/weaknesses/risks/blind spots (A6) | chained (pipelines); kang | artifact + evidence links → structured critique | notify≤digest | ALL world-touching tools (critic reads and writes nothing external — by design) | 10m | 0 | unavailable (a degraded critique is worse than none; pipeline marks step skipped, visibly) | memory.read:critic-view (tier≥1, contested included) |
 | **memory_steward** | M→C | Janitor, dedup, weekly consolidation, pattern extraction (06_MEMORY Part VI) | sched (nightly/weekly/monthly) | stores → transitions, merge products, queued proposals | gate client, notify≤digest | web, vault.write, calendar, email | 30m (Sleeping) | 1 | mechanical passes always run; cognitive extraction skips | memory.propose:lesson,preference,observation (promotions queued) |
 | **vault_indexer** | M | Chunk/embed/index vault; link_index merge; broken-link detection | sched (sweep) + fs watcher events | vault files → derived indexes | fs.read:vault, vault.read | ALL writes except derived tables (via indexer service) | 10m | 1 | FTS-only indexing if embedder down | — |
@@ -432,9 +478,9 @@ stateDiagram-v2
 
 | Job | Cadence | Window (state) | Catch-up |
 |---|---|---|---|
-| morning_plan | daily 06:00* | wake boundary | run_once_latest |
-| evening_review | daily 21:30* | Idle/Reviewing | run_once_latest |
-| weekly_close | Sun 20:00* | Reviewing | run_once_latest |
+| morning_plan | daily 05:45* (Sun 06:45*) | wake boundary | run_once_latest |
+| evening_review | daily 21:30† | Idle/Reviewing | run_once_latest |
+| weekly_close | Sun 20:00† | Reviewing | run_once_latest |
 | deadline_sweep | hourly | any | run_once_latest |
 | competition_scout | daily | Sleeping/Idle | run_once_latest |
 | web_monitor.* | per-monitor | Sleeping/Idle | skip |
@@ -446,7 +492,10 @@ stateDiagram-v2
 | backup.snapshot / verify | daily / monthly | Sleeping | run_all_missed |
 | health.tick | 5m | any | skip |
 
-\* Times are placeholders pending Kang's actual routine (04_ARCHITECTURE §20.4 — still open) and are config, not spec.
+\* Times are config, not spec (`config/defaults/kang.toml` `[planner.triggers]`: `weekday_morning`/`saturday_morning` = 05:45, `sunday_morning` = 06:45), grounded in Kang's actual routine per `docs/guides/user-profile-intake-2026-07.md`.
+† Not yet in the config seed — `kang.toml` has no `evening_review` or `weekly_close` key. Still config, not spec, but currently placeholder in fact, not just in framing; see the note on `evening_review` below.
+
+**On `evening_review`:** this row's shape is likely wrong, not just its number. The intake (F4, `docs/guides/user-profile-intake-2026-07.md`) is explicit that the nightly ritual fires on **last activity**, not a clock — which `kang.toml` already seeds (`nightly_mode = "last_activity"`, `nightly_fallback = "23:30"`). If `evening_review` here *is* that job, its Cadence should read as event-triggered with a fallback, not `daily 21:30` — a bigger edit than a number swap, and it also raises whether `evening_review` and the intake's "nightly review" are meant to be the same job under different names. Not changed here — flagging for a decision rather than guessing at the rename/retrigger.
 
 ## Appendix F — Event trigger table
 

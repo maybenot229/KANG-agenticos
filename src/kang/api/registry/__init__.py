@@ -91,6 +91,43 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
     _op("registry.get", "query", None, False, "Serve this registry."),
     _op("task.create", "command", "task.write", True, "Create a task."),
     _op("task.get", "query", "task.read", False, "Fetch a task by id."),
+    # Deadlines (M5). Scope names follow 05 §9's domain-verb vocabulary
+    # (`deadlines.set`, `deadlines.mark_alerted`), not a new one. Neither is
+    # consequential — 05 Appendix D's closed list does not name them — so
+    # neither declares a commit_mode (ADR-001 Amendment).
+    _op("deadline.create", "command", "deadlines.set", True, "Track a deadline."),
+    _op(
+        "deadline.sweep",
+        "command",
+        "deadlines.mark_alerted",
+        True,
+        "Alert every tracked deadline whose lead threshold has been crossed.",
+    ),
+    # plan.generate (FR-001): the deterministic morning plan. Scope follows
+    # 05 §9's domain-verb vocabulary (`tasks.*` — it stamps plan_date on
+    # tasks). Not consequential (05 Appendix D's closed list), so no
+    # commit_mode.
+    _op(
+        "plan.generate",
+        "command",
+        "tasks.write",
+        True,
+        "Generate the deterministic daily plan from P0 data (zero models).",
+    ),
+    # notification.ack (12 §13). No capability scope: no scope vocabulary
+    # for acking exists in the docs, and inventing one would be vocabulary
+    # creation (11 §3). It is instead first-party-only (ADR-002) for the
+    # same reason held_action.* is — a plugin draining Kang's notification
+    # queue is out-of-mandate regardless of risk, and auto-acking his
+    # time-sensitive alerts before he sees them is a denial of service.
+    _op(
+        "notification.ack",
+        "command",
+        None,
+        True,
+        "Acknowledge a notification (additive; never deletes history).",
+        channel=OperationChannel(first_party_only=True),
+    ),
     _op(
         "explain.invocation",
         "query",

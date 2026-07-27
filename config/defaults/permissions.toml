@@ -20,3 +20,25 @@
 # on the task list it owns (EB-010). The API's task.create handler publishes
 # under this principal, not the requester's.
 "kernel:tasks" = ["events.publish:kang"]
+
+# The deadline domain service publishes deadline.* truth (created/updated)
+# and the deadline.approaching fact on the deadlines it owns (EB-010). The
+# API's deadline handlers publish under this principal, not the requester's.
+"kernel:deadlines" = ["events.publish:kang"]
+
+# The notifier publishes notification.requested — the accelerant over the
+# queue row it just wrote (15 §6.2). It publishes nothing else.
+"kernel:notifier" = ["events.publish:kang"]
+
+# The Planner announces plan.generated. It stamps plan_date through the task
+# domain's principal (kernel:tasks), so this grant covers the announcement
+# only — the Planner owns the plan, not the tasks.
+"kernel:planner" = ["events.publish:kang"]
+
+# The scheduler dispatches jobs through the ordinary operation pipeline
+# (ADR-006), so it needs the scope of every operation it may trigger — and
+# nothing more. Default-deny means this line IS the answer to "what can
+# automation set off?", reviewable in one place. It holds no
+# events.publish grant: the operations it invokes publish under their own
+# domain principals.
+"kernel:scheduler" = ["tasks.write"]

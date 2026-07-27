@@ -22,7 +22,7 @@ from kang.adapters.sqlite.connection import open_connection
 from kang.adapters.sqlite.job_store import SqliteJobStore, SqliteKillSwitch
 from kang.adapters.sqlite.migrations import apply_migrations
 from kang.kernel.audit.service import AuditService
-from kang.kernel.scheduler.scheduler import Scheduler
+from kang.kernel.scheduler.scheduler import Scheduler, SchedulerDeps
 
 ANCHOR = datetime(2026, 1, 1, tzinfo=timezone.utc)
 JOB_ID = "job-c3"
@@ -80,12 +80,14 @@ def run_catch_up(
     _from_job(real_store, JOB_ID, policy)
     store = _KillingJobStore(real_store, kill_after)
     scheduler = Scheduler(
-        clock,
-        store,
-        SqliteKillSwitch(conn, clock),
-        runner=lambda job, slot: None,  # a no-op body; agent execution is M7
-        audit=AuditService(FakeAuditLog(), clock),
-        correlation_id=lambda: "corr-c3",
+        SchedulerDeps(
+            clock=clock,
+            job_store=store,
+            kill_switch=SqliteKillSwitch(conn, clock),
+            runner=lambda job, slot: None,  # no-op body; agent execution is M7
+            audit=AuditService(FakeAuditLog(), clock),
+            correlation_id=lambda: "corr-c3",
+        )
     )
     scheduler.catch_up()
 

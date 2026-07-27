@@ -22,13 +22,20 @@ from typing import Callable
 
 from kang.domain.ports.eventlog import EventEnvelope, EventLog
 from kang.kernel.audit.service import AuditService
-from kang.kernel.bus.cycle_defense import guard_causation_depth
+from kang.kernel.bus.cycle_defense import MAX_CAUSATION_DEPTH, guard_causation_depth
 from kang.kernel.bus.delivery import Delivery, Handler
 from kang.kernel.bus.event_registry import namespace_of, validate_registration
 from kang.kernel.bus.reconciliation import Reconciliation, ReconciliationReport
 from kang.kernel.permissions.engine import PermissionDenied, PermissionEngine
 
-__all__ = ["EventBus", "Subscriber"]
+__all__ = ["EventBus", "FanOutDepthExceeded", "Subscriber"]
+
+
+class FanOutDepthExceeded(Exception):
+    """Fan-out kept producing work past the pass cap — a handler is
+    publishing in a loop. Distinct from CausationDepthExceeded: that guards
+    a *declared* causation chain, this guards *reaction waves*, which a
+    publisher can create without threading causation_id at all."""
 
 
 class Subscriber:
@@ -59,6 +66,15 @@ class EventBus:
         self._permissions = permissions
         self._audit = audit
         self._subscribers = list(subscribers or [])
+        self._fanning_out = False  # re-entrancy guard — see _fan_out
+
+    def subscribe(self, subscriber: Subscriber) -> None:
+        """Register a core subscriber. Delivery order across core
+        subscribers is registration order — deterministic module-load order,
+        documented not configurable (§7.7). Registering after construction
+        is how the composition root wires subscribers whose dependencies
+        need the bus itself (the notifier's publisher, for one)."""
+        self._subscribers.append(subscriber)
 
     def publish(self, envelope: EventEnvelope, commit_state: Callable[[], None]) -> int:
         """The five-step write order (EB-004). `commit_state` is the caller's
@@ -104,5 +120,56 @@ class EventBus:
         return len(self._event_log.pending())
 
     def _fan_out(self) -> None:
-        for subscriber in self._subscribers:  # registration order (§7.7)
-            self._delivery.deliver(subscriber.name, subscriber.handler)
+        """Deliver to every subscriber, then keep going until the stream is
+        quiet.
+
+        RE-ENTRANCY. A handler MAY publish — 15 §5.1 defines `causation_id`
+        as the parent of an event that "exists because a handler/job reacted
+        to another event", so reacting-by-publishing is the designed case.
+        But `Delivery.deliver` calls the handler *before* advancing the
+        cursor (the advance IS the at-least-once ack, EB-007.2), so a naive
+        nested fan-out re-reads the event still in flight and recurses
+        without bound. The guard below makes a nested publish a no-op: the
+        event is already durably appended and confirmed, and the outer loop
+        picks it up on its next pass.
+
+        The loop then drains until no subscriber advanced, so an event
+        published by a handler is delivered within the same fan-out rather
+        than waiting for the next publish.
+
+        BOUNDED INDEPENDENTLY of EB-011.2. Each pass delivers one wave of
+        reactions, so passes ≈ reaction depth. The causation-depth guard
+        canNOT be relied on to bound this: `causation_depth` returns 0 when
+        `causation_id` is None, so a handler that publishes without
+        threading causation never raises it — the chain looks like an
+        unbroken series of root causes. Nothing forces publishers to thread
+        it, so the drain needs its own cap. It reuses MAX_CAUSATION_DEPTH
+        rather than inventing a second number (11 §3: one concept, one
+        name) and fails LOUDLY when reached, because a bus that silently
+        stops draining is a bus that silently drops notifications
+        (SEC-009 / DB-P7: fail visibly, never silently).
+        """
+        if self._fanning_out:
+            return  # nested publish — the outer pass will deliver it
+        self._fanning_out = True
+        try:
+            for _ in range(MAX_CAUSATION_DEPTH):
+                advanced = 0
+                for subscriber in self._subscribers:  # registration order (§7.7)
+                    advanced += self._delivery.deliver(
+                        subscriber.name, subscriber.handler
+                    )
+                if advanced == 0:
+                    return
+            self._audit.record(
+                principal="kernel:bus",
+                action="bus.fan_out_depth_exceeded",
+                details={"max_passes": MAX_CAUSATION_DEPTH},
+            )
+            raise FanOutDepthExceeded(
+                f"fan-out still producing work after {MAX_CAUSATION_DEPTH} "
+                "passes — a handler is publishing in a loop (EB-011.2's cap, "
+                "applied to reaction waves)"
+            )
+        finally:
+            self._fanning_out = False

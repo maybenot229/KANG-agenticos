@@ -462,7 +462,7 @@ The Context Assembler executes a **recipe** per agent/task: which deterministic 
 | **Research** | the research question entity, linked project | vault-heavy (P3 ↑ to 30%), prior briefs, lessons(research) | bm25 ↑ (0.30) | Terminology precision matters; external content stays Tier-0-framed |
 | **Critic** | the artifact under review + its stated goals | `evidence_for/against` expansions, lessons, retrospectives, contested records **included** (⚠-tagged) | tier-filter ≥1 | The Critic deliberately sees contradictions others are shielded from |
 | **Chat (general)** | today's plan, active entities mentioned | broad but shallow: k small per view | defaults | Escalates to a specialist recipe when routed (D011) |
-| **Faith** | reading plan state, memorization queue | faith-scoped records ONLY; `private` clearance per grant | — | Hard-isolated view; see Part XII |
+| **Faith** | reading plan state, memorization queue | faith-scoped records ONLY; `private` clearance per grant | — | Hard-isolated view; see Part XII. Faith is load-bearing not decorative for Kang (`docs/guides/user-profile-intake-2026-07.md`) — confirming evidence for this isolation being worth building, not speculative. |
 
 **Conflict handling in assembly:** if retrieved records contradict (`contradicts` link or NLI flag), the assembler includes **both** with the ⚠ marker and the agent contract requires acknowledging the tension — agents never get a silently pre-resolved world. (Exception: P0 exact state has no contradictions by construction — single source of truth.)
 

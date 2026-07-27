@@ -1,0 +1,30 @@
+# kang.toml — Planner trigger defaults (D003: diffable, hand-editable in
+# recovery). Shipped default the installer copies to %KANG_HOME%/config/
+# (17 §8). Trigger times are config, not spec (05_AGENTS Appendix E) —
+# grounded in Kang's actual routine per
+# docs/guides/user-profile-intake-2026-07.md, not placeholders.
+
+# Wall-clock schedules (cron) name LOCAL times, but the Clock port returns
+# aware UTC — so the timezone is required, not optional (ADR-006 Part A).
+# Explicit, never the host's local zone: a laptop opened in another country
+# must not move the morning brief.
+timezone = "Asia/Kuching"
+
+[planner.triggers]
+weekday_morning      = "05:45"
+saturday_morning     = "05:45"
+sunday_morning       = "06:45"
+afterschool_mode     = "event"
+afterschool_fallback = "17:00"
+afterschool_manual   = true
+nightly_mode         = "last_activity"
+nightly_fallback     = "23:30"
+catch_up_policy      = "run_once_latest"
+
+[planner.school_end]
+mon = "15:30"
+tue = "15:30"
+wed = "15:30"
+thu = "14:00"
+fri = "15:30"
+sat = "12:00"

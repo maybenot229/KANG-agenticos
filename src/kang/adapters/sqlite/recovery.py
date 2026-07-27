@@ -14,6 +14,7 @@ carries the proof.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 
 from kang.domain.ports.eventlog import EventEnvelope
@@ -50,7 +51,22 @@ _TASK_FIELDS = (
 
 # Entity kinds this adapter can answer existence for (the orphan decision,
 # §4.3). Grows with the schema; unknown kinds are a registry defect, loud.
-_EXISTS_TABLE = {"task": "task"}
+_EXISTS_TABLE = {"task": "task", "deadline": "deadline"}
+
+_DEADLINE_FIELDS = (
+    "id",
+    "competition_id",
+    "project_id",
+    "kind",
+    "title",
+    "at",
+    "lead_days",
+    "status",
+    "created_at",
+    "updated_at",
+    "device_id",
+    "revision",
+)
 
 
 def _payload_task_row(envelope: EventEnvelope) -> tuple:
@@ -99,9 +115,64 @@ def _apply_task_upsert(conn: sqlite3.Connection, envelope: EventEnvelope) -> str
     return "applied"
 
 
+def _payload_deadline_row(envelope: EventEnvelope) -> tuple:
+    payload = envelope.payload
+    missing = [f for f in _DEADLINE_FIELDS if f not in payload]
+    if missing:
+        raise RecoveryError(
+            f"recovery-grade payload for {envelope.type} is not "
+            f"self-sufficient (EB-003): missing {missing}"
+        )
+    # `lead_days` crosses the port line as a JSON array and lands in the
+    # column as JSON text — the same translation SqliteDeadlineStore does
+    # (17 §4.3.5: adapters translate at the boundary).
+    return tuple(
+        json.dumps(payload[f]) if f == "lead_days" else payload[f]
+        for f in _DEADLINE_FIELDS
+    )
+
+
+def _apply_deadline_upsert(conn: sqlite3.Connection, envelope: EventEnvelope) -> str:
+    row = _payload_deadline_row(envelope)
+    deadline_id, revision = row[0], row[-1]
+    current = conn.execute(
+        "SELECT revision FROM deadline WHERE id = ?", (deadline_id,)
+    ).fetchone()
+    if current is not None and current[0] >= revision:
+        return "noop"  # already committed — idempotent by id + revision
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        if current is None:
+            conn.execute(
+                "INSERT INTO deadline (id, competition_id, project_id, kind, "
+                "title, at, lead_days, status, created_at, updated_at, "
+                "device_id, revision) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                row,
+            )
+        else:
+            conn.execute(
+                "UPDATE deadline SET competition_id = ?, project_id = ?, "
+                "kind = ?, title = ?, at = ?, lead_days = ?, status = ?, "
+                "created_at = ?, updated_at = ?, device_id = ?, revision = ? "
+                "WHERE id = ?",
+                row[1:] + (deadline_id,),
+            )
+        conn.execute("COMMIT")
+    except sqlite3.Error:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
+    return "applied"
+
+
 _APPLIERS = {
     "task.created": _apply_task_upsert,
     "task.updated": _apply_task_upsert,
+    # ADR-004: a recovery-grade type without an applier is a registry defect
+    # (EB-006 §6.3), so registering deadline.created/updated obliges these.
+    "deadline.created": _apply_deadline_upsert,
+    "deadline.updated": _apply_deadline_upsert,
 }
 
 

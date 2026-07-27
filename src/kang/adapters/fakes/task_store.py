@@ -52,6 +52,12 @@ class FakeTaskStore:
         self._tasks[task.id] = committed
         return committed
 
+    def plannable(self) -> list[Task]:
+        return sorted(
+            (t for t in self._tasks.values() if t.status in ("open", "scheduled")),
+            key=lambda t: (t.priority, t.due is None, t.due or "", t.id),
+        )
+
     def delete(self, task_id: str, deleted_by: str) -> None:
         if task_id not in self._tasks:
             raise TaskNotFoundError(task_id)

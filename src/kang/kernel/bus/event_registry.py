@@ -53,6 +53,24 @@ _TASK_PAYLOAD_FIELDS = (
     "revision",
 )
 
+# Same contract for the deadline entity (ADR-004): the full field set, so a
+# lost `tracked → alerted` write replays exactly. Mirrors 07 §5.2's columns
+# and `deadline_service.deadline_event_payload()`, which builds it.
+_DEADLINE_PAYLOAD_FIELDS = (
+    "id",
+    "competition_id",
+    "project_id",
+    "kind",
+    "title",
+    "at",
+    "lead_days",
+    "status",
+    "created_at",
+    "updated_at",
+    "device_id",
+    "revision",
+)
+
 
 class UnregisteredEventTypeError(Exception):
     """A type not in the closed taxonomy was offered for publication (§6.3):
@@ -97,6 +115,63 @@ _TYPES: tuple[EventType, ...] = (
         plugin_visible=True,
         version_introduced="0.1",
         required_payload_fields=_TASK_PAYLOAD_FIELDS,
+    ),
+    # ---- M5, per ADR-004 -------------------------------------------------
+    # Deadline TRUTH MUTATIONS: recovery-grade, because EB-003 requires it
+    # for "task/deadline/competition truth mutations" and losing a deadline
+    # row is the one failure the "never misses a deadline" promise forbids.
+    EventType(
+        name="deadline.created",
+        category="domain",
+        recovery_grade=True,
+        plugin_visible=True,
+        version_introduced="0.1",
+        required_payload_fields=_DEADLINE_PAYLOAD_FIELDS,
+    ),
+    EventType(
+        name="deadline.updated",
+        category="domain",
+        recovery_grade=True,
+        plugin_visible=True,
+        version_introduced="0.1",
+        required_payload_fields=_DEADLINE_PAYLOAD_FIELDS,
+    ),
+    # The approaching FACT: not recovery-grade. EB-008 rule 2 states it
+    # literally — "deadline.approaching changes no row." Its consumers are
+    # the notifier and the planner (05 Appendix F): a trigger, not a redo
+    # record. The status mutation it accompanies rides deadline.updated.
+    EventType(
+        name="deadline.approaching",
+        category="domain",
+        recovery_grade=False,
+        plugin_visible=True,
+        version_introduced="0.1",
+        required_payload_fields=("deadline_id", "title", "at"),
+    ),
+    # An accelerant over the durable queue row (15 §6.2), never the work
+    # item itself — so a lost event costs latency, never a notification.
+    # Not plugin-visible: draining the queue is core notifier machinery;
+    # plugins reach Kang through their granted notify scope, not by
+    # subscribing to the notifier's own input.
+    EventType(
+        name="notification.requested",
+        category="notification",
+        recovery_grade=False,
+        plugin_visible=False,
+        version_introduced="0.1",
+        required_payload_fields=("notification_id", "priority"),
+    ),
+    # The plan is DERIVED state (02_PRD's dependency map) and deterministic
+    # (same inputs ⇒ identical plan), therefore rebuildable, therefore not
+    # recovery-grade — 07 §1.4 reserves authority for non-derivable truth.
+    # Its durable effect (plan_date on N tasks) rides task.updated.
+    EventType(
+        name="plan.generated",
+        category="domain",
+        recovery_grade=False,
+        plugin_visible=True,
+        version_introduced="0.1",
+        required_payload_fields=("plan_date",),
     ),
 )
 

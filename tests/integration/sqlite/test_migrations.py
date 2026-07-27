@@ -30,7 +30,9 @@ def conn(tmp_path):
 
 def test_full_chain_applies_on_empty_database(conn):
     applied = apply_migrations(conn, MIGRATIONS_DIR, FakeClock())
-    assert applied == [1, 2, 3, 4, 5]  # initial, held_action, scheduler, api, held_action_lifecycle
+    # initial, held_action, scheduler, api, held_action_lifecycle,
+    # domain_entities, notification_queue, calendar_cache
+    assert applied == [1, 2, 3, 4, 5, 6, 7, 8]
     tables = {
         row[0]
         for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -47,7 +49,69 @@ def test_full_chain_applies_on_empty_database(conn):
         "invocation",
         "idempotency_key",
         "session",
+        # 0006 domain entities (07 §5.2)
+        "goal",
+        "project",
+        "milestone",
+        "competition",
+        "deadline",
+        # 0007 notification queue (ADR-005)
+        "notification",
+        # 0008 the calendar read stub
+        "calendar_cache",
     } <= tables
+
+
+def test_0006_preserves_task_rows_across_the_table_recreation(tmp_path):
+    """0006 recreates `task` to add its deferred project_id FK. Data written
+    under the old shape MUST survive (07 Part XIII: a migration that cannot
+    map old rows losslessly refuses to run — this one maps them)."""
+    conn = open_connection(tmp_path / "kang.db")
+    early = sorted(MIGRATIONS_DIR.glob("[0-9][0-9][0-9][0-9]_*.sql"))[:5]
+    staged = tmp_path / "staged"
+    staged.mkdir()
+    for path in early:
+        shutil.copy(path, staged / path.name)
+    apply_migrations(conn, staged, FakeClock())
+    conn.execute(
+        "INSERT INTO task (id, title, status, priority, created_at, "
+        "updated_at, device_id, revision) VALUES "
+        "('t-1', 'pre-existing', 'open', 3, 'c', 'u', 'dev', 7)"
+    )
+    conn.commit()
+
+    apply_migrations(conn, MIGRATIONS_DIR, FakeClock())  # applies 0006
+
+    row = conn.execute(
+        "SELECT title, status, priority, revision FROM task WHERE id = 't-1'"
+    ).fetchone()
+    assert row == ("pre-existing", "open", 3, 7)
+    conn.close()
+
+
+def test_0006_task_project_fk_is_enforced(conn):
+    """The FK 0001 deferred to "the migration adding project" is live."""
+    apply_migrations(conn, MIGRATIONS_DIR, FakeClock())
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO task (id, project_id, title, status, priority, "
+            "created_at, updated_at, device_id, revision) VALUES "
+            "('t-2', 'no-such-project', 'orphan', 'open', 3, 'c', 'u', 'dev', 1)"
+        )
+
+
+def test_0006_task_change_capture_still_fires_after_recreation(conn):
+    """Triggers die with the table they are bound to; 0006 rebuilds them."""
+    apply_migrations(conn, MIGRATIONS_DIR, FakeClock())
+    conn.execute(
+        "INSERT INTO task (id, title, status, priority, created_at, "
+        "updated_at, device_id, revision) VALUES "
+        "('t-3', 'captured', 'open', 3, 'c', 'u', 'dev', 1)"
+    )
+    captured = conn.execute(
+        "SELECT op FROM change_log WHERE entity = 'task' AND entity_id = 't-3'"
+    ).fetchall()
+    assert captured == [("insert",)]
 
 
 def test_applied_checksum_matches_the_file(conn):
