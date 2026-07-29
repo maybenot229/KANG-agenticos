@@ -18,3 +18,8 @@ build/
 dist/
 .pytest_cache/
 .ruff_cache/
+
+# Rust build output (any src-tauri/ Cargo project, present or future —
+# M6 starts a fresh Tauri project per ADR-007 §8; this pattern is
+# repo-wide on purpose so its target/ is ignored wherever it lands).
+**/target/
