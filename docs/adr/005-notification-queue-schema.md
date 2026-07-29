@@ -1,6 +1,6 @@
 # ADR-005 — The notification queue schema
 
-**Status:** proposed
+**Status:** accepted
 **Date:** 2026-07-26
 **Affected documents:** 07_DATABASE §5.2 (gains a `notification` table — the schema addition this ADR authorizes), 09_UI §9 (the ladder this table's `priority` enum mirrors), 12_API §13 (`notification.list/ack`)
 **Cites:** 15 §6.2 (the accelerant ruling: the queue row is the durable work item), EB-008 (the three-log boundary — why the event log is not the queue), 05_AGENTS §13 (the interruption ladder), 15 §15.2 (the RESERVED cross-device hazard)

@@ -1,6 +1,6 @@
 # ADR-006 — Wall-clock (cron) schedules, and how a job invokes an operation
 
-**Status:** proposed
+**Status:** accepted
 **Date:** 2026-07-27
 **Affected documents:** 04_ARCHITECTURE D014 (the deferral this ADR discharges), 07_DATABASE §5.5 (`job.schedule` values), 12_API §14 (scheduled work reaches the system through registry-listed commands), 05_AGENTS Appendix E (the schedules themselves), 17 §2 (a new `adapters/scheduler/` technology folder)
 **Cites:** D014 ("schedules are cron-like"; "APScheduler … may be used *inside* the adapter, behind our `Scheduler` port"), 17 §4.2 (kernel MUST NOT import api), SEC-003/SEC-004/SEC-005, API-003/API-004, E10 (boring tech; justify every dependency)

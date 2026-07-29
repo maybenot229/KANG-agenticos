@@ -1,6 +1,6 @@
 # ADR-004 — Register the M5 event types: deadline lifecycle, notification, plan
 
-**Status:** proposed
+**Status:** accepted
 **Date:** 2026-07-26
 **Affected documents:** 15_EVENT_BUS §6.1/§6.3 (the closed taxonomy gains five entries), 05_AGENTS Appendix F (event-trigger table — already names three of them), 13_TESTING §16 (payload-sufficiency obligations follow)
 **Cites:** EB-006 §6.1 (closed taxonomy; additions require an ADR — this is that ADR), EB-003 (the dual-duty doctrine and the `recovery_grade` contract), EB-008 (the three-log boundary), 15 §6.2 (the `notification.requested` accelerant ruling — cited, not reopened)
