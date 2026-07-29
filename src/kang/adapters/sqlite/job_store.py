@@ -1,9 +1,9 @@
 """SqliteJobStore + SqliteKillSwitch — scheduler state over kang.db.
 
 Layer: adapters/sqlite (SQL confined here — DB-002).
-Constitutional home: 07_DATABASE §5.5 (job, job_run, app_state), 05_AGENTS
+Constitutional home: 07_DATABASE §5.5 (job, job_run, setting), 05_AGENTS
 §11 (consecutive-failure count for quarantine), 10_SECURITY D013
-(kill-switch persisted in app_state so a paused system stays paused).
+(kill-switch persisted in setting so a paused system stays paused).
 `job_run.started` holds the SLOT time (the catch-up baseline).
 """
 
@@ -138,7 +138,7 @@ class SqliteJobStore:
 
 
 class SqliteKillSwitch:
-    """KillSwitch persisted in app_state (07 §5.5)."""
+    """KillSwitch persisted in setting (07 §5.5)."""
 
     def __init__(self, conn: sqlite3.Connection, clock) -> None:
         self._conn = conn
@@ -146,7 +146,7 @@ class SqliteKillSwitch:
 
     def is_engaged(self) -> bool:
         row = self._conn.execute(
-            "SELECT value FROM app_state WHERE key = ?", (KILL_SWITCH_KEY,)
+            "SELECT value FROM setting WHERE key = ?", (KILL_SWITCH_KEY,)
         ).fetchone()
         return row is not None and row[0] == "1"
 
@@ -159,7 +159,7 @@ class SqliteKillSwitch:
     def _set(self, value: str, reason: str) -> None:
         with _Transaction(self._conn):
             self._conn.execute(
-                "INSERT INTO app_state (key, value, updated_at) VALUES (?, ?, ?) "
+                "INSERT INTO setting (key, value, updated_at) VALUES (?, ?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value, "
                 "updated_at = excluded.updated_at",
                 (KILL_SWITCH_KEY, value, self._clock.now().isoformat()),
