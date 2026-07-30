@@ -1,0 +1,17 @@
+[package]
+name = "kang-shell"
+version = "0.1.0"
+description = "KANG — Tauri (Rust) shell packaging. Pure client of the local API (D002, UI-P1); holds no truth, computes no domain logic."
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+tauri = { version = "2.11.5", features = ["tray-icon"] }
+tauri-plugin-single-instance = "2.4.3"
+tauri-plugin-global-shortcut = "2.3.2"
+
+[[bin]]
+name = "kang-shell"
+path = "src/main.rs"
