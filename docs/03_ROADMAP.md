@@ -190,6 +190,7 @@ The single lookup table this roadmap promised. Sources cited; between triggers, 
 | Definition of "deadline in danger **today**" — the `critical` escalation threshold. M5 surfaces every approaching deadline at `attention` and does not let deadline urgency reorder plan quests | Kang's ruling (a product decision, not a code one); needed when the Planner or notifier must rank by urgency | 05_AGENTS §13's `critical` row names the concept but never defines it; noted in `domain/planner/plan_service.py::build_plan` and the notifier's `DEADLINE_APPROACHING_PRIORITY` |
 | Start-at-login (Windows registration — Task Scheduler or Startup Apps — independent of the webview/hotkey machinery the Tauri spike validated) | M6 packaging, or first real daily-use week — whichever is first | ADR-007 §5.1 |
 | Core-side startup lock under `%KANG_HOME%` (single-instance, core half) | The core gains a real startup/composition sequence with a natural attachment point (`kernel/runtime/composition.py` or successor) | ADR-008 |
+| Registry→TypeScript API client generator (`ui/src/`'s "generated API client only," 17 §4.3 rule 10 / 18 §3's M6 gate) | `ui/src/`'s dashboard work begins and needs a real typed client to import, not a hand-written or stub one | Discovered scoping `ui/shell/`, 2026-07-30 session; `12_API` §16's `registry_json()` (`src/kang/api/registry/`) is the source to generate from — the generator itself does not exist yet |
 
 ---
 
