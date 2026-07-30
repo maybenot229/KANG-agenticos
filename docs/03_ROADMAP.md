@@ -188,6 +188,7 @@ The single lookup table this roadmap promised. Sources cited; between triggers, 
 | Product-state-aware notification ladder (M5 assumes state == Idle) | M6's product-state machine exists | 09_UI §9 / FR-074; `RESERVED(M6 product-state machine)` in `domain/notifications/notification_service.py` |
 | Definition of "unchanged item" for the 24h no-re-notification rule (M5 uses same-entity-refs + same-priority) | Real notification volume to design against, then an ADR | 09_UI §9; `RESERVED(...)` on `is_duplicate` in `domain/notifications/notification_service.py` |
 | Definition of "deadline in danger **today**" — the `critical` escalation threshold. M5 surfaces every approaching deadline at `attention` and does not let deadline urgency reorder plan quests | Kang's ruling (a product decision, not a code one); needed when the Planner or notifier must rank by urgency | 05_AGENTS §13's `critical` row names the concept but never defines it; noted in `domain/planner/plan_service.py::build_plan` and the notifier's `DEADLINE_APPROACHING_PRIORITY` |
+| Core-side startup lock under `%KANG_HOME%` (single-instance, core half) | The core gains a real startup/composition sequence with a natural attachment point (`kernel/runtime/composition.py` or successor) | ADR-008 |
 
 ---
 
