@@ -15,9 +15,7 @@ from kang.domain.ports.calendar_store import CalendarEvent
 
 __all__ = ["SqliteCalendarStore"]
 
-_COLUMNS = (
-    "provider_event_id, calendar_id, title, starts, ends, all_day, fetched_at"
-)
+_COLUMNS = "provider_event_id, calendar_id, title, starts, ends, all_day, fetched_at"
 
 
 def _row_to_event(row: sqlite3.Row | tuple) -> CalendarEvent:

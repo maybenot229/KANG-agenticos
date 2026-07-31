@@ -88,9 +88,7 @@ class NotificationStore(Protocol):
         (created_at, id)."""
         ...
 
-    def set_state(
-        self, notification_id: str, state: str, at: datetime
-    ) -> Notification:
+    def set_state(self, notification_id: str, state: str, at: datetime) -> Notification:
         """Transition to `delivered` | `batched` | `suppressed`, stamping
         `delivered_at` when the state is `delivered`. Raises
         NotificationNotFoundError if absent."""

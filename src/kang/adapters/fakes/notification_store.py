@@ -42,9 +42,7 @@ class FakeNotificationStore:
             key=lambda n: (n.created_at, n.id),
         )
 
-    def set_state(
-        self, notification_id: str, state: str, at: datetime
-    ) -> Notification:
+    def set_state(self, notification_id: str, state: str, at: datetime) -> Notification:
         current = self.get(notification_id)
         updated = replace(
             current,

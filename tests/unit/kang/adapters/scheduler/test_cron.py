@@ -27,7 +27,9 @@ def _local(year, month, day, hour, minute) -> datetime:
 def _window(schedule, start_local, days: int):
     after = start_local.astimezone(timezone.utc)
     until = (start_local + timedelta(days=days)).astimezone(timezone.utc)
-    return [m.astimezone(KUCHING) for m in schedule.occurrences_in(ANCHOR, after, until)]
+    return [
+        m.astimezone(KUCHING) for m in schedule.occurrences_in(ANCHOR, after, until)
+    ]
 
 
 class TestContract:

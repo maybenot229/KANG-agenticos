@@ -55,10 +55,10 @@ DEDUP_WINDOW = timedelta(hours=24)
 # product-state parameter and these two rows become state-dependent; the
 # other two (`digest`, `silent`) are state-independent and will not change.
 _LADDER_ASSUMING_IDLE = {
-    "critical": "delivered",   # OS notification + persistent beacon
+    "critical": "delivered",  # OS notification + persistent beacon
     "attention": "delivered",  # beacon + Zone 2; OS notification in Idle
-    "digest": "batched",       # never an OS notification; digest surfaces
-    "silent": "suppressed",    # health panel / logs only
+    "digest": "batched",  # never an OS notification; digest surfaces
+    "silent": "suppressed",  # health panel / logs only
 }
 
 

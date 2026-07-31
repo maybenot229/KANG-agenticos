@@ -61,8 +61,7 @@ class TestSqliteNotificationStore(NotificationStoreContract):
         """ADR-005: per-device operational state, like held_action and
         invocation — no device_id/revision, deliberately."""
         columns = {
-            row[1]
-            for row in conn.execute("PRAGMA table_info(notification)").fetchall()
+            row[1] for row in conn.execute("PRAGMA table_info(notification)").fetchall()
         }
         assert "device_id" not in columns
         assert "revision" not in columns

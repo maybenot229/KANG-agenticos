@@ -152,8 +152,7 @@ class SqliteDeadlineStore:
 
     def active(self) -> list[Deadline]:
         rows = self._conn.execute(
-            f"SELECT {_COLUMNS} FROM deadline WHERE status = 'tracked' "
-            "ORDER BY at, id"
+            f"SELECT {_COLUMNS} FROM deadline WHERE status = 'tracked' ORDER BY at, id"
         ).fetchall()
         return [_row_to_deadline(row) for row in rows]
 

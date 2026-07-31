@@ -36,7 +36,11 @@ from kang.domain.ports.clock import Clock
 from kang.domain.ports.eventlog import EventEnvelope
 from kang.domain.ports.notification_store import Notification, NotificationStore
 
-__all__ = ["NotificationPublisher", "make_deadline_enqueue_handler", "make_drain_handler"]
+__all__ = [
+    "NotificationPublisher",
+    "make_deadline_enqueue_handler",
+    "make_drain_handler",
+]
 
 # 05_AGENTS §13's ladder table names "Approaching deadlines" under
 # `attention` explicitly. Escalation to `critical` for a deadline "in danger
@@ -56,9 +60,7 @@ class NotificationPublisher(Protocol):
     guard for this path (`causation_depth(None)` is 0).
     """
 
-    def publish_requested(
-        self, notification: Notification, caused_by: str
-    ) -> None: ...
+    def publish_requested(self, notification: Notification, caused_by: str) -> None: ...
 
 
 def make_deadline_enqueue_handler(

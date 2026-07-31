@@ -103,9 +103,7 @@ _FIXTURES = {
         "task",
         _TASK_COLUMNS,
     ),
-    "deadline.created": Fixture(
-        _deadline_envelope(), "deadline", _DEADLINE_COLUMNS
-    ),
+    "deadline.created": Fixture(_deadline_envelope(), "deadline", _DEADLINE_COLUMNS),
     # The `tracked → alerted` transition — the mutation ADR-004 registered
     # this type to carry, and the one a crash must not lose.
     "deadline.updated": Fixture(

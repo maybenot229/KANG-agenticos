@@ -18,6 +18,7 @@ and Part/Decision identifiers don't (see docs/INDEX.md §2.2's numbering-
 stability rationale, generalized to sub-document citations).
 Exit 1 on any unresolved citation. Allowlist: tools/citation_allowlist.txt.
 """
+
 import re
 import sys
 from pathlib import Path

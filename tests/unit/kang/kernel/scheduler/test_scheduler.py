@@ -14,7 +14,11 @@ from kang.adapters.fakes.audit_log import FakeAuditLog
 from kang.adapters.fakes.job_store import FakeJobStore, FakeKillSwitch
 from kang.domain.ports.scheduler import Job
 from kang.kernel.audit.service import AuditService
-from kang.kernel.scheduler.scheduler import QUARANTINE_THRESHOLD, Scheduler, SchedulerDeps
+from kang.kernel.scheduler.scheduler import (
+    QUARANTINE_THRESHOLD,
+    Scheduler,
+    SchedulerDeps,
+)
 
 ANCHOR = datetime(2026, 1, 1, tzinfo=timezone.utc)
 

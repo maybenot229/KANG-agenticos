@@ -250,9 +250,7 @@ def _wire_notifier(bus, notification_store, clock, new_id, device_id: str) -> No
     bus.subscribe(
         Subscriber(
             "notifier.enqueue",
-            make_deadline_enqueue_handler(
-                notification_store, publisher, clock, new_id
-            ),
+            make_deadline_enqueue_handler(notification_store, publisher, clock, new_id),
         )
     )
     bus.subscribe(

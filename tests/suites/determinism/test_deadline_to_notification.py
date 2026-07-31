@@ -134,9 +134,7 @@ def test_the_run_is_deterministic_across_identical_fixtures(tmp_path):
         _seed_permissions(home)
         built = build_core(home)
         try:
-            _call(
-                built, "deadline.create", {"title": "Submit entry", "at": SOON}, "k1"
-            )
+            _call(built, "deadline.create", {"title": "Submit entry", "at": SOON}, "k1")
             _call(built, "deadline.sweep", {}, "k2")
         finally:
             built.close()

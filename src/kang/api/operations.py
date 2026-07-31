@@ -413,9 +413,7 @@ def make_notification_ack_handler(
         try:
             acked = notification_store.ack(notification_id, clock.now())
         except NotificationNotFoundError as exc:
-            raise ApiError(
-                "not_found", f"no notification {notification_id}"
-            ) from exc
+            raise ApiError("not_found", f"no notification {notification_id}") from exc
         return {"id": acked.id, "state": acked.state}
 
     return handler

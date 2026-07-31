@@ -109,9 +109,7 @@ class SqliteNotificationStore:
         ).fetchall()
         return [_row_to_notification(row) for row in rows]
 
-    def set_state(
-        self, notification_id: str, state: str, at: datetime
-    ) -> Notification:
+    def set_state(self, notification_id: str, state: str, at: datetime) -> Notification:
         delivered = at.isoformat() if state == "delivered" else None
         self._conn.execute("BEGIN IMMEDIATE")
         try:
@@ -136,8 +134,7 @@ class SqliteNotificationStore:
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             cursor = self._conn.execute(
-                "UPDATE notification SET state = 'acked', acked_at = ? "
-                "WHERE id = ?",
+                "UPDATE notification SET state = 'acked', acked_at = ? WHERE id = ?",
                 (at.isoformat(), notification_id),
             )
             if cursor.rowcount == 0:

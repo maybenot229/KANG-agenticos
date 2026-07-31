@@ -165,9 +165,7 @@ class TestSelection:
         assert [t.id for t in plan.quests] == ["task-0004"]
 
     def test_workload_sums_only_the_chosen_quests(self):
-        tasks = tuple(
-            _task(i, estimate_min=10) for i in range(MAX_QUESTS + 2)
-        )
+        tasks = tuple(_task(i, estimate_min=10) for i in range(MAX_QUESTS + 2))
         plan = build_plan(_inputs(tasks=tasks))
         assert plan.estimated_minutes == MAX_QUESTS * 10
 
