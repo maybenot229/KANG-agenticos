@@ -41,7 +41,7 @@ flowchart LR
 ```
 
 - The API layer is **thin**: session handling, schema validation, principal stamping, and dispatch. Zero domain logic (a rule enforced by review: if the API layer contains an `if` about tasks or memory, it is a defect).
-- All operations live in a single **Operation Registry**: name, kind (command|query), request/response schemas, required scopes, idempotency class, version-introduced, deprecation status. The registry is machine-readable and served by the API itself (§16) — clients and tests are generated/verified against it, never against documentation prose.
+- All operations live in a single **Operation Registry**: name, kind (command|query), required scopes, idempotency class, version-introduced, deprecation status. Request/response schemas are Pydantic models attached per operation (ADR-009 Part B) — a constitutional requirement, not yet fully populated across all registered operations as of this writing. The registry is machine-readable and served by the API itself (§16) — clients and tests are generated/verified against it, never against documentation prose.
 - The plugin SDK (08_PLUGIN §8) is a *binding* of this same contract with the plugin's principal pre-stamped — plugins do not have a second, different API.
 
 ---
@@ -216,9 +216,11 @@ Cursor rules per API-008. Standing limits (registry-published per operation): de
 
 ## 16. Registry, Conformance, Future Extension
 
-- `registry.get` serves the machine-readable Operation Registry (operations, schemas, scopes, idempotency class, version/deprecation) and the error-code and event-type enums. **The registry is the contract's source of truth; this document is its constitution.**
+- `registry.get` serves the machine-readable Operation Registry (operations, scopes, idempotency class, version/deprecation, and schemas per ADR-009 Part B once populated) and the error-code and event-type enums. **The registry is the contract's source of truth; this document is its constitution.**
 - A **conformance suite** (core CI) exercises every registered operation against its declared schema, idempotency class, scope requirements, and error surfaces; clients (UI, CLI, SDK) are tested against the registry, not against prose. Unknown-field tolerance (API-005) is a tested client requirement.
 - **RESERVED extension points:** sidecar IPC binding (trigger: PL-001 Phase 2) · sync peer protocol (trigger: 16_SYNC — a separate contract document, not an extension of this one) · voice client sessions (trigger: voice ADR; voice is a client of *this* API, palette-register semantics, 09_UI §18) · mobile companion sessions (trigger: 16_SYNC era; read-mostly + capture subset, already expressible — no new operations required by design).
+
+**Document-integrity note (2026-07-31):** prior versions of §2 and §16 asserted schema-backed registry entries as present-tense constitutional fact before any schema-authoring mechanism existed in code. This was a false claim independent of ADR-009's transport ruling — flagged and corrected here as its own finding, not merely superseded by ADR-009.
 
 ---
 
