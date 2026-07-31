@@ -1,6 +1,6 @@
 # ADR-010 — Pydantic schema implementation: layout, attachment, null-schema contract, validation-error mapping
 
-**Status:** proposed
+**Status:** accepted
 **Date:** 2026-07-31
 **Decides:** implementation details of ADR-009 Part B (Pydantic adopted; this ADR specifies how, not whether)
 **Affected documents:** 12_API.md §2/§16 (schema field semantics), 17_PROJECT_STRUCTURE.md (new `api/schemas/` package, if Ruling 1 is confirmed), `src/kang/api/registry/__init__.py`, `src/kang/api/dispatch.py`
@@ -31,7 +31,7 @@ Each is small in isolation but load-bearing: the first operation implemented und
 Group by the domain prefixes already visible in the registry (`task.*`, `memory.*`, `held_action.*`, `explain.*`, etc.) — e.g. `api/schemas/task.py`, `api/schemas/memory.py`, `api/schemas/held_action.py`. Each file holds that domain's request/response pairs.
 
 - *For:* matches 17_PROJECT_STRUCTURE's existing convention of grouping by domain concept, not technical type (§5's "one responsibility per module" applied here). Naturally stays under the 400-line soft limit per file as the operation count grows — 14 operations today, more later, but each domain area's growth is bounded by that domain's own complexity, not the whole registry's. A reviewer touching `task.*` operations only ever opens `schemas/task.py`.
-- *Against:* more files to navigate for a small registry today (14 operations, could arguably fit one file at current size). Adds one more directory to 17's dependency-legality matrix (trivial addition — schemas are pure data, same import legality as any other `api/` module). Worth noting: 17_PROJECT_STRUCTURE §4.1's dependency diagram already shows `domain/ports --> stdlib + pinned pure libs (pydantic)`, anticipating Pydantic at the ports/domain layer. This ADR places wire-contract schemas in `api/schemas/` instead, deliberately — 12_API §2 treats the wire shape as the API layer's own concern, distinct from domain representations (§4's `sensitivity=private` filtering is an existing example of wire shape diverging from domain shape). The two are not in conflict: `api/` legally imports `domain/ports` per the matrix, so `api/schemas/` may reuse or reference ports-layer Pydantic primitives without violating either document.
+- *Against:* more files to navigate for a small registry today (14 operations, could arguably fit one file at current size). Adds one more directory to 17's dependency-legality matrix (trivial addition — schemas are pure data, same import legality as any other `api/` module). Worth noting: 17_PROJECT_STRUCTURE §4.1's dependency diagram already shows `domain/ports --> stdlib + pinned pure libs (pydantic)`, anticipating Pydantic at the ports/domain layer. This ADR places wire-contract schemas in `api/schemas/` instead, deliberately — 12_API §2 treats the wire shape as the API layer's own concern, distinct from domain representations (§4's `sensitivity=private` filtering is an existing example of wire shape diverging from domain shape). The two are not in conflict: `api/` legally imports `domain/ports` per the matrix, so `api/schemas/` may reuse or reference ports-layer Pydantic primitives without violating either document. Grouping follows the registry's operation-name prefixes (task.*, memory.*, held_action.*, explain.*, etc.), not `src/kang/domain/`'s area list — the two are different sets (e.g. `held_action` and `explain` are API-layer concepts with no matching `domain/` area), and this must not be "corrected" later to match `domain/`'s folders.
 
 **1B — Single `api/schemas.py`, all operations.**
 
@@ -115,12 +115,13 @@ Extend the existing `_validate(entry, request)` method (already present in `disp
 
 ---
 
-## Consequences (pending acceptance)
+## Consequences
 
 - `api/schemas/` package created (Ruling 1); `pyproject.toml` unaffected further (Pydantic dependency already added under ADR-009).
 - `registry/__init__.py`'s `_op(...)` signature gains one new optional `OperationSchemas` parameter (Ruling 2, corrected); all 14 existing call sites require updating — a mechanical, template-able change once the pattern is set on the first 1–2 operations and confirmed correct, then applied to the remaining twelve.
 - `registry_json()`'s output schema changes (Ruling 3) — any future TS-generation work (Ruling C, still RESERVED per 03_ROADMAP §8) must account for the explicit-null contract from the start, avoiding a second migration later.
 - `dispatch.py`'s `_validate` method is extended, not replaced (Ruling 4) — the existing idempotency-key check and the new schema check both live there as the documented supervision point for command validation.
+- **Ruling 4's sanitization is a conformance-suite requirement, not just prose.** The test suite (13_TESTING's conformance class) MUST include a case asserting that no `field_errors` entry in an `invalid_request` response ever contains raw field values — only field path + message type. This closes the actual risk Ruling 4 exists to prevent (private-tier content leaking through validation-error `details` into responses/logs/audit) and must not be left as an unenforced ADR sentence.
 - Explicitly NOT decided here:
   - Which operation is implemented first (a real scheduling question, not an architecture question — deferred to whatever sequencing 18_IMPLEMENTATION_MASTER_PLAN or Kang's own judgment sets).
   - Whether `response_schema` validation applies to the Core's own outgoing responses (validate-on-the-way-out, catching a Core bug before a client sees a malformed response) or is purely documentation/generation-facing (Ruling C input only, no runtime enforcement). This is a real open question worth its own ruling once Ruling 1–4 are confirmed and the first operation is actually implemented — flagged, not guessed at.
