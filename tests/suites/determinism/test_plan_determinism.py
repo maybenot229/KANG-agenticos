@@ -15,8 +15,6 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-import pytest
-
 from kang.domain.planner import MAX_QUESTS, PlanInputs, build_plan
 from kang.domain.ports.calendar_store import CalendarEvent
 from kang.domain.ports.deadline_store import Deadline

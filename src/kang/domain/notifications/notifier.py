@@ -30,7 +30,6 @@ from kang.domain.notifications.notification_service import (
     decide_state,
     dedup_window_start,
     is_duplicate,
-    notification_requested_payload,
 )
 from kang.domain.ports.clock import Clock
 from kang.domain.ports.eventlog import EventEnvelope

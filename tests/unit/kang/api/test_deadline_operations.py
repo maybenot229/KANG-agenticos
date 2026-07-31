@@ -12,11 +12,11 @@ import itertools
 
 import pytest
 
+from kang.adapters.fakes.audit_log import FakeAuditLog
 from kang.adapters.fakes.clock import FakeClock
 from kang.adapters.fakes.deadline_store import FakeDeadlineStore
 from kang.adapters.fakes.delivery_store import FakeDeliveryStore
 from kang.adapters.fakes.event_log import FakeEventLog
-from kang.adapters.fakes.audit_log import FakeAuditLog
 from kang.adapters.fakes.recovery import FakeRecoveryApplier
 from kang.adapters.fakes.sleeper import FakeSleeper
 from kang.api.dispatch import HandlerContext
