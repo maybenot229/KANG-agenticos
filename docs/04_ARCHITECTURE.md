@@ -127,7 +127,7 @@ Any change to a Decision block in this document requires an **ADR** (Architectur
 ## 3. Decision 002 — Runtime & UI Stack
 
 **Decision.**
-- **Core:** Python 3.12+, `asyncio` throughout, FastAPI serving a localhost-only API (HTTP + WebSocket).
+- **Core:** Python 3.12+, `asyncio` throughout, stdlib `http.server` serving a localhost-only API (operation channel; HTTP). The event channel (streaming/WebSocket) is a separate, later binding — see ADR-009.
 - **UI:** Web frontend (React + TypeScript) rendered in a lightweight desktop shell (**Tauri**), talking only to the local API.
 - **CLI:** thin client on the same API (developer/power use, scriptability).
 
@@ -135,6 +135,7 @@ Any change to a Decision block in this document requires an **ADR** (Architectur
 - Python: Kang's primary language (PRD §6); the AI ecosystem lives there; ten-year longevity is proven.
 - API-first even locally: the UI, CLI, future mobile companion, and future voice interface are all *just clients*. No client ever touches the database directly. This is the single cheapest decision that keeps every future interface possible.
 - Tauri over Electron: ~10× smaller footprint, native webview, Rust shell we mostly don't touch. The UI itself is ordinary web tech — boring, durable, AI-assistable.
+- **Transport corrected by ADR-009** (2026-07-31): the original FastAPI choice above was never actually shipped — code adopted stdlib `http.server` on 2026-07-15 without a filed ADR. ADR-009 ratifies the as-shipped transport and records the reasoning. This line preserves that history rather than silently rewriting it.
 
 **Alternatives considered.**
 
