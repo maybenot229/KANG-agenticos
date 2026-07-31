@@ -8,9 +8,14 @@ name = "kang"
 version = "0.1.0.dev0"
 description = "KANG — local-first agentic personal OS (core)"
 requires-python = ">=3.12"
-# Runtime dependencies: none yet. Every addition needs the E10 justification
-# paragraph in its PR (11_CODING §25).
-dependencies = []
+# Runtime dependencies. Every addition needs the E10 justification paragraph
+# in its PR (11_CODING §25).
+# tzdata: Windows ships no IANA timezone database, so stdlib zoneinfo cannot
+# resolve keys like "Asia/Kuching" without it (ADR-006 originally claimed
+# zoneinfo "adds nothing" — corrected by ADR-006's 2026-07-31 amendment).
+# Official, data-only, maintained by the CPython core team via PEP 615 — the
+# boring choice for the one platform this line item exists to unblock.
+dependencies = ["tzdata"]
 
 [project.optional-dependencies]
 # Dev toolchain named by the constitution itself:

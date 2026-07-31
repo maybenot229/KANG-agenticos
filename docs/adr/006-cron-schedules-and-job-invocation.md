@@ -246,3 +246,36 @@ schedule is not the same as inventing a schedule. Bricking manual use of the
 system over an absent file is the worse failure, and a silent one at that —
 whereas "automation is off, here is why, in the audit log" is a visible,
 specific degradation (SEC-009).
+
+## Amendment — 2026-07-31 — `zoneinfo` does not "add nothing" on Windows
+
+**Status:** accepted (found in CI).
+
+Part A's decision said: *"`zoneinfo` is stdlib, so this adds nothing."* That
+claim is false on KANG's stated primary platform. Windows ships no IANA
+timezone database; stdlib `zoneinfo` resolves keys like `Asia/Kuching` by
+falling back to the third-party `tzdata` package, and without it raises
+`ZoneInfoNotFoundError` — confirmed directly: `pytest` passed 388/388 on a
+developer machine with `tzdata` already present, then failed at *collection*
+(`test_cron.py`, `test_morning_plan_job.py`) on a clean `windows-latest` CI
+runner with the identical command. The original claim was never tested
+against a clean install of the actual target platform.
+
+**Amended:** `pyproject.toml`'s `dependencies` gains `tzdata` — the first
+real runtime dependency the codebase ships (Pydantic, added by ADR-009/010,
+is decided but not yet implemented in code as of this amendment). This is
+not "zoneinfo adds nothing" revised to "zoneinfo adds one dependency" as a
+grudging concession — it is what Part A's decision always actually cost on
+Windows; the original text simply had not been run against a fresh
+environment before being written down. `tzdata` is official (maintained by
+the CPython core team, distributed for exactly this gap per PEP 615),
+data-only, and boring by construction — the E10 bar this ADR already
+committed to for the timezone mechanism itself.
+
+**Why an amendment, not a new ADR.** The underlying decision — resolve
+cron's wall-clock times through `zoneinfo`, explicit config, never a fixed
+offset — is unchanged and still correct. Only a false claim about its cost
+is being corrected, the same shape as this ADR's 2026-07-27 amendment
+above. Filing a fresh ADR for a dependency whose necessity was already
+implied by the original decision would misstate this as a new choice
+rather than the same choice, now paid for honestly.
