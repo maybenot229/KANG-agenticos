@@ -28,3 +28,5 @@ dist/
 node_modules/
 *.tsbuildinfo
 .tsbuild-node/
+ui/registry.snapshot.json
+ui/src/generated/
