@@ -3,8 +3,13 @@
 Hard limits (CI fail): function 80 lines, class 400, file/module 800,
 parameters 6. Soft limits are reported as warnings: 40 / 200 / 400 / 4.
 Hard-limit exceptions require an inline justification naming an ADR or
-reason (11 §4) — this linter recognizes none yet; the first exception adds
-the mechanism in the same PR.
+reason (11 §4): a function/class whose own docstring contains the literal
+marker `HARD-LIMIT EXCEPTION` is downgraded from a hard failure to a
+reported (non-blocking) exception line — still visible in CI output (11
+§4: "reported in CI output, visible debt, §27"), never silently dropped.
+First recognized here for `OperationChannel`/`_op`'s parameter count
+(ADR-010 Ruling 2) — the mechanism this module's docstring previously said
+did not exist yet.
 
 Dev-only tool: parses source as text/AST, imports nothing from src/ (17 §4.2).
 Usage: python tools/lint_sizes.py [target_dir ...]   (default: src)
@@ -25,6 +30,11 @@ SOFT_FUNCTION_LINES = 40
 SOFT_CLASS_LINES = 200
 SOFT_FILE_LINES = 400
 SOFT_PARAMS = 4
+
+# 11 §4's recognized justification marker: present in a function/class's own
+# docstring, it downgrades that node's hard-limit finding to non-blocking —
+# still printed (visible debt), never silently exempted.
+EXCEPTION_MARKER = "HARD-LIMIT EXCEPTION"
 
 
 @dataclass
@@ -48,8 +58,14 @@ def _param_count(node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
     return count
 
 
+def _has_exception_marker(node: ast.AST) -> bool:
+    docstring = ast.get_docstring(node) or ""
+    return EXCEPTION_MARKER in docstring
+
+
 def _check_node(path: Path, node: ast.AST, findings: list[Finding]) -> None:
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        excepted = _has_exception_marker(node)
         lines = _node_lines(node)
         if lines > SOFT_FUNCTION_LINES:
             findings.append(
@@ -58,7 +74,7 @@ def _check_node(path: Path, node: ast.AST, findings: list[Finding]) -> None:
                     node.lineno,
                     f"function '{node.name}' is {lines} lines "
                     f"(soft {SOFT_FUNCTION_LINES}, hard {HARD_FUNCTION_LINES})",
-                    hard=lines > HARD_FUNCTION_LINES,
+                    hard=lines > HARD_FUNCTION_LINES and not excepted,
                 )
             )
         params = _param_count(node)
@@ -68,11 +84,13 @@ def _check_node(path: Path, node: ast.AST, findings: list[Finding]) -> None:
                     path,
                     node.lineno,
                     f"function '{node.name}' has {params} parameters "
-                    f"(soft {SOFT_PARAMS}, hard {HARD_PARAMS}; then a dataclass)",
-                    hard=params > HARD_PARAMS,
+                    f"(soft {SOFT_PARAMS}, hard {HARD_PARAMS}; then a dataclass)"
+                    + (" [HARD-LIMIT EXCEPTION documented]" if excepted else ""),
+                    hard=params > HARD_PARAMS and not excepted,
                 )
             )
     elif isinstance(node, ast.ClassDef):
+        excepted = _has_exception_marker(node)
         lines = _node_lines(node)
         if lines > SOFT_CLASS_LINES:
             findings.append(
@@ -81,7 +99,7 @@ def _check_node(path: Path, node: ast.AST, findings: list[Finding]) -> None:
                     node.lineno,
                     f"class '{node.name}' is {lines} lines "
                     f"(soft {SOFT_CLASS_LINES}, hard {HARD_CLASS_LINES})",
-                    hard=lines > HARD_CLASS_LINES,
+                    hard=lines > HARD_CLASS_LINES and not excepted,
                 )
             )
 
