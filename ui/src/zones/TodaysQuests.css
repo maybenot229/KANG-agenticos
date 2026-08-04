@@ -1,0 +1,46 @@
+.quests__heading {
+  font-size: var(--type-scale-xl);
+  margin: 0 0 var(--space-4);
+}
+
+.quests__status {
+  color: var(--color-text-secondary);
+}
+
+.quests__status--error {
+  color: var(--color-critical);
+}
+
+.quests__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.quests__item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.quests__title {
+  font-size: var(--type-scale-base);
+}
+
+.quests__meta {
+  font-size: var(--type-scale-xs);
+  color: var(--color-text-secondary);
+}
+
+.quests__summary {
+  margin-top: var(--space-4);
+  font-size: var(--type-scale-sm);
+  color: var(--color-text-secondary);
+}

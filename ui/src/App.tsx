@@ -1,4 +1,7 @@
+import { useState } from "react";
 import "./App.css";
+import TodaysQuests from "./zones/TodaysQuests";
+import QuickCapture from "./capture/QuickCapture";
 
 // The seven domains (UI-001, 09_UI_DESIGN.md §2): fixed order, MUST NOT
 // reorder or hide contextually (UI-P5). Dashboard is the hub, not a
@@ -15,11 +18,14 @@ const DOMAINS = [
 
 /**
  * The persistent chrome (09_UI §3): identical on every screen. This
- * component owns layout only — no truth, no domain logic (UI-P1). Zone
- * content (Today's Quests, etc.) is a later slice; this scaffold proves
- * the structural contract renders before any real data is wired in.
+ * component owns layout only — no truth, no domain logic (UI-P1).
+ * Zone 1 (Today's Quests) and quick capture are the vertical slice this
+ * session proves against real data; the remaining three zones and the
+ * other six domains are later slices.
  */
 export default function App() {
+  const [captureOpen, setCaptureOpen] = useState(false);
+
   return (
     <div className="shell">
       <header className="top-bar">
@@ -37,15 +43,18 @@ export default function App() {
             </li>
           ))}
         </ul>
-        <button type="button" className="left-rail__capture">
+        <button
+          type="button"
+          className="left-rail__capture"
+          onClick={() => setCaptureOpen((open) => !open)}
+        >
           + Quick capture
         </button>
+        {captureOpen && <QuickCapture onClose={() => setCaptureOpen(false)} />}
       </nav>
 
       <main className="content-area">
-        <p className="content-area__placeholder">
-          Dashboard zones land in the next slice.
-        </p>
+        <TodaysQuests />
       </main>
 
       <footer className="status-strip">

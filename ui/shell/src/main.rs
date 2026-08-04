@@ -13,14 +13,63 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::fs;
+use std::path::PathBuf;
+
+use serde::Serialize;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
     Manager,
 };
 
+/// The session handshake (API-003): the Core writes `%KANG_HOME%/session.json`
+/// with `{host, port, token}` at startup (composition.py::serve). The shell's
+/// only job is handing that file's content to the frontend — it never mints,
+/// inspects, or modifies a session itself (UI-P1: no truth in the shell).
+#[derive(Serialize)]
+struct Session {
+    host: String,
+    port: u16,
+    token: String,
+}
+
+#[derive(Serialize)]
+enum SessionError {
+    KangHomeNotSet,
+    SessionFileMissing(String),
+    Malformed(String),
+}
+
+/// `KANG_HOME` resolution mirrors the Core's own convention exactly
+/// (`adapters/config/env_config.py`'s `_ENV_VAR = "KANG_HOME"`) — the shell
+/// resolves its own env, never the Core's config port (12_API §5's session
+/// handshake is client-side, same rule `cli/kang_cli.py` already follows).
+#[tauri::command]
+fn get_session() -> Result<Session, SessionError> {
+    let kang_home = std::env::var("KANG_HOME").map_err(|_| SessionError::KangHomeNotSet)?;
+    let session_path: PathBuf = [&kang_home, "session.json"].iter().collect();
+    let raw = fs::read_to_string(&session_path)
+        .map_err(|e| SessionError::SessionFileMissing(e.to_string()))?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| SessionError::Malformed(e.to_string()))?;
+    let host = parsed["host"]
+        .as_str()
+        .ok_or_else(|| SessionError::Malformed("missing 'host'".into()))?
+        .to_string();
+    let port = parsed["port"]
+        .as_u64()
+        .ok_or_else(|| SessionError::Malformed("missing 'port'".into()))? as u16;
+    let token = parsed["token"]
+        .as_str()
+        .ok_or_else(|| SessionError::Malformed("missing 'token'".into()))?
+        .to_string();
+    Ok(Session { host, port, token })
+}
+
 fn main() {
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![get_session])
         // --- Single-instance enforcement (ADR-008 Part A/B) ---
         // MUST be the first plugin registered (the plugin's own
         // documented requirement) so it can intercept a second launch
