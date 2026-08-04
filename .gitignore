@@ -23,3 +23,8 @@ dist/
 # M6 starts a fresh Tauri project per ADR-007 §8; this pattern is
 # repo-wide on purpose so its target/ is ignored wherever it lands).
 **/target/
+
+# Node (ui/ — Vite + React, ADR-011's generated client's home)
+node_modules/
+*.tsbuildinfo
+.tsbuild-node/

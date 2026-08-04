@@ -1,0 +1,32 @@
+/* Base element styles — token-driven only (UI-003). No component styling
+   here; this is the CSS-reset-equivalent layer, not a design surface. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  font-family: var(--type-family);
+  font-size: var(--type-scale-base);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible focus states everywhere, unconditionally (09_UI §15: full
+   keyboard operability with visible focus). No :focus-visible-only
+   exemption — a keyboard user at 2am exhausted is the accessibility user
+   this rule protects (09_UI §15's own framing). */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}

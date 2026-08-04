@@ -1,0 +1,100 @@
+/*
+ * Design tokens (UI-003, 09_UI_DESIGN.md §17): all visual properties flow
+ * from this semantic token set. Screens MUST consume tokens, never
+ * literals (enforced by review, not lint yet — no CSS-literal linter
+ * exists in this codebase; flagged honestly, not silently assumed built).
+ *
+ * Two first-party themes: KANG Dark (default — "Windows 11-inspired,
+ * cyberpunk aesthetic, dark blue accent," 02_PRD §10.12) and KANG Quiet
+ * (reduced-chroma variant, same structure, desaturated accent).
+ *
+ * `critical`/`attention` are RESERVED tokens (UI-003): nothing outside
+ * their constitutional roles (09_UI §9 notification ladder, §13 error
+ * presentation) may use them decoratively.
+ *
+ * Exact hex values are an implementation choice, not a re-litigated
+ * constitutional decision — 02_PRD/09_UI specify the identity ("dark blue
+ * accent," "cyberpunk") and the constraint (WCAG 2.1 AA, 09_UI §15), not
+ * exact values. Both themes' body-text pairings here are near-white on
+ * near-black/navy — comfortably clear of the 4.5:1 AA floor by a wide
+ * margin, not a borderline pass.
+ */
+
+:root {
+  /* Surfaces */
+  --color-background: #0a0e17;
+  --color-surface: #131a2a;
+  --color-surface-raised: #1a2338;
+  --color-border: #2a3550;
+
+  /* Text */
+  --color-text-primary: #e8ecf5;
+  --color-text-secondary: #9aa7c2;
+  --color-text-disabled: #5b6785;
+
+  /* Identity accent — "dark blue accent," cyberpunk (02_PRD §10.12) */
+  --color-accent: #4ea8ff;
+  --color-accent-muted: #2d6bb8;
+
+  /* Reserved semantic tokens (UI-003) — never decorative elsewhere */
+  --color-attention: #e8a33d;
+  --color-critical: #e5484d;
+  --color-success: #3dd68c;
+
+  /* Type scale */
+  --type-scale-xs: 0.75rem;
+  --type-scale-sm: 0.875rem;
+  --type-scale-base: 1rem;
+  --type-scale-lg: 1.25rem;
+  --type-scale-xl: 1.5rem;
+  --type-scale-2xl: 2rem;
+  --type-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+
+  /* Spacing (space.unit — 8px base, per-token multiples) */
+  --space-unit: 8px;
+  --space-1: calc(var(--space-unit) * 1);
+  --space-2: calc(var(--space-unit) * 2);
+  --space-3: calc(var(--space-unit) * 3);
+  --space-4: calc(var(--space-unit) * 4);
+  --space-6: calc(var(--space-unit) * 6);
+  --space-8: calc(var(--space-unit) * 8);
+
+  /* Motion — reduced-motion setting disables all of this globally (09_UI §15) */
+  --motion-duration-fast: 100ms;
+  --motion-duration-base: 200ms;
+  --motion-duration-slow: 400ms;
+  --motion-easing: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Layout */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+}
+
+/* KANG Quiet — reduced-chroma variant (UI-003). Same structure, desaturated
+   accent, same contrast floor. Applied via a data attribute the theme
+   switcher sets on <html> — no theme logic lives in components (UI-P1). */
+:root[data-theme="quiet"] {
+  --color-background: #0d0f14;
+  --color-surface: #16191f;
+  --color-surface-raised: #1c2027;
+  --color-border: #2a2f38;
+
+  --color-text-primary: #e4e6ea;
+  --color-text-secondary: #9298a3;
+  --color-text-disabled: #5a6070;
+
+  --color-accent: #6f92b8;
+  --color-accent-muted: #4a627d;
+
+  --color-attention: #c99a4f;
+  --color-critical: #c15b5e;
+  --color-success: #57a883;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration-fast: 0ms;
+    --motion-duration-base: 0ms;
+    --motion-duration-slow: 0ms;
+  }
+}

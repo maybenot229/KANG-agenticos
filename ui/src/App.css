@@ -1,0 +1,100 @@
+/* Global layout chrome (09_UI §3) — token-driven only (UI-003). */
+
+.shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "top-bar top-bar"
+    "left-rail content-area"
+    "status-strip status-strip";
+  height: 100vh;
+}
+
+.top-bar {
+  grid-area: top-bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.top-bar__breadcrumb {
+  font-size: var(--type-scale-sm);
+  color: var(--color-text-secondary);
+}
+
+.top-bar__palette-hint {
+  font-size: var(--type-scale-xs);
+  color: var(--color-text-disabled);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 2px var(--space-1);
+}
+
+.left-rail {
+  grid-area: left-rail;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  padding: var(--space-4) var(--space-2);
+  display: flex;
+  flex-direction: column;
+}
+
+.left-rail ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.left-rail__item {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--color-text-primary);
+  font-size: var(--type-scale-sm);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--motion-duration-fast) var(--motion-easing);
+}
+
+.left-rail__item:hover {
+  background: var(--color-surface-raised);
+}
+
+.left-rail__capture {
+  margin-top: auto;
+  background: var(--color-accent-muted);
+  color: var(--color-text-primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--type-scale-sm);
+  cursor: pointer;
+}
+
+.content-area {
+  grid-area: content-area;
+  padding: var(--space-6);
+  overflow-y: auto;
+}
+
+.content-area__placeholder {
+  color: var(--color-text-secondary);
+}
+
+.status-strip {
+  grid-area: status-strip;
+  padding: var(--space-1) var(--space-4);
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--type-scale-xs);
+  color: var(--color-text-disabled);
+}
