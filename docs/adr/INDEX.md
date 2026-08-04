@@ -16,3 +16,4 @@ Append-only; an ADR that reverses or narrows another MUST cite it.
 | [008](008-single-instance-enforcement.md) | Single-instance enforcement at the KANG shell | proposed | 04_ARCH D016, 17_PROJECT_STRUCTURE (`ui/shell/`), 07_DATABASE DB-001, 03_ROADMAP §8 |
 | [009](009-http-transport-and-schema-authority.md) | HTTP transport ratified as stdlib `http.server`; Pydantic adopted for operation schemas | accepted | 04_ARCH D002, 12_API §2/§16, 17_PROJECT_STRUCTURE §4.2, 03_ROADMAP §8 |
 | [010](010-pydantic-schema-implementation.md) | Pydantic schema implementation: layout, attachment, null-schema contract, validation-error mapping | accepted | 12_API §2/§16, 17_PROJECT_STRUCTURE (`api/schemas/`), `src/kang/api/registry/__init__.py`, `src/kang/api/dispatch.py` |
+| [011](011-ts-client-generator.md) | Registry→TypeScript client generator: json-schema-to-typescript | proposed | 03_ROADMAP §8, 17_PROJECT_STRUCTURE §2, 18_IMPLEMENTATION_MASTER_PLAN §3 M6 |
