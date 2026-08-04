@@ -15,7 +15,10 @@ requires-python = ">=3.12"
 # zoneinfo "adds nothing" — corrected by ADR-006's 2026-07-31 amendment).
 # Official, data-only, maintained by the CPython core team via PEP 615 — the
 # boring choice for the one platform this line item exists to unblock.
-dependencies = ["tzdata"]
+# pydantic: request/response schema authority for the Operation Registry
+# (ADR-009 Part B decided it; ADR-010 specifies layout/attachment/error
+# mapping). Approved by Kang 2026-07-31.
+dependencies = ["tzdata", "pydantic"]
 
 [project.optional-dependencies]
 # Dev toolchain named by the constitution itself:
