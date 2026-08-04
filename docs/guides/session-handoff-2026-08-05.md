@@ -1,0 +1,134 @@
+# Session handoff — 2026-08-05
+
+Everything below was verified against the actual repo/environment at handoff time, not recalled from the prior session's report. Commands and their real output are included so the next session doesn't have to re-trust anything.
+
+---
+
+## 1. State (verified just now)
+
+### `git status`
+
+```
+On branch main
+Your branch is ahead of 'origin/main' by 8 commits.
+  (use "git push" to publish your local commits)
+
+nothing to commit, working tree clean
+```
+
+`git status --porcelain` returned nothing — zero staged, unstaged, or untracked files. Nothing pending from the prior session; everything it did is either committed or was cleaned up (temp verification dirs, throwaway Core/Vite processes).
+
+### `git log --oneline -15`
+
+```
+730eebc feat(M6): vertical slice - API client, Zone 1, quick capture, real end-to-end
+b718b81 feat(ADR-011): implement the registry -> TypeScript client generator
+c7b3164 feat(M6): scaffold ui/src/ on Vite + React + TypeScript
+9cbc0f1 docs: file ADR-011 (proposed) — TS client generator picks json-schema-to-typescript
+c12eca0 feat(ADR-010): implement Ruling 4 — dispatch-time schema validation
+370d6bf docs: ADR-004/005 INDEX status sync; held_action gap audit; ADR-010 session reports
+32e81e5 feat(ADR-010): implement Rulings 1-3 across all 7 real-handler operations
+ac2fa73 deps: add pydantic (Kang-approved) for ADR-009/010 schema authority
+b662633 fix: add tzdata dependency for Windows zoneinfo; amend ADR-006 (CI: ZoneInfoNotFoundError on windows-latest)
+9a2edca lint: fix ruff check (unused imports, import ordering) - CI commit-tier fix
+508d858 style: apply ruff formatting (CI commit-tier fix)
+b1741ee ADR-010: accept all four rulings (Kang review 2026-07-31); sync INDEX status
+86d4504 ADR-010 (proposed): Pydantic implementation layout, attachment, null-schema, error mapping
+740cb22 17_PROJECT_STRUCTURE §4.2: correct stale FastAPI reference, cite ADR-009
+e6a83e8 03_ROADMAP §8: scope Rulings A/B by ADR-009, retrigger Ruling C
+```
+
+8 commits ahead of `origin/main` (`e6a83e8` is the last pushed commit; everything above `740cb22` is unpushed). **Nothing has been pushed.** `git push` requires separate, explicit instruction — not implied by anything in this handoff.
+
+### Full verification suite (actual counts)
+
+```
+python -m pytest tests/unit tests/suites tests/integration -q
+538 passed in 55.05s
+```
+
+```
+ruff format --check src tests tools cli   → 226 files already formatted
+ruff check src tests tools cli            → All checks passed!
+lint-imports --config tools/importlinter.toml → Contracts: 8 kept, 0 broken
+python tools/lint_sizes.py src            → 0 hard violation(s), 22 soft warning(s)
+python tools/lint_banned_patterns.py src  → 0 violation(s)
+python tools/lint_tree_hygiene.py .       → 0 violation(s)
+python tools/build_root_docs.py --check   → CLAUDE.md is current.
+```
+
+All green, all just re-run, not carried over from the prior report.
+
+---
+
+## 2. The shell incident — ROOT-CAUSED (2026-08-05 follow-up)
+
+**Resolved.** Extracted the exact `git commit -m "..."` command from the raw
+session transcript (`C:\Users\meime\.claude\projects\C--KANG---Agentic-OS\422f2dad-4f82-4e91-988e-7b5fcc8a48a5.jsonl`,
+line 2279 — the actual tool call, not a recollection). The commit message
+contained exactly two backtick-quoted spans (4 backticks total, confirmed by
+`grep -o` on the raw line):
+
+- `` `kang_cli.py task get` `` — inside the prose describing how quick capture
+  was verified
+- `` `cargo tauri dev` `` — inside the prose describing what was *not* yet
+  tested
+
+The `-m` argument was double-quoted, and bash performs command substitution
+on backtick spans even inside double quotes. Both were substituted as real
+commands: `kang_cli.py` isn't on PATH → `command not found` (already
+confirmed); `cargo tauri` **is** a real installed subcommand → it genuinely
+ran, producing the observed BeforeDevCommand/DevCommand pipeline and crate
+compilation. `cargo tauri dev` starts a long-running dev server that never
+exits on its own, so the substitution blocked until the Bash tool's 2-minute
+timeout killed the process tree — explaining both the timeout and why
+nothing was left running. No hook, alias, or external mechanism was
+involved; the commit message's own prose was the trigger. The original
+(now superseded) investigation below is kept for the record.
+
+### Original investigation (superseded — kept for record)
+
+**Do not treat this as closed.** The prior session's `git commit -m "..."` (a message containing unescaped backticks) produced output showing a real Tauri dev-build pipeline running (`Running BeforeDevCommand`, `Running DevCommand`, real `cargo` compilation of ~369 crates), then timed out at 2 minutes. The commit did not land; no process was left running afterward (both confirmed at the time and re-confirmed just now).
+
+**What I checked, just now, and what each check found:**
+
+| Check | Result |
+|---|---|
+| `.git/hooks/` (real hooks, not `.sample` files) | **Empty.** No pre-commit, post-commit, or any other hook exists. |
+| `git config --get core.hooksPath` (local and global) | **Empty.** Default hooks path, which is confirmed empty above. |
+| husky / lint-staged / simple-git-hooks config | **None found** — grepped `ui/package.json` and the repo for these; no matches. |
+| Shell aliases (`alias`) | **None.** |
+| Shell functions matching cargo/tauri/dev (`declare -F`) | **None.** |
+| `PROMPT_COMMAND`, active `trap` handlers | **None set.** |
+| `.bashrc`/`.bash_profile`/`.profile` for cargo/tauri references | **None found.** |
+| Is `kang_cli.py` on PATH? | **No** (`which` returns not-found) — this **fully explains** the `"kang_cli.py: command not found"` line in the original output: the commit message contained the literal text `` `kang_cli.py task get` `` (backtick-quoted, describing how a task was verified), and bash performs command substitution on backtick-quoted text inside a double-quoted `-m` argument. That specific error line has a confirmed, mechanical explanation. |
+| Is `cargo tauri` a real, installed subcommand? | **Yes** — `cargo tauri --version` → `tauri-cli 2.11.4`, confirmed installed and functional. This means **if** the commit message's text contained a backtick-quoted fragment equal to (or resolving to) `cargo tauri dev`, bash would have genuinely executed it, and the observed output (BeforeDevCommand/DevCommand orchestration, real crate compilation) is exactly what that would produce. |
+
+**What is NOT resolved:** I do not have access to the exact, verbatim text of the original failed `git commit -m "..."` tool call from this vantage point — only my own narrated description of composing it. I can state with high confidence that backtick-triggered command substitution is the general mechanism (proven by the `kang_cli.py` line), and that `cargo tauri dev` being a real, installed command explains how that specific pipeline could have been triggered this way — but I cannot point to the exact substring in the original message that did it, and I have not ruled out with certainty that some other mechanism contributed.
+
+**Recommendation, not yet done:** if a full root cause is required before trusting unattended commits again, the original tool-call transcript (outside what I can re-query from here) would need to be inspected directly for the exact backtick-quoted spans in that specific `-m` string. Until then, the safe operating rule (already adopted for the rest of that session) is: **never pass a commit message via inline `-m` with backticks in it — always write the message to a file and use `git commit -F <file>`.** That workaround avoids recurrence; it does not constitute a root cause.
+
+---
+
+## 3. Open items — verified by reading the actual files just now, not cited from memory
+
+| Item | Status | Evidence |
+|---|---|---|
+| `held_action.approve`/`.cancel` handlers | **confirmed-open** | `grep -n "held_action" src/kang/api/operations.py` → zero matches. `grep -n "held_action\|HeldAction" src/kang/kernel/runtime/composition.py` → zero matches. No handler exists, nothing is wired into composition. Unchanged from the audit written 2026-07-31. |
+| `commit_mode` missing on `held_action.*` registry entries | **confirmed-open** | Read the actual `_op("held_action.approve", ...)` call in `src/kang/api/registry/__init__.py` — only `channel=OperationChannel(first_party_only=True)` is passed; no `commit_mode` argument anywhere. ADR-001 Amendment's "REQUIRED for every consequential command" is still unmet for these two entries. |
+| ADR-010 Ruling 4 (dispatch-time schema validation) | **confirmed-resolved** | `src/kang/api/dispatch.py` has `_validate_schema`, imports `pydantic.ValidationError`, calls `schema.model_validate(request.params)`, and sanitizes via `_sanitized_field_errors`. Backed by the passing test suite (538/538) which includes `tests/unit/kang/api/test_dispatch.py`'s Ruling-4-specific cases and `tests/suites/contract/test_schema_validation_conformance.py`. |
+| Tauri capabilities ACL for `get_session` | **confirmed-resolved (2026-08-05, live launch)** | Ran a real `cargo tauri dev` against a throwaway Core, with the main window temporarily made visible and devtools forced open (reverted after; `git diff` on `ui/shell/tauri.conf.json` and `main.rs` is clean). No entry for `get_session` exists in `capabilities/default.json`. Rather than trust the GUI, checked the Core's own `invocation` table in the throwaway `kang.db`: two real `plan.generate` calls landed via HTTP, timestamped exactly when the build finished — which is only possible if `invoke("get_session")` succeeded first, since `client.ts`'s `callOperation` resolves the session before issuing any HTTP call. Corroborated by `netstat` showing 4 completed (TIME_WAIT) round-trips to the Core's port, matching `TodaysQuests.tsx`'s exact call pattern (plan.generate + task.get × N). **Conclusion: Tauri v2 does not require an explicit capabilities entry for this app-defined (non-plugin) command — it is invokable by default under the current config.** `capabilities/default.json` can be left as-is; no ADR or capability change needed for `get_session` itself. |
+| NFR-011 overlay (global hotkey → standalone window) | **confirmed-open** | `grep -n "WebviewWindow\|WindowBuilder\|new_window\|overlay"` in `main.rs` → zero matches; only the one `"main"` window from `tauri.conf.json` exists. The `global-shortcut` plugin is registered (`main.rs:87`) but nothing calls `.register(...)` on it — no key is bound to anything. `ui/src/App.tsx` confirms quick capture is a `useState` toggle behind a left-rail button (`captureOpen`/`setCaptureOpen`), rendered inside the main window — not a second window, not hotkey-triggered. |
+
+**No discrepancy found between the prior session's final report and what's actually in the repo right now** — every claim in that report's "NOT verified, flagged rather than assumed" section checks out exactly as stated when re-verified independently just now. The one place worth being extra clear about (per the critique this handoff is responding to): the prior report's "Full loop confirmed" language for quick capture describes the `callOperation` → Core → DB round-trip, which **was** verified for real (confirmed again just now by static reading, and it's covered by the passing dispatch/schema tests) — it does **not** mean a human clicking through the actual rendered DOM was tested. The browser-tool viewport was broken (0×0, unreliable coordinates) during that verification, so the UI-interaction layer itself (open panel → type → press Enter, through real DOM events) has still never been exercised, only the API layer beneath it. That gap is real and remains open.
+
+---
+
+## 4. Next step
+
+Two independent threads, pick based on priority:
+
+1. **If continuing M6 build work:** the vertical slice (client, Zone 1, quick capture-as-a-button) is real and tested at the API layer. Remaining scope, in the order the last session's report gave it: the three other dashboard zones, the six remaining domains (only chrome buttons exist for them), the permission screen, the confirm dialog, and — the two genuinely open architectural items above — the real global-hotkey overlay window and resolving the Tauri capabilities ACL question (which likely requires an actual `cargo tauri dev` launch to observe real behavior, not another guess).
+2. **If root-causing the shell incident first:** the mechanical explanation (backtick substitution) is solid; the exact trigger text is not. This would need direct inspection of the original tool-call transcript from outside this session's own vantage point, or a deliberate reproduction attempt (crafting a similar backtick-laden `-m` string in a throwaway repo and watching what substitutes) to close the loop with confidence rather than a plausible-but-unconfirmed story.
+
+Neither is committed to a specific choice here — that's a scoping decision for whoever picks this up next.
