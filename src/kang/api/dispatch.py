@@ -6,7 +6,10 @@ validation → registry dispatch → idempotency check → permission check →
 kernel execution → response, with a correlation_id minted at ingress and
 returned on every response), API-003 (authentication only; authorization is
 the engine's), API-004 (idempotency), API-006 (one error model), §12 (every
-operation is recorded as an invocation for `explain`).
+operation is recorded as an invocation for `explain`), ADR-010 Ruling 4
+(schema validation lives in `_validate`, a `ValidationError` maps to
+`invalid_request` with a sanitized `details.field_errors` — never the
+raw offending value, which could be private-tier content).
 
 Thinness (12 §2): this layer contains NO domain logic. Handlers are the glue
 to domain services; an `if` here about tasks or memory would be a defect.
@@ -17,6 +20,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Callable
+
+from pydantic import ValidationError
 
 from kang.api.errors import ApiError
 from kang.api.registry import operation as registry_operation
@@ -64,6 +69,18 @@ class DispatcherDeps:
     audit: AuditService
     clock: Clock
     new_id: Callable[[], str]
+
+
+def _sanitized_field_errors(exc: ValidationError) -> list[dict[str, str]]:
+    """ADR-010 Ruling 4: Pydantic's raw `.errors()` includes `input` (the
+    exact offending value — a leakage risk if a `private`-tier field ever
+    reaches this path, per D010/PRD §10.14's threat model) and `ctx`
+    (internal, implementation-specific). Keep only field path + message
+    type — enough to fix the request, never enough to leak the value."""
+    return [
+        {"field": ".".join(str(part) for part in err["loc"]), "message": err["msg"]}
+        for err in exc.errors()
+    ]
 
 
 class Dispatcher:
@@ -131,6 +148,27 @@ class Dispatcher:
                 "invalid_request",
                 f"command {entry['name']} requires an idempotency key (API-004)",
             )
+        self._validate_schema(entry, request)
+
+    def _validate_schema(self, entry: dict[str, Any], request: ApiRequest) -> None:
+        """ADR-010 Ruling 4: when the operation has an attached
+        `request_schema` (a raw Pydantic class — see `registry/__init__.py`'s
+        `OperationSchemas`), validate `request.params` against it. Applies to
+        commands and queries alike, whenever a schema is attached; operations
+        without one (most of the registry, still — Ruling 1's rollout is
+        additive) are untouched. The handler still receives the original,
+        unmodified `request.params` — this is a gate, not a transform."""
+        schema = entry.get("request_schema")
+        if schema is None:
+            return
+        try:
+            schema.model_validate(request.params)
+        except ValidationError as exc:
+            raise ApiError(
+                "invalid_request",
+                f"{entry['name']} request failed schema validation",
+                details={"field_errors": _sanitized_field_errors(exc)},
+            ) from exc
 
     def _idempotent_replay(self, request: ApiRequest) -> dict[str, Any] | None:
         import json

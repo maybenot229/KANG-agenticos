@@ -128,12 +128,24 @@ def test_permission_denied_names_the_scope():
 
 
 def test_command_replays_the_original_outcome_for_a_repeated_key():
+    # task.create now carries a real request_schema (ADR-010); `title` is
+    # required for the call to pass _validate at all. `value` is an extra
+    # field the schema ignores (Pydantic default) — kept, and varied
+    # between calls, to prove a replay short-circuits before the handler
+    # (and any re-validation of the second call's own body) ever runs.
     dispatcher, invocations, _, calls = _build()
     first = dispatcher.dispatch(
-        ApiRequest("task.create", {"value": 1}, VALID_TOKEN, idempotency_key="k1")
+        ApiRequest(
+            "task.create", {"title": "t", "value": 1}, VALID_TOKEN, idempotency_key="k1"
+        )
     )
     second = dispatcher.dispatch(
-        ApiRequest("task.create", {"value": 999}, VALID_TOKEN, idempotency_key="k1")
+        ApiRequest(
+            "task.create",
+            {"title": "t", "value": 999},
+            VALID_TOKEN,
+            idempotency_key="k1",
+        )
     )
     assert second == first  # original outcome returned, not re-executed
     assert len(calls) == 1  # the handler ran exactly once
@@ -192,3 +204,38 @@ def test_unexpected_exception_becomes_internal():
     response = dispatcher.dispatch(ApiRequest("registry.get", {}, VALID_TOKEN))
     assert response["error"]["code"] == "internal"
     assert response["error"]["retryable"] is True
+
+
+def test_schema_violation_is_invalid_request_and_never_reaches_the_handler():
+    # ADR-010 Ruling 4: task.create carries a real request_schema; a
+    # missing required field is refused by _validate before the handler
+    # (ok_handler, which would otherwise happily echo it) ever runs.
+    dispatcher, *_, calls = _build()
+    response = dispatcher.dispatch(
+        ApiRequest("task.create", {}, VALID_TOKEN, idempotency_key="k1")
+    )
+    assert response["ok"] is False
+    assert response["error"]["code"] == "invalid_request"
+    assert calls == []  # never reached the handler
+
+
+def test_schema_violation_details_are_sanitized_field_errors():
+    # ADR-010 Ruling 4: details.field_errors carries field path + message
+    # only — never Pydantic's raw `input`/`ctx` keys, which could echo a
+    # private-tier value verbatim (D010/PRD §10.14).
+    dispatcher, *_ = _build()
+    response = dispatcher.dispatch(
+        ApiRequest("task.create", {}, VALID_TOKEN, idempotency_key="k1")
+    )
+    field_errors = response["error"]["details"]["field_errors"]
+    assert field_errors == [{"field": "title", "message": "Field required"}]
+
+
+def test_schema_less_operation_is_unaffected_by_ruling_4():
+    # registry.get has no request_schema attached (Ruling 1's rollout is
+    # additive, not universal yet) — arbitrary params pass through untouched.
+    dispatcher, *_ = _build()
+    response = dispatcher.dispatch(
+        ApiRequest("registry.get", {"anything": "goes"}, VALID_TOKEN)
+    )
+    assert response["ok"] is True
