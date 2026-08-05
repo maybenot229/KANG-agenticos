@@ -34,6 +34,12 @@ from kang.api.schemas.explain import (
     ExplainInvocationRequest,
     ExplainInvocationResponse,
 )
+from kang.api.schemas.held_action import (
+    HeldActionApproveRequest,
+    HeldActionApproveResponse,
+    HeldActionCancelRequest,
+    HeldActionCancelResponse,
+)
 from kang.api.schemas.notification import (
     NotificationAckRequest,
     NotificationAckResponse,
@@ -96,13 +102,14 @@ class OperationSchemas:
     boundary ADR-002 was deliberate about.
 
     `request`/`response` are `None` for operations without an attached
-    schema yet (ADR-010 Ruling 3) — including both currently-unimplemented
-    `held_action.*` operations and every operation not yet rolled out under
-    this ADR. `registry_snapshot()` serializes each to its JSON Schema
-    (`.model_json_schema()`) or explicit `null`; the raw Pydantic class
-    stays on `OPERATIONS`/`operation(name)` for ADR-010 Ruling 4's future
-    dispatch-time validation use (not implemented this session — see the
-    session report)."""
+    schema yet (ADR-010 Ruling 3) — the `explain.*` stubs (`explain.
+    plan_item`/`notification`/`suggestion`/`memory`) are the last of these
+    as of 2026-08-05; `held_action.*` joined the schema-attached set that
+    session, alongside `deadline.list`. `registry_snapshot()` serializes
+    each to its JSON Schema (`.model_json_schema()`) or explicit `null`;
+    the raw Pydantic class stays on `OPERATIONS`/`operation(name)` for
+    ADR-010 Ruling 4's dispatch-time validation (`api/dispatch.py::
+    _validate_schema`, implemented)."""
 
     request: type[BaseModel] | None = None
     response: type[BaseModel] | None = None
@@ -263,17 +270,29 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
     _op("explain.memory", "query", None, False, "Explain a memory record."),
     # held_action.* (ADR 001, ADR 002): channel-gated, not scope-gated — no
     # `kang`-only scope exists for these (API-003/SEC-004: first-party-only
-    # is a channel, never a grant). Handlers are not yet wired into the
-    # composition root (no held-action feature is live end-to-end); these
-    # entries register the contract shape ahead of that wiring, per 17 §4's
-    # "ports/registry first" ordering discipline.
+    # is a channel, never a grant). Handlers wired 2026-08-05
+    # (operations.py::make_held_action_approve_handler/
+    # make_held_action_cancel_handler) — transition-only (pending ->
+    # approved | cancelled); driving an approved action's effect to
+    # `executed` is a separate, still-open gap (see that handler's own
+    # docstring for why: the row has no stored params to replay against).
+    #
+    # commit_mode="transactional" here describes THESE operations' own
+    # direct effect — a `held_action.status` flip, always representable as
+    # one `kang.db` write (ADR-001 Amendment's default case) — not the
+    # commit_mode of whatever operation the held action names, which is
+    # separate registry metadata on that operation's own entry and only
+    # matters once effect-driving is built.
     _op(
         "held_action.approve",
         "command",
         None,
         True,
         "Approve a pending held action; drives its effect per commit_mode.",
-        channel=OperationChannel(first_party_only=True),
+        channel=OperationChannel(first_party_only=True, commit_mode="transactional"),
+        schemas=OperationSchemas(
+            request=HeldActionApproveRequest, response=HeldActionApproveResponse
+        ),
     ),
     _op(
         "held_action.cancel",
@@ -281,7 +300,10 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         None,
         True,
         "Decline a pending held action.",
-        channel=OperationChannel(first_party_only=True),
+        channel=OperationChannel(first_party_only=True, commit_mode="transactional"),
+        schemas=OperationSchemas(
+            request=HeldActionCancelRequest, response=HeldActionCancelResponse
+        ),
     ),
 )
 

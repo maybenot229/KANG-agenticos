@@ -41,6 +41,7 @@ from kang.adapters.scheduler import CRON_PREFIX, parse_cron
 from kang.adapters.sqlite.calendar_store import SqliteCalendarStore
 from kang.adapters.sqlite.connection import open_connection
 from kang.adapters.sqlite.deadline_store import SqliteDeadlineStore
+from kang.adapters.sqlite.held_action_store import SqliteHeldActionStore
 from kang.adapters.sqlite.idempotency_store import SqliteIdempotencyStore
 from kang.adapters.sqlite.invocation_store import SqliteInvocationStore
 from kang.adapters.sqlite.job_store import SqliteJobStore, SqliteKillSwitch
@@ -58,6 +59,8 @@ from kang.api.operations import (
     make_deadline_sweep_handler,
     make_explain_invocation_handler,
     make_explain_stub_handler,
+    make_held_action_approve_handler,
+    make_held_action_cancel_handler,
     make_notification_ack_handler,
     make_plan_generate_handler,
     make_registry_get_handler,
@@ -273,6 +276,7 @@ class _HandlerWiring:
     deadline_store: object
     notification_store: object
     invocations: object
+    held_action_store: object
 
 
 def _build_handlers(w: _HandlerWiring) -> dict:
@@ -310,6 +314,10 @@ def _build_handlers(w: _HandlerWiring) -> dict:
         "explain.notification": make_explain_stub_handler("notification"),
         "explain.suggestion": make_explain_stub_handler("suggestion"),
         "explain.memory": make_explain_stub_handler("memory record"),
+        "held_action.approve": make_held_action_approve_handler(
+            w.held_action_store, w.clock
+        ),
+        "held_action.cancel": make_held_action_cancel_handler(w.held_action_store),
     }
 
 
@@ -345,6 +353,7 @@ def build_core(kang_home: Path, device_id: str = "device-local") -> Core:
     task_store = SqliteTaskStore(kang, clock)
     deadline_store = SqliteDeadlineStore(kang, clock)
     invocations = SqliteInvocationStore(kang)
+    held_action_store = SqliteHeldActionStore(kang)
     handlers = _build_handlers(
         _HandlerWiring(
             connection=kang,
@@ -357,6 +366,7 @@ def build_core(kang_home: Path, device_id: str = "device-local") -> Core:
             deadline_store=deadline_store,
             notification_store=notification_store,
             invocations=invocations,
+            held_action_store=held_action_store,
         )
     )
     dispatcher = Dispatcher(
