@@ -1,0 +1,49 @@
+/* The overlay window has no chrome (decorations: false in
+   tauri.conf.json), so this file draws its entire visible surface —
+   unlike QuickCapture.css, which only styles a panel inset into the
+   already-chromed main window. */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.overlay {
+  box-sizing: border-box;
+  width: 100vw;
+  height: 100vh;
+  padding: var(--space-2);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-accent-muted);
+}
+
+.overlay__input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  font-size: var(--type-scale-base);
+  padding: var(--space-2);
+  outline: none;
+}
+
+.overlay__input:focus {
+  border-color: var(--color-accent);
+}
+
+.overlay__done {
+  margin: 0;
+  color: var(--color-success);
+  font-size: var(--type-scale-sm);
+}
+
+.overlay__error {
+  margin: var(--space-1) 0 0;
+  color: var(--color-critical);
+  font-size: var(--type-scale-xs);
+}

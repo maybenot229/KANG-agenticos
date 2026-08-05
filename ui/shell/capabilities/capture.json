@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "capture",
+  "description": "Capabilities for KANG's quick-capture overlay window (NFR-011): hide/show/focus and listening for the Rust-emitted 'shown' event, so the frontend can dismiss itself after Enter/Escape without a round-trip through a custom command. No filesystem, shell, network, or tray capabilities — same pure-API-client posture as capabilities/default.json.",
+  "windows": ["capture"],
+  "permissions": [
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:event:allow-listen"
+  ]
+}

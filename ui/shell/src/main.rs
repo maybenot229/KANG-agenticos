@@ -20,8 +20,41 @@ use serde::Serialize;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    Manager,
+    Emitter, Manager,
 };
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+
+/// The quick-capture hotkey (NFR-011, 09_UI §3). One definition, used both
+/// to register it and to recognise it in the handler — Ctrl+Shift+Space
+/// matches the M6 pre-work spike (ADR-007 §3 criterion A), which already
+/// confirmed no collision with OS or application shortcuts on the target
+/// machine; a different binding would need that check re-run.
+fn capture_shortcut() -> Shortcut {
+    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space)
+}
+
+/// Event name the "capture" window listens for (`ui/src/capture/
+/// CaptureOverlay.tsx`) to clear its input and restart NFR-011's latency
+/// clock on every summon — the window is created once and shown/hidden
+/// thereafter, never recreated per invocation, so without this the second
+/// and later summons would show whatever was left over from the previous
+/// capture.
+const CAPTURE_SHOWN_EVENT: &str = "quick-capture:shown";
+
+/// Show the overlay and hand focus to it — never touches "main" (09_UI
+/// §3: "MUST NOT open the main window if invoked globally"). Hiding it
+/// again (on Enter-success or Escape, both handled frontend-side via the
+/// "capture" capability's allow-hide grant) is expected to return focus
+/// to whatever Kang was doing (W2) the same way it did in the spike
+/// (ADR-007 §3 criterion B) — plain window show/hide, no extra Win32
+/// focus-restoration code, since none was needed there either.
+fn show_capture_overlay(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("capture") {
+        let _ = win.show();
+        let _ = win.set_focus();
+        let _ = app.emit_to("capture", CAPTURE_SHOWN_EVENT, ());
+    }
+}
 
 /// The session handshake (API-003): the Core writes `%KANG_HOME%/session.json`
 /// with `{host, port, token}` at startup (composition.py::serve). The shell's
@@ -80,12 +113,24 @@ fn main() {
             },
         ))
         // --- Global shortcut plugin (registered second, per ADR-008) ---
-        // No shortcut is bound here: which key and what it invokes is
-        // quick-capture behaviour (09_UI §3), a separate, later task.
-        // This registers the plugin only, so the ordering constraint
-        // is real and testable now, without inventing capture behaviour.
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        // The handler only reacts to `Pressed` (not `Released`) so one
+        // physical key-down doesn't summon the overlay twice.
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    if event.state() == ShortcutState::Pressed && *shortcut == capture_shortcut()
+                    {
+                        show_capture_overlay(app);
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
+            // Binds the shortcut this run (ADR-008 Part A's single-instance
+            // enforcement is what stops a second launch from panicking on
+            // this exact call — see 4.2 in ADR-007's spike report).
+            app.global_shortcut().register(capture_shortcut())?;
+
             let show = MenuItem::with_id(app, "show", "Show KANG", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;

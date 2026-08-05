@@ -17,6 +17,20 @@
         "width": 800,
         "height": 600,
         "visible": false
+      },
+      {
+        "label": "capture",
+        "title": "KANG — Quick Capture",
+        "url": "capture.html",
+        "width": 560,
+        "height": 76,
+        "resizable": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "center": true,
+        "visible": false,
+        "shadow": true
       }
     ]
   },
