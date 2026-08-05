@@ -64,6 +64,7 @@ export default function App() {
   const [captureOpen, setCaptureOpen] = useState(false);
   const [location, setLocation] = useState<Location>("Dashboard");
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [deadlineFormOpen, setDeadlineFormOpen] = useState(false);
 
   // Ctrl+K opens the palette from anywhere in the app (UI-002: "open
   // from anywhere") — a window-level listener, not scoped to one
@@ -109,6 +110,10 @@ export default function App() {
           currentLocation={location}
           onNavigate={(loc) => setLocation(loc as Location)}
           onOpenCapture={() => setCaptureOpen(true)}
+          onOpenDeadlineForm={() => {
+            setLocation("Dashboard"); // Zone 2 (where the form lives) is Dashboard-only
+            setDeadlineFormOpen(true);
+          }}
           onClose={() => setPaletteOpen(false)}
         />
       )}
@@ -145,7 +150,10 @@ export default function App() {
               <TodaysQuests />
             </div>
             <div className="dashboard__zone-2">
-              <Attention />
+              <Attention
+                formOpen={deadlineFormOpen}
+                onFormOpenChange={setDeadlineFormOpen}
+              />
             </div>
             <div className="dashboard__zone-3">
               <WhatChanged />

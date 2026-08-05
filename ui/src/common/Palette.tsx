@@ -15,13 +15,15 @@ import "./Palette.css";
  * P0-local").
  *
  * **Act** — "registered commands... each maps 1:1 to an API operation."
- * Scoped to exactly one real, complete command this pass: "New task…",
- * which opens the existing QuickCapture panel rather than reimplementing
- * task-creation input a second time (the same one-concept-one-
- * implementation discipline `useQuickCapture` already established).
- * `deadline.create`/`plan.generate` are real operations too, but neither
- * has a UI form/refresh-plumbing built yet to drive from here honestly —
- * added when that exists, not stubbed now.
+ * Two real, complete commands now: "New task…" (opens `QuickCapture`) and
+ * "New deadline…" (added 2026-08-05, opens `DeadlineForm` — jumping to
+ * Dashboard first since Zone 2, where the form lives, is Dashboard-only).
+ * Both open an existing panel rather than reimplementing its input a
+ * second time (the same one-concept-one-implementation discipline
+ * `useQuickCapture`/`useDeadlineCreate` already establish).
+ * `plan.generate` is a real operation too, but has no UI form/refresh-
+ * plumbing built yet to drive from here honestly — added when that
+ * exists, not stubbed now.
  *
  * **Find** — 06_MEMORY's hybrid search doesn't exist yet (the memory
  * domain is an empty stub); this register says so rather than returning
@@ -43,12 +45,14 @@ export default function Palette({
   currentLocation,
   onNavigate,
   onOpenCapture,
+  onOpenDeadlineForm,
   onClose,
 }: {
   locations: readonly PaletteLocation[];
   currentLocation: PaletteLocation;
   onNavigate: (location: PaletteLocation) => void;
   onOpenCapture: () => void;
+  onOpenDeadlineForm: () => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -74,8 +78,16 @@ export default function Palette({
           onClose();
         },
       },
+      {
+        id: "new-deadline",
+        label: "New deadline…",
+        run: () => {
+          onOpenDeadlineForm();
+          onClose();
+        },
+      },
     ],
-    [onOpenCapture, onClose],
+    [onOpenCapture, onOpenDeadlineForm, onClose],
   );
 
   const actResults = useMemo(() => {

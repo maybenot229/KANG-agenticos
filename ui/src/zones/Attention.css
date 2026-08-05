@@ -7,6 +7,19 @@
   font-size: var(--type-scale-sm);
   margin: var(--space-3) 0 var(--space-2);
   color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.attention__add-deadline {
+  font-size: var(--type-scale-xs);
+  padding: 2px var(--space-2);
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
 }
 
 .attention__subheading:first-of-type {

@@ -3,6 +3,7 @@ import { callOperation, ApiError } from "../api/client";
 import type { DeadlineListResponse } from "../generated/deadline";
 import type { HeldActionListItem, HeldActionListResponse } from "../generated/held_action";
 import ConfirmDialog from "../common/ConfirmDialog";
+import DeadlineForm from "./DeadlineForm";
 import "./Attention.css";
 
 /**
@@ -18,6 +19,12 @@ import "./Attention.css";
  * not hidden). "Competitions first" still cannot be ordered against
  * anything real (the competitions domain is an empty stub); "health
  * alerts" names a concept 09_UI never defines. Both remain honest gaps.
+ *
+ * `deadline.create` gained its first real form here (added 2026-08-05,
+ * handoff Section 6 item 2): `formOpen`/`onFormOpenChange` are lifted to
+ * `App.tsx` (mirroring `captureOpen`'s own lift for `QuickCapture`) so
+ * the palette's "New deadline…" Act command can open the same panel from
+ * any screen, not just Zone 2's own "+ New deadline" button.
  */
 
 type LoadState =
@@ -29,7 +36,13 @@ type LoadState =
       heldActions: HeldActionListItem[];
     };
 
-export default function Attention() {
+export default function Attention({
+  formOpen,
+  onFormOpenChange,
+}: {
+  formOpen: boolean;
+  onFormOpenChange: (open: boolean) => void;
+}) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [reviewing, setReviewing] = useState<HeldActionListItem | null>(null);
 
@@ -108,7 +121,24 @@ export default function Attention() {
             </ul>
           )}
 
-          <h3 className="attention__subheading">Deadlines</h3>
+          <h3 className="attention__subheading">
+            Deadlines
+            <button
+              type="button"
+              className="attention__add-deadline"
+              onClick={() => onFormOpenChange(!formOpen)}
+            >
+              + New deadline
+            </button>
+          </h3>
+          {formOpen && (
+            <DeadlineForm
+              onClose={() => {
+                onFormOpenChange(false);
+                load({ current: false }); // re-fetch: the tracked deadline joins the horizon
+              }}
+            />
+          )}
           {state.deadlines.length === 0 ? (
             <p className="attention__status">No deadlines currently tracked.</p>
           ) : (
