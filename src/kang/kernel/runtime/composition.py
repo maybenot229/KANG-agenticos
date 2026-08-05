@@ -61,6 +61,7 @@ from kang.api.operations import (
     make_explain_stub_handler,
     make_held_action_approve_handler,
     make_held_action_cancel_handler,
+    make_held_action_list_handler,
     make_notification_ack_handler,
     make_permission_list_handler,
     make_plan_generate_handler,
@@ -320,6 +321,7 @@ def _build_handlers(w: _HandlerWiring) -> dict:
             w.held_action_store, w.clock
         ),
         "held_action.cancel": make_held_action_cancel_handler(w.held_action_store),
+        "held_action.list": make_held_action_list_handler(w.held_action_store),
         "permission.list": make_permission_list_handler(w.permission_engine),
     }
 

@@ -3,6 +3,16 @@
   margin: 0 0 var(--space-4);
 }
 
+.attention__subheading {
+  font-size: var(--type-scale-sm);
+  margin: var(--space-3) 0 var(--space-2);
+  color: var(--color-text-secondary);
+}
+
+.attention__subheading:first-of-type {
+  margin-top: 0;
+}
+
 .attention__status {
   color: var(--color-text-secondary);
 }
@@ -41,6 +51,18 @@
 .attention__meta {
   font-size: var(--type-scale-xs);
   color: var(--color-text-secondary);
+}
+
+.attention__review {
+  align-self: flex-start;
+  margin-top: var(--space-1);
+  padding: 2px var(--space-2);
+  background: transparent;
+  color: var(--color-critical);
+  border: 1px solid var(--color-critical);
+  border-radius: var(--radius-sm);
+  font-size: var(--type-scale-xs);
+  cursor: pointer;
 }
 
 .attention__note {

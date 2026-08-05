@@ -27,6 +27,9 @@ __all__ = [
     "HeldActionApproveResponse",
     "HeldActionCancelRequest",
     "HeldActionCancelResponse",
+    "HeldActionListItem",
+    "HeldActionListRequest",
+    "HeldActionListResponse",
 ]
 
 
@@ -58,3 +61,42 @@ class HeldActionCancelResponse(BaseModel):
 
     id: str
     status: str
+
+
+class HeldActionListRequest(BaseModel):
+    """`held_action.list` params
+    (operations.py::make_held_action_list_handler). No fields: the
+    handler takes none, mirroring `DeadlineSweepRequest`."""
+
+
+class HeldActionListItem(BaseModel):
+    """One pending held action — exactly the 09_UI §7 confirm-dialog
+    fields (what/who/why/reversibility), plus the identifiers the dialog
+    and the approve/cancel calls need. Not the full `deadline_event_
+    payload`-style replay shape; `HeldAction`'s own fields already are
+    the dialog contents (12_API §7), so this mirrors the dataclass
+    directly rather than hand-picking a subset."""
+
+    id: str
+    operation: str
+    action: str
+    principal: str
+    reason: str
+    reversibility: str
+    correlation_id: str
+    created_at: str
+    expires_at: str
+    status: str
+
+
+class HeldActionListResponse(BaseModel):
+    """`held_action.list` result: every `pending` held action, oldest
+    first — `HeldActionStore.pending()`'s existing contract
+    (`domain/ports/held_action.py`), exposed through the API for the
+    first time. Added 2026-08-05 for the dashboard's Zone 2 (09_UI §4:
+    "approval queue count"; §7: "Held actions... appear in Zone 2 with
+    age; they expire visibly, never silently") and the confirm dialog
+    that reads one entry to render. No new domain logic — `pending()`
+    already existed."""
+
+    held_actions: list[HeldActionListItem]

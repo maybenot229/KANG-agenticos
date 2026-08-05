@@ -66,6 +66,7 @@ __all__ = [
     "make_explain_stub_handler",
     "make_held_action_approve_handler",
     "make_held_action_cancel_handler",
+    "make_held_action_list_handler",
     "make_notification_ack_handler",
     "make_permission_list_handler",
     "make_plan_generate_handler",
@@ -560,6 +561,39 @@ def make_held_action_cancel_handler(held_actions: HeldActionStore) -> Handler:
         except HeldActionNotFound as exc:
             raise ApiError("not_found", str(exc)) from exc
         return {"id": cancelled.id, "status": cancelled.status}
+
+    return handler
+
+
+def make_held_action_list_handler(held_actions: HeldActionStore) -> Handler:
+    """`held_action.list` (added 2026-08-05, dashboard Zone 2's approval
+    queue + the confirm dialog, 09_UI §4/§7): every `pending` held action,
+    oldest first — `HeldActionStore.pending()`'s existing contract,
+    exposed through the API for the first time. Mirrors the dataclass
+    directly (id/operation/action/principal/reason/reversibility/
+    correlation_id/created_at/expires_at/status): unlike `deadline.list`,
+    there is no separate "full replay payload" to distinguish from here —
+    `HeldAction`'s fields already are exactly 12_API §7's dialog
+    contents, nothing more to trim."""
+
+    def handler(context: HandlerContext, params: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "held_actions": [
+                {
+                    "id": a.id,
+                    "operation": a.operation,
+                    "action": a.action,
+                    "principal": a.principal,
+                    "reason": a.reason,
+                    "reversibility": a.reversibility,
+                    "correlation_id": a.correlation_id,
+                    "created_at": a.created_at,
+                    "expires_at": a.expires_at,
+                    "status": a.status,
+                }
+                for a in held_actions.pending()
+            ]
+        }
 
     return handler
 

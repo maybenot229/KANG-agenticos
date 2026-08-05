@@ -39,6 +39,8 @@ from kang.api.schemas.held_action import (
     HeldActionApproveResponse,
     HeldActionCancelRequest,
     HeldActionCancelResponse,
+    HeldActionListRequest,
+    HeldActionListResponse,
 )
 from kang.api.schemas.notification import (
     NotificationAckRequest,
@@ -323,6 +325,22 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         channel=OperationChannel(first_party_only=True, commit_mode="transactional"),
         schemas=OperationSchemas(
             request=HeldActionCancelRequest, response=HeldActionCancelResponse
+        ),
+    ),
+    # held_action.list: added 2026-08-05 for the dashboard's Zone 2
+    # approval queue and the confirm dialog (09_UI §4/§7). Scope-gated
+    # (`held_actions.read`, following `deadlines.read`'s naming pattern),
+    # not channel-gated: unlike approve/cancel, listing pending held
+    # actions isn't on 05_AGENTS Appendix D's closed list — it's a read,
+    # not the consequential step itself. No commit_mode: not consequential.
+    _op(
+        "held_action.list",
+        "query",
+        "held_actions.read",
+        False,
+        "List every pending held action, oldest first.",
+        schemas=OperationSchemas(
+            request=HeldActionListRequest, response=HeldActionListResponse
         ),
     ),
 )

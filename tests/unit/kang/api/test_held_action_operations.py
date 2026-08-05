@@ -29,6 +29,7 @@ from kang.api.errors import ApiError
 from kang.api.operations import (
     make_held_action_approve_handler,
     make_held_action_cancel_handler,
+    make_held_action_list_handler,
 )
 from kang.domain.ports.held_action import HeldAction
 
@@ -73,6 +74,11 @@ def _approve(wiring, held_action_id: str) -> dict:
 def _cancel(wiring, held_action_id: str) -> dict:
     handler = make_held_action_cancel_handler(wiring["store"])
     return handler(CONTEXT, {"id": held_action_id})
+
+
+def _list(wiring) -> dict:
+    handler = make_held_action_list_handler(wiring["store"])
+    return handler(CONTEXT, {})
 
 
 class TestApprove:
@@ -146,3 +152,47 @@ class TestCancel:
         with pytest.raises(ApiError) as exc:
             _cancel(wiring, seeded.id)
         assert exc.value.code == "not_found"
+
+
+class TestList:
+    """`held_action.list`, added 2026-08-05 for the dashboard's Zone 2
+    approval queue and the confirm dialog (09_UI §4/§7). The claim: it
+    exposes `HeldActionStore.pending()`'s existing contract verbatim —
+    pending-only, oldest first — and every field the confirm dialog
+    needs (what/who/why/reversibility)."""
+
+    def test_empty_store_lists_nothing(self, wiring):
+        assert _list(wiring) == {"held_actions": []}
+
+    def test_lists_a_pending_action_with_every_dialog_field(self, wiring):
+        seeded = _seed_pending(wiring)
+        (item,) = _list(wiring)["held_actions"]
+        assert item == {
+            "id": seeded.id,
+            "operation": seeded.operation,
+            "action": seeded.action,
+            "principal": seeded.principal,
+            "reason": seeded.reason,
+            "reversibility": seeded.reversibility,
+            "correlation_id": seeded.correlation_id,
+            "created_at": seeded.created_at,
+            "expires_at": seeded.expires_at,
+            "status": "pending",
+        }
+
+    def test_approved_actions_drop_off_the_pending_list(self, wiring):
+        seeded = _seed_pending(wiring)
+        _approve(wiring, seeded.id)
+        assert _list(wiring) == {"held_actions": []}
+
+    def test_cancelled_actions_drop_off_the_pending_list(self, wiring):
+        seeded = _seed_pending(wiring)
+        _cancel(wiring, seeded.id)
+        assert _list(wiring) == {"held_actions": []}
+
+    def test_oldest_first(self, wiring):
+        first = _seed_pending(wiring, id="ha-a", action="first")
+        wiring["clock"].advance(3600)
+        _seed_pending(wiring, id="ha-b", action="second")
+        ids = [a["id"] for a in _list(wiring)["held_actions"]]
+        assert ids[0] == first.id
