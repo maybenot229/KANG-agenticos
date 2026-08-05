@@ -17,5 +17,5 @@ Append-only; an ADR that reverses or narrows another MUST cite it.
 | [009](009-http-transport-and-schema-authority.md) | HTTP transport ratified as stdlib `http.server`; Pydantic adopted for operation schemas | accepted | 04_ARCH D002, 12_API §2/§16, 17_PROJECT_STRUCTURE §4.2, 03_ROADMAP §8 |
 | [010](010-pydantic-schema-implementation.md) | Pydantic schema implementation: layout, attachment, null-schema contract, validation-error mapping | accepted | 12_API §2/§16, 17_PROJECT_STRUCTURE (`api/schemas/`), `src/kang/api/registry/__init__.py`, `src/kang/api/dispatch.py` |
 | [011](011-ts-client-generator.md) | Registry→TypeScript client generator: json-schema-to-typescript | proposed | 03_ROADMAP §8, 17_PROJECT_STRUCTURE §2, 18_IMPLEMENTATION_MASTER_PLAN §3 M6 |
-| [012](012-ui-interaction-test-harness.md) | UI-interaction test harness: Vitest + React Testing Library | proposed | 13_TESTING §2.6, 17_PROJECT_STRUCTURE (no new top-level dir), 18_IMPLEMENTATION_MASTER_PLAN §3 M6 |
-| [013](013-project-created-event.md) | Register `project.created`: the Projects domain's first write path | proposed | 15_EVENT_BUS §6.1/§6.3, 07_DATABASE §5.6, 13_TESTING §16.2 |
+| [012](012-ui-interaction-test-harness.md) | UI-interaction test harness: Vitest + React Testing Library | accepted | 13_TESTING §2.6, 17_PROJECT_STRUCTURE (no new top-level dir), 18_IMPLEMENTATION_MASTER_PLAN §3 M6 |
+| [013](013-project-created-event.md) | Register `project.created`: the Projects domain's first write path | accepted | 15_EVENT_BUS §6.1/§6.3, 07_DATABASE §5.6, 13_TESTING §16.2 |

@@ -1,6 +1,6 @@
 # ADR-012 — UI-interaction test harness: Vitest + React Testing Library
 
-**Status:** proposed
+**Status:** accepted
 **Date:** 2026-08-05
 **Decides:** the session handoff's Section 6 item 3 ("Automated UI-interaction test harness... may be worth a deliberate decision (and possibly a new dependency/ADR — Vitest + Testing Library or Playwright are the obvious candidates, neither currently in `ui/package.json`)").
 **Affected documents:** `13_TESTING.md` §2.6 (names "UI: same API fixtures ⇒ same render tree" as a determinism-test class; this ADR is the tooling ruling that class was waiting for), `17_PROJECT_STRUCTURE.md` (no new top-level directory — see Consequences), `18_IMPLEMENTATION_MASTER_PLAN.md` §3 M6.

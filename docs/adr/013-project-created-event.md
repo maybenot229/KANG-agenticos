@@ -1,6 +1,6 @@
 # ADR-013 — Register `project.created`: the Projects domain's first write path
 
-**Status:** proposed
+**Status:** accepted
 **Date:** 2026-08-06
 **Decides:** ADR-004's own deferred item — *"`competition.*` events are NOT registered... Whichever increment adds [project/]competition write behavior files that ADR"* — this is that increment, for `project`.
 **Affected documents:** 15_EVENT_BUS §6.1/§6.3 (closed taxonomy gains one entry), 07_DATABASE §5.6 (the `project` table's change-capture trigger, missing since 0006 — added alongside this ADR's implementation), 13_TESTING §16.2 (payload-sufficiency obligation follows for a recovery-grade type).
