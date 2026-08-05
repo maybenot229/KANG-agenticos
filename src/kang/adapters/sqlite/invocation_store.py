@@ -89,3 +89,10 @@ class SqliteInvocationStore:
         if row is None:
             raise InvocationNotFound(correlation_id)
         return _row_to_invocation(row)
+
+    def recent(self, limit: int) -> list[Invocation]:
+        rows = self._conn.execute(
+            f"SELECT {_COLUMNS} FROM invocation ORDER BY started DESC, id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [_row_to_invocation(row) for row in rows]

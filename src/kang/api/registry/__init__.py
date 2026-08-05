@@ -43,6 +43,10 @@ from kang.api.schemas.held_action import (
     HeldActionListRequest,
     HeldActionListResponse,
 )
+from kang.api.schemas.invocation import (
+    InvocationListRequest,
+    InvocationListResponse,
+)
 from kang.api.schemas.notification import (
     NotificationAckRequest,
     NotificationAckResponse,
@@ -365,6 +369,24 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         "List every scheduled job's status and whether automation is paused.",
         schemas=OperationSchemas(
             request=SystemHealthRequest, response=SystemHealthResponse
+        ),
+    ),
+    # invocation.list: added 2026-08-05 for the System-domain Invocations
+    # view (09_UI §12). scope=None, matching audit.list/system.health's own
+    # precedent just above — the execution ledger is system metadata about
+    # the Core itself, not a domain resource a domain-verb scope would fit.
+    # Unlike those two, this is genuinely new port surface
+    # (`InvocationStore.recent()`), not pure exposure of something that
+    # already existed — `InvocationStore` had no list method at all before
+    # this (only `by_correlation`, a point lookup).
+    _op(
+        "invocation.list",
+        "query",
+        None,
+        False,
+        "List the most recent invocations, newest first.",
+        schemas=OperationSchemas(
+            request=InvocationListRequest, response=InvocationListResponse
         ),
     ),
 )

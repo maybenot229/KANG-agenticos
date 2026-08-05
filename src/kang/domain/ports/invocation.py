@@ -64,3 +64,18 @@ class InvocationStore(Protocol):
         """The invocation for this correlation_id, or raise
         InvocationNotFound — explain's primary source (12 §12)."""
         ...
+
+    def recent(self, limit: int) -> list[Invocation]:
+        """The most recent `limit` invocations, newest-`started`-first —
+        the System-domain Invocations view's source (09_UI §12: "the
+        agent run history... outcome badges, durations"). Not cursor-
+        paginated (API-008 names cursor pagination as the default for
+        "all list queries"); this is a single bounded page, the same
+        simplification `deadline.list`/`held_action.list`/`audit.list`
+        already made for their own bounded sets. Those three read a
+        naturally-small set in full; this ledger grows with every
+        command/query, so a hard `limit` (not merely "no filter yet")
+        is the honest floor here, not the same shortcut restated —
+        real cursor pagination remains open if this list ever needs to
+        page past its first `limit` rows."""
+        ...

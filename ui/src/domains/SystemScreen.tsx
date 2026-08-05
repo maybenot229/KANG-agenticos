@@ -3,6 +3,7 @@ import { callOperation, ApiError } from "../api/client";
 import PermissionsPanel from "./PermissionsPanel";
 import ActivityPanel from "./ActivityPanel";
 import HealthPanel from "./HealthPanel";
+import InvocationsPanel from "./InvocationsPanel";
 import "./SystemScreen.css";
 
 /**
@@ -24,14 +25,15 @@ import "./SystemScreen.css";
  *
  * 09_UI §12 also names Activity (audit stream), Invocations (run
  * history), Ledger (model spend), and Health (job/backup status) as
- * System-domain views. Activity and Health are real now (2026-08-05,
+ * System-domain views. Activity and Health are real (2026-08-05,
  * `ActivityPanel`/`HealthPanel` below) — `composition.py`'s job-store/
  * kill-switch construction was moved out of `_wire_scheduler` (which
  * only ran it when `kang.toml` loaded, per 07 F8's fail-closed shape) so
  * the Health view has them regardless of whether automation is
- * configured. Invocations has no list method on `InvocationStore` at all
- * (only `by_correlation`, a point lookup) — a bigger, still-open gap.
- * Ledger (model spend) has nothing to expose: no model calls exist yet
+ * configured. Invocations is real too now (`InvocationsPanel` below) —
+ * `InvocationStore` gained its first list method (`recent()`, new port
+ * surface, not pure exposure like the others) the same session. Ledger
+ * (model spend) still has nothing to expose: no model calls exist yet
  * (M4/M5 are zero-model by construction).
  */
 
@@ -127,14 +129,15 @@ export default function SystemScreen() {
       </div>
 
       <p className="system__note">
-        Invocations (run history) and Ledger (model spend) aren't built
-        yet — Invocations has no list capability on its store at all, and
-        Ledger has nothing to show (no model calls exist yet).
+        Ledger (model spend) isn't built yet — no model calls exist yet
+        (M4/M5 are zero-model by construction), so there is nothing to
+        show.
       </p>
 
       <PermissionsPanel />
       <HealthPanel />
       <ActivityPanel />
+      <InvocationsPanel />
     </section>
   );
 }

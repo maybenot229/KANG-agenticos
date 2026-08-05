@@ -63,6 +63,7 @@ from kang.api.operations import (
     make_held_action_approve_handler,
     make_held_action_cancel_handler,
     make_held_action_list_handler,
+    make_invocation_list_handler,
     make_notification_ack_handler,
     make_permission_list_handler,
     make_plan_generate_handler,
@@ -329,6 +330,7 @@ def _build_handlers(w: _HandlerWiring) -> dict:
         "permission.list": make_permission_list_handler(w.permission_engine),
         "audit.list": make_audit_list_handler(w.audit, w.clock),
         "system.health": make_system_health_handler(w.job_store, w.kill_switch),
+        "invocation.list": make_invocation_list_handler(w.invocations),
     }
 
 

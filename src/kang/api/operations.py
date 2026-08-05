@@ -20,6 +20,7 @@ from typing import Any, Callable
 from kang.api.dispatch import Handler, HandlerContext
 from kang.api.errors import ApiError
 from kang.api.registry import registry_snapshot
+from kang.api.schemas.invocation import DEFAULT_LIMIT, MAX_LIMIT
 from kang.domain.deadlines import (
     DeadlineDraft,
     DeadlineValidationError,
@@ -69,6 +70,7 @@ __all__ = [
     "make_held_action_approve_handler",
     "make_held_action_cancel_handler",
     "make_held_action_list_handler",
+    "make_invocation_list_handler",
     "make_notification_ack_handler",
     "make_permission_list_handler",
     "make_plan_generate_handler",
@@ -738,6 +740,47 @@ def make_system_health_handler(job_store: JobStore, kill_switch: KillSwitch) -> 
                 for job in job_store.list_jobs()
             ],
             "automation_engaged": kill_switch.is_engaged(),
+        }
+
+    return handler
+
+
+def make_invocation_list_handler(invocations: InvocationStore) -> Handler:
+    """`invocation.list` (added 2026-08-05, System-domain Invocations view,
+    09_UI §12): the `limit` most recent invocations, newest-`started`-first
+    — `InvocationStore.recent()`, new port surface (unlike `deadline.list`/
+    `held_action.list`/`audit.list`, `InvocationStore` had no list method
+    at all before this). `limit` defaults to `DEFAULT_LIMIT` and clamps to
+    `MAX_LIMIT` (12_API §15's standing "default page 50, max 500") rather
+    than raising `invalid_request` on an over-large value — a clamp is the
+    same shape `plan.generate`'s date-default and `audit.list`'s month-
+    default already use for "no value supplied," and an over-large `limit`
+    is a client asking for more than the standing cap allows, not a
+    malformed request."""
+
+    def handler(context: HandlerContext, params: dict[str, Any]) -> dict[str, Any]:
+        requested = params.get("limit")
+        # max(1, ...): SQLite's LIMIT -1 (or 0) means "unlimited" — clamping
+        # only the top end would let a non-positive `limit` defeat the
+        # entire point of a bounded page.
+        limit = (
+            DEFAULT_LIMIT if requested is None else max(1, min(requested, MAX_LIMIT))
+        )
+        return {
+            "invocations": [
+                {
+                    "id": inv.id,
+                    "correlation_id": inv.correlation_id,
+                    "kind": inv.kind,
+                    "operation": inv.operation,
+                    "principal": inv.principal,
+                    "trigger": inv.trigger,
+                    "started": inv.started,
+                    "finished": inv.finished,
+                    "outcome": inv.outcome,
+                }
+                for inv in invocations.recent(limit)
+            ]
         }
 
     return handler

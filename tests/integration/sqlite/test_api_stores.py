@@ -5,6 +5,7 @@ guarantees are pinned directly against the real adapter."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -56,6 +57,24 @@ def test_invocation_start_finish_and_lookup_by_correlation(conn):
 def test_invocation_unknown_correlation_raises(conn):
     with pytest.raises(InvocationNotFound):
         SqliteInvocationStore(conn).by_correlation("nope")
+
+
+def test_invocation_recent_orders_newest_first_and_respects_limit(conn):
+    store = SqliteInvocationStore(conn)
+    for n in range(1, 4):  # inv-1 .. inv-3, started strictly increasing
+        store.start(
+            replace(
+                _invocation(f"corr-{n}"),
+                id=f"inv-{n}",
+                started=f"2026-01-0{n}T00:00:00+00:00",
+            )
+        )
+
+    newest_two = store.recent(2)
+    assert [inv.id for inv in newest_two] == ["inv-3", "inv-2"]
+
+    everything = store.recent(10)
+    assert [inv.id for inv in everything] == ["inv-3", "inv-2", "inv-1"]
 
 
 def test_idempotency_first_write_wins(conn):

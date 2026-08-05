@@ -34,6 +34,12 @@ class FakeInvocationStore:
                 return invocation
         raise InvocationNotFound(correlation_id)
 
+    def recent(self, limit: int) -> list[Invocation]:
+        ordered = sorted(
+            self._by_id.values(), key=lambda inv: (inv.started, inv.id), reverse=True
+        )
+        return ordered[:limit]
+
 
 class FakeIdempotencyStore:
     def __init__(self) -> None:

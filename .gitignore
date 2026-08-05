@@ -7,6 +7,12 @@
 *.jsonl
 !docs/**/*.jsonl
 .env
+# session.json (API-003): the Core's session handshake file, written to
+# whatever KANG_HOME it's booted against — a live-verification run
+# pointed at the repo root by mistake once, landing this at the root
+# untracked and un-ignored (2026-08-05); closing the same gap the *.db
+# patterns above already close for their own runtime files.
+session.json
 
 # Python
 __pycache__/
