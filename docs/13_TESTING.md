@@ -62,7 +62,7 @@ New class, formalized here: **the event log and audit trail must support faithfu
 - Same store snapshot + same recipe ⇒ **byte-identical context manifest** (AG-009).
 - Same inputs ⇒ identical plan from the deterministic planner path; identical scoring, ordering, pagination.
 - Clock/Rng injection verified: freeze time, assert schedules, decay math, staleness probes compute exactly.
-- UI: same API fixtures ⇒ same render tree (snapshot tests on the zone structure — UI-P5's mechanical check).
+- UI: same API fixtures ⇒ same render tree (snapshot tests on the zone structure — UI-P5's mechanical check). Tooling: Vitest + React Testing Library (ADR-012) — component-level DOM/keyboard-interaction tests, mocking `callOperation` per its own client boundary; not a substitute for live verification against a real Core (ADR-012 §"Consequences").
 
 ### 2.7 Permission tests
 
