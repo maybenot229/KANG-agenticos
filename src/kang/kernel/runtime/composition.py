@@ -62,6 +62,7 @@ from kang.api.operations import (
     make_held_action_approve_handler,
     make_held_action_cancel_handler,
     make_notification_ack_handler,
+    make_permission_list_handler,
     make_plan_generate_handler,
     make_registry_get_handler,
     make_task_create_handler,
@@ -277,6 +278,7 @@ class _HandlerWiring:
     notification_store: object
     invocations: object
     held_action_store: object
+    permission_engine: object
 
 
 def _build_handlers(w: _HandlerWiring) -> dict:
@@ -318,6 +320,7 @@ def _build_handlers(w: _HandlerWiring) -> dict:
             w.held_action_store, w.clock
         ),
         "held_action.cancel": make_held_action_cancel_handler(w.held_action_store),
+        "permission.list": make_permission_list_handler(w.permission_engine),
     }
 
 
@@ -367,6 +370,7 @@ def build_core(kang_home: Path, device_id: str = "device-local") -> Core:
             notification_store=notification_store,
             invocations=invocations,
             held_action_store=held_action_store,
+            permission_engine=engine,
         )
     )
     dispatcher = Dispatcher(

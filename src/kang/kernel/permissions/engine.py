@@ -65,6 +65,25 @@ class PermissionEngine:
         if not self.allows(principal, scope):
             raise PermissionDenied(principal, scope)
 
+    def snapshot(self) -> dict[str, tuple[str, ...]]:
+        """Every principal's granted scopes, as the raw `permissions.toml`
+        strings (09_UI §7: the permission screen renders "in the same
+        scope language as permissions.toml" — `Scope.raw` preserves that
+        exactly, lossless). Read-only reflection of the loaded snapshot;
+        does not expose `_granted`'s parsed `Scope` objects, so a caller
+        cannot reach into the engine's internals, only read what it
+        holds.
+
+        Scopes within a principal are sorted, not insertion-order: they
+        are stored as a `frozenset` (construction dedupes and enables
+        `covers()` iteration), which has no stable order to preserve in
+        the first place — sorting makes the output deterministic across
+        runs instead of leaving it to incidental hash order."""
+        return {
+            principal: tuple(sorted(scope.raw for scope in scopes))
+            for principal, scopes in self._granted.items()
+        }
+
 
 def build_checked_engine(grants: Grants) -> PermissionEngine:
     """Pairing-lint the grants (10 §2.6, 05 §8 — the "lint at load" step,

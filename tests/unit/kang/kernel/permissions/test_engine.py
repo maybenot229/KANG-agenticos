@@ -89,3 +89,29 @@ def test_build_checked_engine_returns_a_usable_engine():
     engine = build_checked_engine({"kang": ("*",), "agent:x": ("vault.read",)})
     engine.check("agent:x", "vault.read")
     assert not engine.allows("agent:x", "vault.write:notes")
+
+
+class TestSnapshot:
+    """09_UI §7's permission screen ("every grant per principal, in the
+    same scope language as permissions.toml") reads through this — the
+    claim is that it reflects exactly what's loaded, verbatim, in the
+    original string form."""
+
+    def test_returns_every_principal_and_its_raw_scope_strings(self, engine):
+        snapshot = engine.snapshot()
+        assert snapshot["kang"] == ("*",)
+        assert snapshot["kernel:bus"] == ("events.publish:kang",)
+        # Sorted, not insertion order — the source frozenset has no stable
+        # order to preserve (see snapshot()'s own docstring).
+        assert snapshot["agent:planner"] == (
+            "events.publish:kang",
+            "memory.read:planning",
+        )
+
+    def test_matches_every_principal_construction_granted(self, engine):
+        assert set(engine.snapshot()) == {"kang", "kernel:bus", "agent:planner"}
+
+    def test_reflects_no_internal_scope_objects_only_strings(self, engine):
+        for scopes in engine.snapshot().values():
+            for scope in scopes:
+                assert isinstance(scope, str)

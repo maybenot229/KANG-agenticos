@@ -44,6 +44,10 @@ from kang.api.schemas.notification import (
     NotificationAckRequest,
     NotificationAckResponse,
 )
+from kang.api.schemas.permission import (
+    PermissionListRequest,
+    PermissionListResponse,
+)
 from kang.api.schemas.plan import PlanGenerateRequest, PlanGenerateResponse
 from kang.api.schemas.task import (
     TaskCreateRequest,
@@ -158,6 +162,22 @@ def _op(
 # are freely retryable (API-001).
 OPERATIONS: tuple[dict[str, Any], ...] = (
     _op("registry.get", "query", None, False, "Serve this registry."),
+    # permission.list (added 2026-08-05, 09_UI §7's System-domain permission
+    # screen): scope=None, matching registry.get's own precedent — this
+    # serves system metadata about the contract/authority model itself,
+    # not a domain resource, so a domain-verb scope would be the wrong
+    # vocabulary. Read-only: viewing a grant is not consequential (09_UI §7
+    # draws that line at *changing* one, which this operation cannot do).
+    _op(
+        "permission.list",
+        "query",
+        None,
+        False,
+        "List every principal's granted scopes, with plain-language consequences.",
+        schemas=OperationSchemas(
+            request=PermissionListRequest, response=PermissionListResponse
+        ),
+    ),
     # task.create / task.get: ADR-010's proof-of-pattern pair (session
     # 2026-07-31) — the first two operations with real request/response
     # schemas attached, chosen as the simplest, most-obviously-typed params

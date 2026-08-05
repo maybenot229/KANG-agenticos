@@ -56,6 +56,7 @@ from kang.domain.tasks import (
 )
 from kang.kernel.audit.service import AuditService
 from kang.kernel.bus.bus import EventBus
+from kang.kernel.permissions.engine import PermissionEngine
 
 __all__ = [
     "make_deadline_create_handler",
@@ -66,12 +67,56 @@ __all__ = [
     "make_held_action_approve_handler",
     "make_held_action_cancel_handler",
     "make_notification_ack_handler",
+    "make_permission_list_handler",
     "make_plan_generate_handler",
     "PlannerDeps",
     "make_registry_get_handler",
     "make_task_create_handler",
     "make_task_get_handler",
 ]
+
+# 08_PLUGIN Appendix B style: one honest sentence per scope family,
+# describing what holding it lets a principal do — not the plugin-install
+# screen's per-plugin instance (this is the System-domain permission
+# screen, 09_UI §7), but the same "plain-language consequence" contract.
+# Keyed by family only (Scope.family, ignoring the qualifier) since every
+# grant in `config/defaults/permissions.toml` today is either the bare `*`
+# wildcard or a single-qualifier family — a scope whose family isn't
+# listed here falls back to an honest "no description written yet" rather
+# than a fabricated one (09_UI §4's "never pad" rule, applied to this
+# screen too).
+_SCOPE_CONSEQUENCES: dict[str, str] = {
+    "*": (
+        "Full authority over everything KANG can do — reserved for "
+        "Kang's own first-party session."
+    ),
+    "events.publish": (
+        "Can publish facts to the event bus under the named namespace — "
+        "the kernel's own truth-recording mechanism, not visible data "
+        "access."
+    ),
+    "tasks.write": (
+        "Can create or modify tasks and stamp plan dates, within "
+        "whatever operations it triggers allow."
+    ),
+    "task.write": "Can create tasks.",
+    "task.read": "Can read tasks by id.",
+    "deadlines.set": "Can create tracked deadlines.",
+    "deadlines.read": "Can read the list of currently tracked deadlines.",
+    "deadlines.mark_alerted": (
+        "Can flip a deadline from tracked to alerted — the lead-time sweep's one write."
+    ),
+}
+
+
+def _scope_consequence(scope: str) -> str:
+    if scope == "*":
+        return _SCOPE_CONSEQUENCES["*"]
+    family = scope.split(":", 1)[0]
+    return _SCOPE_CONSEQUENCES.get(
+        family, f"No plain-language description written yet for {family!r}."
+    )
+
 
 TASKS_PRINCIPAL = "kernel:tasks"  # the domain that owns task truth (EB-010)
 DEADLINES_PRINCIPAL = "kernel:deadlines"  # owns deadline truth (EB-010)
@@ -575,5 +620,30 @@ def make_explain_stub_handler(kind: str) -> Handler:
             "not_found",
             f"no {kind} to explain yet — its subject arrives in a later milestone",
         )
+
+    return handler
+
+
+def make_permission_list_handler(engine: PermissionEngine) -> Handler:
+    """`permission.list` (09_UI §7: "every grant per principal, in the same
+    scope language as permissions.toml, with plain-language consequence
+    lines"). Read-only reflection of `PermissionEngine.snapshot()` — the
+    same loaded grant snapshot every permission check in this Core runs
+    against, not a fresh re-read of the file (which could diverge from
+    what's actually enforced if the file changed since boot)."""
+
+    def handler(context: HandlerContext, params: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "grants": [
+                {
+                    "principal": principal,
+                    "scopes": [
+                        {"scope": scope, "consequence": _scope_consequence(scope)}
+                        for scope in scopes
+                    ],
+                }
+                for principal, scopes in engine.snapshot().items()
+            ]
+        }
 
     return handler

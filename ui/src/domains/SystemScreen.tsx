@@ -1,13 +1,17 @@
 import { useEffect, useState } from "react";
 import { callOperation, ApiError } from "../api/client";
+import PermissionsPanel from "./PermissionsPanel";
 import "./SystemScreen.css";
 
 /**
- * System domain (09_UI §2/UI-001, §12 Audit & History Views). `registry.get`
- * is fully real and, until now, never called by the UI — this screen is
- * that exposure: the served contract (operations, versions, scopes),
- * which is genuinely useful System-domain content (12_API §16: "the
- * registry is the contract").
+ * System domain (09_UI §2/UI-001, §7 permission screen, §12 Audit &
+ * History Views). `registry.get` is fully real — this screen exposes the
+ * served contract (operations, versions, scopes), genuinely useful
+ * System-domain content (12_API §16: "the registry is the contract").
+ * The permission screen itself (§7's "what can KANG touch?") is
+ * `PermissionsPanel`, rendered below — its own file since it's a
+ * distinct 09_UI-named concern with its own data source
+ * (`permission.list`).
  *
  * Hand-typed, not generated: `registry.get` carries no `request_schema`/
  * `response_schema` in `kang.api.registry.OPERATIONS` (it predates
@@ -125,6 +129,8 @@ export default function SystemScreen() {
         yet — their underlying stores have real read methods, but exposing
         them needs a scheduler-wiring change beyond this pass.
       </p>
+
+      <PermissionsPanel />
     </section>
   );
 }

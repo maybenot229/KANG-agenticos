@@ -1,0 +1,65 @@
+.permissions {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.permissions__heading {
+  font-size: var(--type-scale-base);
+  margin: 0 0 var(--space-2);
+  color: var(--color-text-secondary);
+}
+
+.permissions__status {
+  color: var(--color-text-secondary);
+}
+
+.permissions__status--error {
+  color: var(--color-critical);
+}
+
+.permissions__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.permissions__principal {
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.permissions__principal-name {
+  font-size: var(--type-scale-sm);
+  margin: 0 0 var(--space-2);
+}
+
+.permissions__scopes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.permissions__scope {
+  /* Stacked, not side-by-side (App.css's Attention.css note applies here
+     too): a scope's plain-language sentence can run long, and this panel
+     shares the same 800px window as everything else. */
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.permissions__scope-name {
+  font-size: var(--type-scale-xs);
+  color: var(--color-accent);
+}
+
+.permissions__consequence {
+  font-size: var(--type-scale-xs);
+  color: var(--color-text-secondary);
+}
