@@ -22,8 +22,20 @@
 }
 
 .top-bar__breadcrumb {
+  /* A <button>, not a <span>, now that it doubles as the way back to the
+     hub (Dashboard is "reachable separately," not one of the seven rail
+     buttons) — styled to still read as plain breadcrumb text. */
+  font: inherit;
   font-size: var(--type-scale-sm);
   color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.top-bar__breadcrumb:hover {
+  color: var(--color-text-primary);
 }
 
 .top-bar__palette-hint {
@@ -67,6 +79,11 @@
 
 .left-rail__item:hover {
   background: var(--color-surface-raised);
+}
+
+.left-rail__item[aria-current="page"] {
+  background: var(--color-surface-raised);
+  color: var(--color-accent);
 }
 
 .left-rail__capture {

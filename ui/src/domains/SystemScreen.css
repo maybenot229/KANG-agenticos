@@ -1,0 +1,53 @@
+.system__heading {
+  font-size: var(--type-scale-xl);
+  margin: 0 0 var(--space-2);
+}
+
+.system__status {
+  color: var(--color-text-secondary);
+}
+
+.system__status--error {
+  color: var(--color-critical);
+}
+
+.system__summary {
+  color: var(--color-text-secondary);
+  font-size: var(--type-scale-sm);
+  margin: 0 0 var(--space-4);
+}
+
+.system__table-scroll {
+  /* The registry table is genuinely wider than KANG's 800px main window
+     (ui/shell/tauri.conf.json) at 15+ operations with a summary column —
+     scrolls within itself rather than pushing the whole content area
+     into horizontal overflow. */
+  overflow-x: auto;
+}
+
+.system__table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  font-size: var(--type-scale-sm);
+}
+
+.system__table th {
+  text-align: left;
+  color: var(--color-text-secondary);
+  font-weight: normal;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.system__table td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.system__note {
+  margin-top: var(--space-4);
+  font-size: var(--type-scale-xs);
+  color: var(--color-text-secondary);
+}

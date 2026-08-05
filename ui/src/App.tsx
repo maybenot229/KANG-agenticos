@@ -5,6 +5,13 @@ import Attention from "./zones/Attention";
 import WhatChanged from "./zones/WhatChanged";
 import Opportunities from "./zones/Opportunities";
 import QuickCapture from "./capture/QuickCapture";
+import PlanScreen from "./domains/PlanScreen";
+import ProjectsScreen from "./domains/ProjectsScreen";
+import CompetitionsScreen from "./domains/CompetitionsScreen";
+import LearnScreen from "./domains/LearnScreen";
+import KnowScreen from "./domains/KnowScreen";
+import SystemScreen from "./domains/SystemScreen";
+import ChatScreen from "./domains/ChatScreen";
 
 // The seven domains (UI-001, 09_UI_DESIGN.md §2): fixed order, MUST NOT
 // reorder or hide contextually (UI-P5). Dashboard is the hub, not a
@@ -19,25 +26,51 @@ const DOMAINS = [
   "Chat",
 ] as const;
 
+type Domain = (typeof DOMAINS)[number];
+type Location = "Dashboard" | Domain;
+
+// One screen component per domain (UI-001's hub-and-spoke: domain ->
+// entity -> detail, depth 3 max). Plan and System have a real backend
+// today; the rest are honest empty screens (see each file's own
+// docstring for exactly what's missing and why) — never fabricated
+// content standing in for a domain that doesn't exist yet.
+const DOMAIN_SCREENS: Record<Domain, () => JSX.Element> = {
+  Plan: PlanScreen,
+  Projects: ProjectsScreen,
+  Competitions: CompetitionsScreen,
+  Learn: LearnScreen,
+  Know: KnowScreen,
+  System: SystemScreen,
+  Chat: ChatScreen,
+};
+
 /**
  * The persistent chrome (09_UI §3): identical on every screen. This
  * component owns layout only — no truth, no domain logic (UI-P1).
  *
- * All four dashboard zones (09_UI §4) now render — fixed, stable
- * positions (UI-P5), Zone 1 largest and first in focus order (DOM order
- * here doubles as focus order). Zone 2 has one real data source
- * (deadline.list) and two honest gaps (competitions, approval queue);
- * Zones 3 and 4 have no backend yet at all and say so plainly rather
- * than fabricating content (09_UI §4's honest-empty-states rule). The
- * six non-Dashboard domains are still chrome-only buttons, a later slice.
+ * All four dashboard zones (09_UI §4) render at the hub. Navigation is
+ * now real (UI-001: hub + seven spokes) — clicking a domain button
+ * switches the content area to that domain's screen; the breadcrumb
+ * doubles as the way back to the hub, since Dashboard is "reachable
+ * separately," not one of the seven rail buttons.
  */
 export default function App() {
   const [captureOpen, setCaptureOpen] = useState(false);
+  const [location, setLocation] = useState<Location>("Dashboard");
+
+  const ActiveDomainScreen =
+    location === "Dashboard" ? null : DOMAIN_SCREENS[location];
 
   return (
     <div className="shell">
       <header className="top-bar">
-        <span className="top-bar__breadcrumb">Dashboard</span>
+        <button
+          type="button"
+          className="top-bar__breadcrumb"
+          onClick={() => setLocation("Dashboard")}
+        >
+          {location}
+        </button>
         <span className="top-bar__palette-hint">⌘K</span>
       </header>
 
@@ -45,7 +78,12 @@ export default function App() {
         <ul>
           {DOMAINS.map((domain) => (
             <li key={domain}>
-              <button type="button" className="left-rail__item">
+              <button
+                type="button"
+                className="left-rail__item"
+                aria-current={location === domain ? "page" : undefined}
+                onClick={() => setLocation(domain)}
+              >
                 {domain}
               </button>
             </li>
@@ -62,20 +100,24 @@ export default function App() {
       </nav>
 
       <main className="content-area">
-        <div className="dashboard">
-          <div className="dashboard__zone-1">
-            <TodaysQuests />
+        {ActiveDomainScreen === null ? (
+          <div className="dashboard">
+            <div className="dashboard__zone-1">
+              <TodaysQuests />
+            </div>
+            <div className="dashboard__zone-2">
+              <Attention />
+            </div>
+            <div className="dashboard__zone-3">
+              <WhatChanged />
+            </div>
+            <div className="dashboard__zone-4">
+              <Opportunities />
+            </div>
           </div>
-          <div className="dashboard__zone-2">
-            <Attention />
-          </div>
-          <div className="dashboard__zone-3">
-            <WhatChanged />
-          </div>
-          <div className="dashboard__zone-4">
-            <Opportunities />
-          </div>
-        </div>
+        ) : (
+          <ActiveDomainScreen />
+        )}
       </main>
 
       <footer className="status-strip">

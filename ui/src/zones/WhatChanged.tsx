@@ -1,4 +1,4 @@
-import EmptyZone from "./EmptyZone";
+import EmptyState from "../common/EmptyState";
 
 /**
  * Zone 3 — "What changed?" (09_UI §4): completed/new items digest since
@@ -11,7 +11,7 @@ import EmptyZone from "./EmptyZone";
  */
 export default function WhatChanged() {
   return (
-    <EmptyZone
+    <EmptyState
       label="What Changed"
       heading="What Changed"
       message="Activity digest not yet available — no operation exists yet to summarize what changed since your last visit."

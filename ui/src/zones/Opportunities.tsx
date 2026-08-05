@@ -1,4 +1,4 @@
-import EmptyZone from "./EmptyZone";
+import EmptyState from "../common/EmptyState";
 
 /**
  * Zone 4 — "What opportunities exist?" (09_UI §4): filtered digest of
@@ -10,7 +10,7 @@ import EmptyZone from "./EmptyZone";
  */
 export default function Opportunities() {
   return (
-    <EmptyZone
+    <EmptyState
       label="Opportunities"
       heading="Opportunities"
       message="Discovery pipeline not built yet (Phase 2 of the roadmap) — nothing to surface here until it exists."
