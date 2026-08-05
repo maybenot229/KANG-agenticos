@@ -22,6 +22,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from kang.api.errors import ERROR_CODES
+from kang.api.schemas.audit import AuditListRequest, AuditListResponse
 from kang.api.schemas.deadline import (
     DeadlineCreateRequest,
     DeadlineCreateResponse,
@@ -51,6 +52,7 @@ from kang.api.schemas.permission import (
     PermissionListResponse,
 )
 from kang.api.schemas.plan import PlanGenerateRequest, PlanGenerateResponse
+from kang.api.schemas.system import SystemHealthRequest, SystemHealthResponse
 from kang.api.schemas.task import (
     TaskCreateRequest,
     TaskCreateResponse,
@@ -341,6 +343,28 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         "List every pending held action, oldest first.",
         schemas=OperationSchemas(
             request=HeldActionListRequest, response=HeldActionListResponse
+        ),
+    ),
+    # audit.list / system.health: added 2026-08-05 for the System domain's
+    # Activity and Health views (09_UI §12). Both scope=None, matching
+    # registry.get/permission.list's own precedent — system metadata about
+    # the Core itself, not a domain resource a domain-verb scope would fit.
+    _op(
+        "audit.list",
+        "query",
+        None,
+        False,
+        "List every audit record of one month, oldest first.",
+        schemas=OperationSchemas(request=AuditListRequest, response=AuditListResponse),
+    ),
+    _op(
+        "system.health",
+        "query",
+        None,
+        False,
+        "List every scheduled job's status and whether automation is paused.",
+        schemas=OperationSchemas(
+            request=SystemHealthRequest, response=SystemHealthResponse
         ),
     ),
 )

@@ -47,6 +47,7 @@ from kang.domain.ports.notification_store import (
     NotificationNotFoundError,
     NotificationStore,
 )
+from kang.domain.ports.scheduler import JobStore, KillSwitch
 from kang.domain.ports.task_store import TaskNotFoundError, TaskStore
 from kang.domain.tasks import (
     TaskDraft,
@@ -59,6 +60,7 @@ from kang.kernel.bus.bus import EventBus
 from kang.kernel.permissions.engine import PermissionEngine
 
 __all__ = [
+    "make_audit_list_handler",
     "make_deadline_create_handler",
     "make_deadline_list_handler",
     "make_deadline_sweep_handler",
@@ -72,6 +74,7 @@ __all__ = [
     "make_plan_generate_handler",
     "PlannerDeps",
     "make_registry_get_handler",
+    "make_system_health_handler",
     "make_task_create_handler",
     "make_task_get_handler",
 ]
@@ -678,6 +681,63 @@ def make_permission_list_handler(engine: PermissionEngine) -> Handler:
                 }
                 for principal, scopes in engine.snapshot().items()
             ]
+        }
+
+    return handler
+
+
+def make_audit_list_handler(audit: AuditService, clock: Clock) -> Handler:
+    """`audit.list` (added 2026-08-05, System-domain Activity view, 09_UI
+    §12): every audit record of one month, oldest first —
+    `AuditService.records()`'s existing pass-through over the `AuditLog`
+    port, exposed through the API for the first time. `month` defaults to
+    the injected clock's current month, mirroring `plan.generate`'s own
+    default-to-today convention."""
+
+    def handler(context: HandlerContext, params: dict[str, Any]) -> dict[str, Any]:
+        month = params.get("month") or clock.now().strftime("%Y-%m")
+        return {
+            "month": month,
+            "records": [
+                {
+                    "at": record.entry.at,
+                    "principal": record.entry.principal,
+                    "action": record.entry.action,
+                    "correlation_id": record.entry.correlation_id,
+                    "details": record.entry.details,
+                }
+                for record in audit.records(month)
+            ],
+        }
+
+    return handler
+
+
+def make_system_health_handler(job_store: JobStore, kill_switch: KillSwitch) -> Handler:
+    """`system.health` (added 2026-08-05, System-domain Health view, 09_UI
+    §12): job statuses + the automation kill-switch state.
+    `JobStore.list_jobs()`/`.consecutive_failures()` and `KillSwitch.
+    is_engaged()` already existed — pure API-layer exposure, no new
+    domain logic. Backup age, restore-verification, index parity, and the
+    integrity-incident counter are NOT covered (see this operation's
+    schema docstring for why) — a real, named gap, not silently folded
+    into "Health built."""
+
+    def handler(context: HandlerContext, params: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "jobs": [
+                {
+                    "id": job.id,
+                    "name": job.name,
+                    "schedule": job.schedule,
+                    "catch_up": job.catch_up,
+                    "enabled": job.enabled,
+                    "quarantined": job.quarantined,
+                    "consecutive_failures": job_store.consecutive_failures(job.id),
+                }
+                for job in job_store.list_jobs()
+            ],
+            "automation_engaged": kill_switch.is_engaged(),
         }
 
     return handler

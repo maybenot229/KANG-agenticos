@@ -54,6 +54,7 @@ from kang.api.dispatch import ApiRequest, Dispatcher, DispatcherDeps
 from kang.api.http_binding import make_server
 from kang.api.operations import (
     PlannerDeps,
+    make_audit_list_handler,
     make_deadline_create_handler,
     make_deadline_list_handler,
     make_deadline_sweep_handler,
@@ -66,6 +67,7 @@ from kang.api.operations import (
     make_permission_list_handler,
     make_plan_generate_handler,
     make_registry_get_handler,
+    make_system_health_handler,
     make_task_create_handler,
     make_task_get_handler,
 )
@@ -280,6 +282,8 @@ class _HandlerWiring:
     invocations: object
     held_action_store: object
     permission_engine: object
+    job_store: object
+    kill_switch: object
 
 
 def _build_handlers(w: _HandlerWiring) -> dict:
@@ -323,6 +327,8 @@ def _build_handlers(w: _HandlerWiring) -> dict:
         "held_action.cancel": make_held_action_cancel_handler(w.held_action_store),
         "held_action.list": make_held_action_list_handler(w.held_action_store),
         "permission.list": make_permission_list_handler(w.permission_engine),
+        "audit.list": make_audit_list_handler(w.audit, w.clock),
+        "system.health": make_system_health_handler(w.job_store, w.kill_switch),
     }
 
 
@@ -355,10 +361,7 @@ def build_core(kang_home: Path, device_id: str = "device-local") -> Core:
     _wire_notifier(bus, notification_store, clock, new_id, device_id)
     bus.recover()  # startup reconciliation + delivery resume (§4.4)
 
-    task_store = SqliteTaskStore(kang, clock)
-    deadline_store = SqliteDeadlineStore(kang, clock)
-    invocations = SqliteInvocationStore(kang)
-    held_action_store = SqliteHeldActionStore(kang)
+    stores = _build_stores(kang, clock)
     handlers = _build_handlers(
         _HandlerWiring(
             connection=kang,
@@ -367,12 +370,14 @@ def build_core(kang_home: Path, device_id: str = "device-local") -> Core:
             new_id=new_id,
             device_id=device_id,
             audit=audit,
-            task_store=task_store,
-            deadline_store=deadline_store,
+            task_store=stores.task_store,
+            deadline_store=stores.deadline_store,
             notification_store=notification_store,
-            invocations=invocations,
-            held_action_store=held_action_store,
+            invocations=stores.invocations,
+            held_action_store=stores.held_action_store,
             permission_engine=engine,
+            job_store=stores.job_store,
+            kill_switch=stores.kill_switch,
         )
     )
     dispatcher = Dispatcher(
@@ -381,7 +386,7 @@ def build_core(kang_home: Path, device_id: str = "device-local") -> Core:
             sessions=SqliteSessionStore(kang),
             permissions=engine,
             idempotency=SqliteIdempotencyStore(kang),
-            invocations=invocations,
+            invocations=stores.invocations,
             audit=audit,
             clock=clock,
             new_id=new_id,
@@ -402,8 +407,41 @@ def build_core(kang_home: Path, device_id: str = "device-local") -> Core:
                 dispatcher=dispatcher,
                 sessions=sessions,
                 new_id=new_id,
+                job_store=stores.job_store,
+                kill_switch=stores.kill_switch,
             )
         ),
+    )
+
+
+@dataclass(frozen=True)
+class _Stores:
+    """Every store `_build_handlers`/`_wire_scheduler` need, constructed
+    once (11 §4 — extracted from `build_core` to keep it under the size
+    lint's line limit, not a domain concept of its own)."""
+
+    task_store: object
+    deadline_store: object
+    invocations: object
+    held_action_store: object
+    job_store: object
+    kill_switch: object
+
+
+def _build_stores(kang, clock) -> _Stores:
+    """`job_store`/`kill_switch` are constructed here unconditionally, not
+    inside `_wire_scheduler` (which only runs its body — and, until
+    2026-08-05, only constructed these — when `kang.toml` loads
+    successfully, per 07 F8's fail-closed shape). Neither construction
+    depends on `kang.toml`; the System-domain Health view (09_UI §12)
+    needs them whether or not automation is configured."""
+    return _Stores(
+        task_store=SqliteTaskStore(kang, clock),
+        deadline_store=SqliteDeadlineStore(kang, clock),
+        invocations=SqliteInvocationStore(kang),
+        held_action_store=SqliteHeldActionStore(kang),
+        job_store=SqliteJobStore(kang, clock),
+        kill_switch=SqliteKillSwitch(kang, clock),
     )
 
 
@@ -418,6 +456,8 @@ class _SchedulerWiring:
     dispatcher: Dispatcher
     sessions: object
     new_id: object
+    job_store: object
+    kill_switch: object
 
 
 def _wire_scheduler(wiring: _SchedulerWiring):
@@ -437,6 +477,11 @@ def _wire_scheduler(wiring: _SchedulerWiring):
     optional file would take Kang's manual use of the system down with the
     automation, which is a worse failure than automation being off and said
     so out loud (SEC-009: fail visibly, and degrade specifically).
+
+    `job_store`/`kill_switch` are passed in, constructed once in
+    `build_core` (2026-08-05) rather than here — the System-domain Health
+    view (09_UI §12) needs them regardless of whether this function
+    reaches its `return None` below.
     """
     try:
         triggers = load_planner_triggers(wiring.kang_home / "config" / "kang.toml")
@@ -445,7 +490,7 @@ def _wire_scheduler(wiring: _SchedulerWiring):
             SCHEDULER_PRINCIPAL, "automation.unconfigured", {"reason": str(exc)}
         )
         return None
-    job_store = SqliteJobStore(wiring.connection, wiring.clock)
+    job_store = wiring.job_store
     job_store.register_job(
         Job(
             id=MORNING_PLAN_JOB,
@@ -459,7 +504,7 @@ def _wire_scheduler(wiring: _SchedulerWiring):
         SchedulerDeps(
             clock=wiring.clock,
             job_store=job_store,
-            kill_switch=SqliteKillSwitch(wiring.connection, wiring.clock),
+            kill_switch=wiring.kill_switch,
             runner=_make_job_runner(wiring.dispatcher, wiring.sessions, wiring.new_id),
             audit=wiring.audit,
             correlation_id=wiring.new_id,

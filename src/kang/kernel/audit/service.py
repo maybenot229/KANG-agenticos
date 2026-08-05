@@ -67,3 +67,22 @@ class AuditService:
                 if record.entry.correlation_id == correlation_id:
                     matched.append(record)
         return matched
+
+    def months(self) -> list[str]:
+        """Months with audit records, ascending — a thin pass-through
+        (added 2026-08-05 for the System-domain Activity view, 09_UI §12).
+        Kept here rather than handing out the raw `AuditLog` port: this
+        class's own docstring states "nothing else holds the AuditLog
+        port" — a read-only reflection preserves that, the same way
+        `PermissionEngine.snapshot()` reflects its own held state instead
+        of exposing internals."""
+        return self._log.months()
+
+    def records(self, month: str) -> list[AuditRecord]:
+        """Every record of one month ('YYYY-MM'), oldest first — the
+        Activity view's data source (09_UI §12: "the human-readable audit
+        stream... filterable by principal, action class, date"). Filtering
+        happens at the API/UI layer against one month's records; this
+        method itself does no filtering, matching `AuditLog.records`'s own
+        contract exactly."""
+        return list(self._log.records(month))

@@ -53,3 +53,22 @@ def test_entries_chain_across_records(service, log):
     second = service.record("kang", "task.complete")
     assert second.prev_hash == first.entry_hash
     assert log.verify("2026-01").intact
+
+
+class TestReadPassThroughs:
+    """`months()`/`records()`, added 2026-08-05 for the System-domain
+    Activity view (09_UI §12). The claim: thin, unfiltered pass-throughs
+    over the injected `AuditLog` — no month/entry is added, dropped, or
+    reordered on the way through."""
+
+    def test_months_reflects_the_log(self, service, log):
+        service.record("kang", "task.create")
+        assert service.months() == log.months() == ["2026-01"]
+
+    def test_records_reflects_one_months_entries_in_order(self, service):
+        first = service.record("kang", "task.create")
+        second = service.record("kang", "task.complete")
+        assert service.records("2026-01") == [first, second]
+
+    def test_records_of_an_empty_month_is_an_empty_list_not_an_error(self, service):
+        assert service.records("2020-01") == []

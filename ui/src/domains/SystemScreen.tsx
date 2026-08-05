@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { callOperation, ApiError } from "../api/client";
 import PermissionsPanel from "./PermissionsPanel";
+import ActivityPanel from "./ActivityPanel";
+import HealthPanel from "./HealthPanel";
 import "./SystemScreen.css";
 
 /**
@@ -22,15 +24,15 @@ import "./SystemScreen.css";
  *
  * 09_UI §12 also names Activity (audit stream), Invocations (run
  * history), Ledger (model spend), and Health (job/backup status) as
- * System-domain views. `InvocationStore`/`AuditLog`/`JobStore` do have
- * real list-capable read methods already (`by_correlation` aside,
- * `AuditLog.records()`/`months()` and `JobStore.list_jobs()` genuinely
- * exist) — but wiring them into operations means restructuring where
- * `composition.py` constructs the job store and kill switch (currently
- * built inside `_wire_scheduler`, which runs after handler wiring and can
- * return `None`), which is bigger than an in-place exposure like
- * `deadline.list` was. Flagged as real, scoped-out follow-up work, not
- * built this pass.
+ * System-domain views. Activity and Health are real now (2026-08-05,
+ * `ActivityPanel`/`HealthPanel` below) — `composition.py`'s job-store/
+ * kill-switch construction was moved out of `_wire_scheduler` (which
+ * only ran it when `kang.toml` loaded, per 07 F8's fail-closed shape) so
+ * the Health view has them regardless of whether automation is
+ * configured. Invocations has no list method on `InvocationStore` at all
+ * (only `by_correlation`, a point lookup) — a bigger, still-open gap.
+ * Ledger (model spend) has nothing to expose: no model calls exist yet
+ * (M4/M5 are zero-model by construction).
  */
 
 interface RegistryOperation {
@@ -125,12 +127,14 @@ export default function SystemScreen() {
       </div>
 
       <p className="system__note">
-        Activity, Invocations, Ledger, and Health (09_UI §12) aren't built
-        yet — their underlying stores have real read methods, but exposing
-        them needs a scheduler-wiring change beyond this pass.
+        Invocations (run history) and Ledger (model spend) aren't built
+        yet — Invocations has no list capability on its store at all, and
+        Ledger has nothing to show (no model calls exist yet).
       </p>
 
       <PermissionsPanel />
+      <HealthPanel />
+      <ActivityPanel />
     </section>
   );
 }
