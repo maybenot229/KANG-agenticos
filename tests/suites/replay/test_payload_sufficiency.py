@@ -44,6 +44,11 @@ _DEADLINE_COLUMNS = (
     "created_at, updated_at, device_id, revision"
 )
 
+_PROJECT_COLUMNS = (
+    "id, name, description, status, vault_folder, github_repo, goal_id, "
+    "created_at, updated_at, device_id, revision"
+)
+
 
 def deadline_payload(index: int = 0, **overrides) -> dict:
     """A self-sufficient deadline payload (EB-003) — the full 07 §5.2 field
@@ -71,6 +76,36 @@ def _deadline_envelope(**overrides) -> EventEnvelope:
         type="deadline.created",
         payload=deadline_payload(0),
         entity_refs=({"kind": "deadline", "id": "dl-0000"},),
+    )
+    fields.update(overrides)
+    return make_envelope(0, **fields)
+
+
+def project_payload(index: int = 0, **overrides) -> dict:
+    """A self-sufficient project payload (ADR-013/EB-003) — the full
+    07 §5.2 field set, matching `project_service.project_event_payload()`."""
+    payload = {
+        "id": f"proj-{index:04d}",
+        "name": "KANG v0.1",
+        "description": "Ship the agentic OS",
+        "status": "active",
+        "vault_folder": None,
+        "github_repo": None,
+        "goal_id": None,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00",
+        "device_id": "device-test",
+        "revision": 1,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _project_envelope(**overrides) -> EventEnvelope:
+    fields = dict(
+        type="project.created",
+        payload=project_payload(0),
+        entity_refs=({"kind": "project", "id": "proj-0000"},),
     )
     fields.update(overrides)
     return make_envelope(0, **fields)
@@ -114,6 +149,7 @@ _FIXTURES = {
         "deadline",
         _DEADLINE_COLUMNS,
     ),
+    "project.created": Fixture(_project_envelope(), "project", _PROJECT_COLUMNS),
 }
 
 

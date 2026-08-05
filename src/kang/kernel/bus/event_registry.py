@@ -71,6 +71,23 @@ _DEADLINE_PAYLOAD_FIELDS = (
     "revision",
 )
 
+# Same contract for the project entity (ADR-013): the full field set, so a
+# lost project.created write replays exactly. Mirrors 07 §5.2's columns and
+# `project_service.project_event_payload()`, which builds it.
+_PROJECT_PAYLOAD_FIELDS = (
+    "id",
+    "name",
+    "description",
+    "status",
+    "vault_folder",
+    "github_repo",
+    "goal_id",
+    "created_at",
+    "updated_at",
+    "device_id",
+    "revision",
+)
+
 
 class UnregisteredEventTypeError(Exception):
     """A type not in the closed taxonomy was offered for publication (§6.3):
@@ -172,6 +189,23 @@ _TYPES: tuple[EventType, ...] = (
         plugin_visible=True,
         version_introduced="0.1",
         required_payload_fields=("plan_date",),
+    ),
+    # ---- project.created, per ADR-013 ------------------------------------
+    # A project row is Tier-1 truth — referenced by task/competition/
+    # deadline FKs already live in the schema — by the same argument
+    # ADR-004 made for deadline.created: losing one on crash recovery would
+    # silently corrupt the read-shape of everything that points at it.
+    # project.updated is deliberately NOT registered: no status-transition
+    # operation exists yet (tracking-only scope), and registering ahead of
+    # a real consumer is the speculative-structure anti-pattern ADR-004
+    # itself rejected for competition.* — the same discipline, applied here.
+    EventType(
+        name="project.created",
+        category="domain",
+        recovery_grade=True,
+        plugin_visible=True,
+        version_introduced="0.1",
+        required_payload_fields=_PROJECT_PAYLOAD_FIELDS,
     ),
 )
 

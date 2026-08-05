@@ -35,6 +35,10 @@
 # only — the Planner owns the plan, not the tasks.
 "kernel:planner" = ["events.publish:kang"]
 
+# The project domain service publishes project.created — the entity's own
+# truth (EB-010). ADR-013: project's first write path.
+"kernel:projects" = ["events.publish:kang"]
+
 # The scheduler dispatches jobs through the ordinary operation pipeline
 # (ADR-006), so it needs the scope of every operation it may trigger — and
 # nothing more. Default-deny means this line IS the answer to "what can

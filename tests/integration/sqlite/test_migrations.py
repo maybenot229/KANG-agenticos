@@ -32,8 +32,8 @@ def test_full_chain_applies_on_empty_database(conn):
     applied = apply_migrations(conn, MIGRATIONS_DIR, FakeClock())
     # initial, held_action, scheduler, api, held_action_lifecycle,
     # domain_entities, notification_queue, calendar_cache,
-    # rename_app_state_to_setting, invocation_recent_index
-    assert applied == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    # rename_app_state_to_setting, invocation_recent_index, project_capture
+    assert applied == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     tables = {
         row[0]
         for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")

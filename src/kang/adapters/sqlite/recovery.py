@@ -51,7 +51,7 @@ _TASK_FIELDS = (
 
 # Entity kinds this adapter can answer existence for (the orphan decision,
 # §4.3). Grows with the schema; unknown kinds are a registry defect, loud.
-_EXISTS_TABLE = {"task": "task", "deadline": "deadline"}
+_EXISTS_TABLE = {"task": "task", "deadline": "deadline", "project": "project"}
 
 _DEADLINE_FIELDS = (
     "id",
@@ -62,6 +62,20 @@ _DEADLINE_FIELDS = (
     "at",
     "lead_days",
     "status",
+    "created_at",
+    "updated_at",
+    "device_id",
+    "revision",
+)
+
+_PROJECT_FIELDS = (
+    "id",
+    "name",
+    "description",
+    "status",
+    "vault_folder",
+    "github_repo",
+    "goal_id",
     "created_at",
     "updated_at",
     "device_id",
@@ -166,6 +180,51 @@ def _apply_deadline_upsert(conn: sqlite3.Connection, envelope: EventEnvelope) ->
     return "applied"
 
 
+def _payload_project_row(envelope: EventEnvelope) -> tuple:
+    payload = envelope.payload
+    missing = [f for f in _PROJECT_FIELDS if f not in payload]
+    if missing:
+        raise RecoveryError(
+            f"recovery-grade payload for {envelope.type} is not "
+            f"self-sufficient (EB-003): missing {missing}"
+        )
+    return tuple(payload[f] for f in _PROJECT_FIELDS)
+
+
+def _apply_project_upsert(conn: sqlite3.Connection, envelope: EventEnvelope) -> str:
+    row = _payload_project_row(envelope)
+    project_id, revision = row[0], row[-1]
+    current = conn.execute(
+        "SELECT revision FROM project WHERE id = ?", (project_id,)
+    ).fetchone()
+    if current is not None and current[0] >= revision:
+        return "noop"  # already committed — idempotent by id + revision
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        if current is None:
+            conn.execute(
+                "INSERT INTO project (id, name, description, status, "
+                "vault_folder, github_repo, goal_id, created_at, updated_at, "
+                "device_id, revision) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                row,
+            )
+        else:
+            conn.execute(
+                "UPDATE project SET name = ?, description = ?, status = ?, "
+                "vault_folder = ?, github_repo = ?, goal_id = ?, "
+                "created_at = ?, updated_at = ?, device_id = ?, revision = ? "
+                "WHERE id = ?",
+                row[1:] + (project_id,),
+            )
+        conn.execute("COMMIT")
+    except sqlite3.Error:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
+    return "applied"
+
+
 _APPLIERS = {
     "task.created": _apply_task_upsert,
     "task.updated": _apply_task_upsert,
@@ -173,6 +232,8 @@ _APPLIERS = {
     # (EB-006 §6.3), so registering deadline.created/updated obliges these.
     "deadline.created": _apply_deadline_upsert,
     "deadline.updated": _apply_deadline_upsert,
+    # ADR-013: project.created's own obligation, same reasoning.
+    "project.created": _apply_project_upsert,
 }
 
 

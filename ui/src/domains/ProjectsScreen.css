@@ -1,0 +1,64 @@
+.projects__heading {
+  font-size: var(--type-scale-xl);
+  margin: 0 0 var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.projects__add {
+  font-size: var(--type-scale-xs);
+  padding: 2px var(--space-2);
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.projects__status {
+  color: var(--color-text-secondary);
+}
+
+.projects__status--error {
+  color: var(--color-critical);
+}
+
+.projects__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.projects__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.projects__name {
+  font-size: var(--type-scale-base);
+}
+
+.projects__meta {
+  font-size: var(--type-scale-xs);
+  color: var(--color-text-secondary);
+}
+
+.projects__description {
+  font-size: var(--type-scale-sm);
+  color: var(--color-text-secondary);
+}
+
+.projects__note {
+  margin-top: var(--space-4);
+  font-size: var(--type-scale-xs);
+  color: var(--color-text-secondary);
+}

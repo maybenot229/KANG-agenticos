@@ -56,6 +56,12 @@ from kang.api.schemas.permission import (
     PermissionListResponse,
 )
 from kang.api.schemas.plan import PlanGenerateRequest, PlanGenerateResponse
+from kang.api.schemas.project import (
+    ProjectCreateRequest,
+    ProjectCreateResponse,
+    ProjectListRequest,
+    ProjectListResponse,
+)
 from kang.api.schemas.system import SystemHealthRequest, SystemHealthResponse
 from kang.api.schemas.task import (
     TaskCreateRequest,
@@ -387,6 +393,34 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         "List the most recent invocations, newest first.",
         schemas=OperationSchemas(
             request=InvocationListRequest, response=InvocationListResponse
+        ),
+    ),
+    # project.create / project.list (ADR-013): the Projects domain's first
+    # real operations, tracking only. Scope follows deadline.*'s exact
+    # naming convention (05 §9 domain-verb vocabulary) — `projects.write`
+    # already named in 05_AGENTS §9's tool-access table (competition_scout/
+    # _strategist/researcher all hold it); `projects.read` is new, mirroring
+    # `deadlines.read`/`held_actions.read`'s own precedent of a read-only
+    # sibling scope. Not consequential (05 Appendix D's closed list names
+    # `projects.delete`, not create), so no commit_mode.
+    _op(
+        "project.create",
+        "command",
+        "projects.write",
+        True,
+        "Track a new project.",
+        schemas=OperationSchemas(
+            request=ProjectCreateRequest, response=ProjectCreateResponse
+        ),
+    ),
+    _op(
+        "project.list",
+        "query",
+        "projects.read",
+        False,
+        "List every tracked project, name then id.",
+        schemas=OperationSchemas(
+            request=ProjectListRequest, response=ProjectListResponse
         ),
     ),
 )

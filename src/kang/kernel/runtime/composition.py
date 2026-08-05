@@ -47,6 +47,7 @@ from kang.adapters.sqlite.invocation_store import SqliteInvocationStore
 from kang.adapters.sqlite.job_store import SqliteJobStore, SqliteKillSwitch
 from kang.adapters.sqlite.migrations import apply_migrations
 from kang.adapters.sqlite.notification_store import SqliteNotificationStore
+from kang.adapters.sqlite.project_store import SqliteProjectStore
 from kang.adapters.sqlite.recovery import SqliteRecoveryApplier
 from kang.adapters.sqlite.session_store import SqliteSessionStore
 from kang.adapters.sqlite.task_store import SqliteTaskStore
@@ -67,6 +68,8 @@ from kang.api.operations import (
     make_notification_ack_handler,
     make_permission_list_handler,
     make_plan_generate_handler,
+    make_project_create_handler,
+    make_project_list_handler,
     make_registry_get_handler,
     make_system_health_handler,
     make_task_create_handler,
@@ -285,6 +288,7 @@ class _HandlerWiring:
     permission_engine: object
     job_store: object
     kill_switch: object
+    project_store: object
 
 
 def _build_handlers(w: _HandlerWiring) -> dict:
@@ -331,20 +335,29 @@ def _build_handlers(w: _HandlerWiring) -> dict:
         "audit.list": make_audit_list_handler(w.audit, w.clock),
         "system.health": make_system_health_handler(w.job_store, w.kill_switch),
         "invocation.list": make_invocation_list_handler(w.invocations),
+        "project.create": make_project_create_handler(
+            w.bus, w.project_store, w.clock, w.new_id, w.device_id
+        ),
+        "project.list": make_project_list_handler(w.project_store),
     }
 
 
-def build_core(kang_home: Path, device_id: str = "device-local") -> Core:
-    kang_home.mkdir(parents=True, exist_ok=True)
-    clock = SystemClock()
+@dataclass(frozen=True)
+class _BusWiring:
+    """The bus + its collaborators, constructed once (11 §4 — extracted
+    from `build_core` to keep it under the size lint's line limit, same
+    reason `_build_stores` was extracted; not a domain concept of its
+    own)."""
 
-    def new_id() -> str:
-        return uuid7(int(clock.now().timestamp() * 1000), os.urandom)
+    audit: AuditService
+    engine: object
+    bus: EventBus
+    notification_store: object
 
-    kang = open_connection(kang_home / "kang.db")
-    apply_migrations(kang, MIGRATIONS_DIR, clock)
-    events = open_eventlog(kang_home / "events" / "eventlog.db")
 
+def _build_bus_wiring(kang_home, kang, events, clock, new_id, device_id) -> _BusWiring:
+    """Audit log, permission engine, event bus, notifier — wired and
+    recovered. Split out of `build_core` verbatim; no behavior change."""
     audit = AuditService(JsonlAuditLog(kang_home / "audit"), clock)
     engine = build_checked_engine(_load_grants(kang_home))
     event_log = SqliteEventLog(events, clock)
@@ -362,34 +375,51 @@ def build_core(kang_home: Path, device_id: str = "device-local") -> Core:
     bus = EventBus(event_log, delivery, reconciliation, engine, audit)
     _wire_notifier(bus, notification_store, clock, new_id, device_id)
     bus.recover()  # startup reconciliation + delivery resume (§4.4)
+    return _BusWiring(
+        audit=audit, engine=engine, bus=bus, notification_store=notification_store
+    )
 
+
+def build_core(kang_home: Path, device_id: str = "device-local") -> Core:
+    kang_home.mkdir(parents=True, exist_ok=True)
+    clock = SystemClock()
+
+    def new_id() -> str:
+        return uuid7(int(clock.now().timestamp() * 1000), os.urandom)
+
+    kang = open_connection(kang_home / "kang.db")
+    apply_migrations(kang, MIGRATIONS_DIR, clock)
+    events = open_eventlog(kang_home / "events" / "eventlog.db")
+
+    wiring = _build_bus_wiring(kang_home, kang, events, clock, new_id, device_id)
     stores = _build_stores(kang, clock)
     handlers = _build_handlers(
         _HandlerWiring(
             connection=kang,
-            bus=bus,
+            bus=wiring.bus,
             clock=clock,
             new_id=new_id,
             device_id=device_id,
-            audit=audit,
+            audit=wiring.audit,
             task_store=stores.task_store,
             deadline_store=stores.deadline_store,
-            notification_store=notification_store,
+            notification_store=wiring.notification_store,
             invocations=stores.invocations,
             held_action_store=stores.held_action_store,
-            permission_engine=engine,
+            permission_engine=wiring.engine,
             job_store=stores.job_store,
             kill_switch=stores.kill_switch,
+            project_store=stores.project_store,
         )
     )
     dispatcher = Dispatcher(
         handlers,
         DispatcherDeps(
             sessions=SqliteSessionStore(kang),
-            permissions=engine,
+            permissions=wiring.engine,
             idempotency=SqliteIdempotencyStore(kang),
             invocations=stores.invocations,
-            audit=audit,
+            audit=wiring.audit,
             clock=clock,
             new_id=new_id,
         ),
@@ -405,7 +435,7 @@ def build_core(kang_home: Path, device_id: str = "device-local") -> Core:
                 kang_home=kang_home,
                 connection=kang,
                 clock=clock,
-                audit=audit,
+                audit=wiring.audit,
                 dispatcher=dispatcher,
                 sessions=sessions,
                 new_id=new_id,
@@ -428,6 +458,7 @@ class _Stores:
     held_action_store: object
     job_store: object
     kill_switch: object
+    project_store: object
 
 
 def _build_stores(kang, clock) -> _Stores:
@@ -444,6 +475,7 @@ def _build_stores(kang, clock) -> _Stores:
         held_action_store=SqliteHeldActionStore(kang),
         job_store=SqliteJobStore(kang, clock),
         kill_switch=SqliteKillSwitch(kang, clock),
+        project_store=SqliteProjectStore(kang),
     )
 
 
