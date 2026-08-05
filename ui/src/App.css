@@ -39,11 +39,21 @@
 }
 
 .top-bar__palette-hint {
+  /* A <button>, not a <span>, now that it opens the palette (Palette.tsx)
+     — styled to still read as a keyboard-shortcut hint. */
+  font: inherit;
   font-size: var(--type-scale-xs);
   color: var(--color-text-disabled);
+  background: none;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   padding: 2px var(--space-1);
+  cursor: pointer;
+}
+
+.top-bar__palette-hint:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent-muted);
 }
 
 .left-rail {

@@ -1,0 +1,96 @@
+/* The palette is an overlay, not a confirmation (09_UI §3 reserves true
+   modal styling for exactly two things, neither of which this is) —
+   deliberately not ConfirmDialog's --color-critical language. Accent
+   blue, top-anchored, dismiss-anywhere. */
+
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  padding-top: 15vh;
+  z-index: 900;
+}
+
+.palette {
+  width: min(90%, 480px);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-accent-muted);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.palette__input {
+  padding: var(--space-3);
+  background: var(--color-background);
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  font-size: var(--type-scale-base);
+  outline: none;
+}
+
+.palette__results {
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+
+.palette__register {
+  margin-bottom: var(--space-3);
+}
+
+.palette__register:last-child {
+  margin-bottom: 0;
+}
+
+.palette__register-label {
+  margin: 0 0 var(--space-1);
+  padding: 0 var(--space-2);
+  font-size: var(--type-scale-xs);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.palette__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.palette__item {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--color-text-primary);
+  font-size: var(--type-scale-sm);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.palette__item:hover,
+.palette__item[aria-selected="true"] {
+  background: var(--color-surface);
+  color: var(--color-accent);
+}
+
+.palette__find-note {
+  margin: 0;
+  padding: 0 var(--space-2);
+  font-size: var(--type-scale-xs);
+  color: var(--color-text-secondary);
+}
+
+.palette__empty {
+  margin: 0;
+  padding: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--type-scale-sm);
+}
