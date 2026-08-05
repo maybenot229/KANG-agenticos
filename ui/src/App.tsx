@@ -1,6 +1,9 @@
 import { useState } from "react";
 import "./App.css";
 import TodaysQuests from "./zones/TodaysQuests";
+import Attention from "./zones/Attention";
+import WhatChanged from "./zones/WhatChanged";
+import Opportunities from "./zones/Opportunities";
 import QuickCapture from "./capture/QuickCapture";
 
 // The seven domains (UI-001, 09_UI_DESIGN.md §2): fixed order, MUST NOT
@@ -19,9 +22,14 @@ const DOMAINS = [
 /**
  * The persistent chrome (09_UI §3): identical on every screen. This
  * component owns layout only — no truth, no domain logic (UI-P1).
- * Zone 1 (Today's Quests) and quick capture are the vertical slice this
- * session proves against real data; the remaining three zones and the
- * other six domains are later slices.
+ *
+ * All four dashboard zones (09_UI §4) now render — fixed, stable
+ * positions (UI-P5), Zone 1 largest and first in focus order (DOM order
+ * here doubles as focus order). Zone 2 has one real data source
+ * (deadline.list) and two honest gaps (competitions, approval queue);
+ * Zones 3 and 4 have no backend yet at all and say so plainly rather
+ * than fabricating content (09_UI §4's honest-empty-states rule). The
+ * six non-Dashboard domains are still chrome-only buttons, a later slice.
  */
 export default function App() {
   const [captureOpen, setCaptureOpen] = useState(false);
@@ -54,7 +62,20 @@ export default function App() {
       </nav>
 
       <main className="content-area">
-        <TodaysQuests />
+        <div className="dashboard">
+          <div className="dashboard__zone-1">
+            <TodaysQuests />
+          </div>
+          <div className="dashboard__zone-2">
+            <Attention />
+          </div>
+          <div className="dashboard__zone-3">
+            <WhatChanged />
+          </div>
+          <div className="dashboard__zone-4">
+            <Opportunities />
+          </div>
+        </div>
       </main>
 
       <footer className="status-strip">

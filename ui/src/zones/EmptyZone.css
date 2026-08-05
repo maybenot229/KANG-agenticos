@@ -1,0 +1,8 @@
+.empty-zone__heading {
+  font-size: var(--type-scale-xl);
+  margin: 0 0 var(--space-4);
+}
+
+.empty-zone__status {
+  color: var(--color-text-secondary);
+}

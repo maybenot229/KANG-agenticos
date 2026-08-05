@@ -26,6 +26,10 @@ Mirrored by omission: this schema does not accept a field the real handler
 does not read.
 
 Roll-out session: 2026-07-31 (follow-up to the task.* proof-of-pattern).
+`DeadlineListRequest`/`Item`/`Response` added 2026-08-05 for the dashboard's
+Zone 2 (09_UI §4) — exposing `DeadlineStore.active()`, an existing read
+already used internally by `deadline_sweep` and `plan.generate`, through the
+API for the first time. No new domain logic.
 """
 
 from __future__ import annotations
@@ -37,6 +41,9 @@ from kang.domain.ports.deadline_store import DEADLINE_KINDS
 __all__ = [
     "DeadlineCreateRequest",
     "DeadlineCreateResponse",
+    "DeadlineListItem",
+    "DeadlineListRequest",
+    "DeadlineListResponse",
     "DeadlineSweepRequest",
     "DeadlineSweepResponse",
 ]
@@ -107,3 +114,34 @@ class DeadlineSweepResponse(BaseModel):
 
     alerted: list[str]
     count: int
+
+
+class DeadlineListRequest(BaseModel):
+    """`deadline.list` params (operations.py::make_deadline_list_handler). No
+    fields: the handler takes none, mirroring `DeadlineSweepRequest`."""
+
+
+class DeadlineListItem(BaseModel):
+    """One deadline as `deadline.list` renders it — the dashboard's Zone 2
+    horizon fields, not the full row (`deadline_event_payload`'s full shape
+    is for event replay, a different concern; mirrors `task.get`'s
+    hand-picked-fields convention, not the create/event payload's)."""
+
+    id: str
+    title: str
+    at: str
+    kind: str
+    status: str
+    competition_id: str | None = None
+    project_id: str | None = None
+
+
+class DeadlineListResponse(BaseModel):
+    """`deadline.list` result: every `tracked` deadline, soonest first —
+    `DeadlineStore.active()`'s existing contract (`domain/ports/
+    deadline_store.py`), exposed through the API for the first time. Added
+    2026-08-05 for the dashboard's Zone 2 (09_UI §4); no domain logic
+    changed — `active()` already existed and was already used by
+    `deadline_sweep` and `plan.generate`."""
+
+    deadlines: list[DeadlineListItem]

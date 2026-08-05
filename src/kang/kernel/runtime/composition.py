@@ -54,6 +54,7 @@ from kang.api.http_binding import make_server
 from kang.api.operations import (
     PlannerDeps,
     make_deadline_create_handler,
+    make_deadline_list_handler,
     make_deadline_sweep_handler,
     make_explain_invocation_handler,
     make_explain_stub_handler,
@@ -289,6 +290,7 @@ def _build_handlers(w: _HandlerWiring) -> dict:
         "deadline.sweep": make_deadline_sweep_handler(
             w.bus, w.deadline_store, w.clock, w.new_id, w.device_id
         ),
+        "deadline.list": make_deadline_list_handler(w.deadline_store),
         "notification.ack": make_notification_ack_handler(
             w.notification_store, w.clock
         ),

@@ -54,6 +54,7 @@ from kang.kernel.bus.bus import EventBus
 
 __all__ = [
     "make_deadline_create_handler",
+    "make_deadline_list_handler",
     "make_deadline_sweep_handler",
     "make_explain_invocation_handler",
     "make_explain_stub_handler",
@@ -110,6 +111,33 @@ def make_task_create_handler(
         )
         bus.publish(envelope, commit_state=lambda: task_store.create(task))
         return {"task_id": task.id, "revision": task.revision}
+
+    return handler
+
+
+def make_deadline_list_handler(deadline_store: DeadlineStore) -> Handler:
+    """`deadline.list` (added 2026-08-05, dashboard Zone 2, 09_UI §4): every
+    `tracked` deadline, soonest first — `DeadlineStore.active()`'s existing
+    contract, already relied on by `deadline_sweep` and `plan.generate`
+    below. No new domain logic; this handler is pure API-layer exposure,
+    following `task.get`'s hand-picked-field convention rather than the
+    full `deadline_event_payload` shape (that shape is for event replay)."""
+
+    def handler(context: HandlerContext, params: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "deadlines": [
+                {
+                    "id": d.id,
+                    "title": d.title,
+                    "at": d.at,
+                    "kind": d.kind,
+                    "status": d.status,
+                    "competition_id": d.competition_id,
+                    "project_id": d.project_id,
+                }
+                for d in deadline_store.active()
+            ]
+        }
 
     return handler
 

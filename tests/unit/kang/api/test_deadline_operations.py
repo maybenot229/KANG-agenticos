@@ -23,6 +23,7 @@ from kang.api.dispatch import HandlerContext
 from kang.api.errors import ApiError
 from kang.api.operations import (
     make_deadline_create_handler,
+    make_deadline_list_handler,
     make_deadline_sweep_handler,
 )
 from kang.kernel.audit.service import AuditService
@@ -80,6 +81,11 @@ def _sweep(wiring):
     handler = make_deadline_sweep_handler(
         wiring["bus"], wiring["store"], wiring["clock"], wiring["new_id"], DEVICE
     )
+    return handler(wiring["context"], {})
+
+
+def _list(wiring):
+    handler = make_deadline_list_handler(wiring["store"])
     return handler(wiring["context"], {})
 
 
@@ -160,3 +166,46 @@ class TestSweepOrdering:
         first = _sweep(wiring)["alerted"]
         # active() orders (at, id); the sweep preserves it (13 §2.6)
         assert first == sorted(first)
+
+
+class TestList:
+    """`deadline.list`, added 2026-08-05 for the dashboard's Zone 2 (09_UI
+    §4). The claim: it exposes `DeadlineStore.active()`'s existing contract
+    — tracked-only, soonest-first — verbatim, adding no filtering or
+    ordering logic of its own."""
+
+    def test_empty_store_lists_nothing(self, wiring):
+        assert _list(wiring) == {"deadlines": []}
+
+    def test_lists_a_tracked_deadline_with_the_zone_2_fields(self, wiring):
+        created = _create(wiring, title="Submit entry", at=AT_FAR, kind="custom")
+        (item,) = _list(wiring)["deadlines"]
+        assert item == {
+            "id": created["deadline_id"],
+            "title": "Submit entry",
+            "at": AT_FAR,
+            "kind": "custom",
+            "status": "tracked",
+            "competition_id": None,
+            "project_id": None,
+        }
+
+    def test_alerted_deadlines_drop_off_the_list_same_as_the_sweep_sees_it(
+        self, wiring
+    ):
+        # active() is tracked-only (TestSweepOrdering's
+        # test_an_alerted_deadline_is_not_swept_twice already establishes
+        # this) — this handler exposes that contract verbatim rather than
+        # widening it to "tracked or alerted", so an alerted deadline drops
+        # off Zone 2's horizon the same moment it stops being swept. Real,
+        # existing behavior being surfaced, not new behavior introduced
+        # here — worth knowing, not this handler's to change.
+        _create(wiring, title="Due soon", at=AT_SOON)
+        _sweep(wiring)
+        assert _list(wiring) == {"deadlines": []}
+
+    def test_soonest_first(self, wiring):
+        _create(wiring, title="Later", at=AT_FAR)
+        _create(wiring, title="Sooner", at=AT_SOON)
+        titles = [d["title"] for d in _list(wiring)["deadlines"]]
+        assert titles == ["Sooner", "Later"]

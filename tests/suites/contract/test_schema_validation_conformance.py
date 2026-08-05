@@ -123,6 +123,14 @@ class TestSchemaValidationNeverLeaksRawValues:
                 )
         # Guards against the sweep going silently toothless (e.g. poisoning
         # stops working and every operation starts hitting the `ok` skip
-        # branch above) — at least the field-bearing schemas must actually
-        # have been exercised and failed.
-        assert checked >= len(SCHEMA_OPERATIONS) - 1  # deadline.sweep has no fields
+        # branch above) — at least every field-bearing schema must actually
+        # have been exercised and failed. Computed rather than hardcoded
+        # (deadline.sweep and deadline.list both have zero declared
+        # properties today; a future field-less operation joining the
+        # registry shouldn't require touching this arithmetic too).
+        fieldless = sum(
+            1
+            for entry in SCHEMA_OPERATIONS
+            if not entry["request_schema"].model_json_schema().get("properties")
+        )
+        assert checked >= len(SCHEMA_OPERATIONS) - fieldless

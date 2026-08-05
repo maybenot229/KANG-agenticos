@@ -1,0 +1,50 @@
+.attention__heading {
+  font-size: var(--type-scale-xl);
+  margin: 0 0 var(--space-4);
+}
+
+.attention__status {
+  color: var(--color-text-secondary);
+}
+
+.attention__status--error {
+  color: var(--color-critical);
+}
+
+.attention__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.attention__item {
+  /* Stacked, not side-by-side (unlike quests__item): Zone 2 shares a
+     three-column row with Zones 3/4 (App.css's .dashboard), so its
+     column is much narrower than Zone 1's full width — space-between
+     ran the title and metadata into each other here. */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.attention__title {
+  font-size: var(--type-scale-base);
+}
+
+.attention__meta {
+  font-size: var(--type-scale-xs);
+  color: var(--color-text-secondary);
+}
+
+.attention__note {
+  margin-top: var(--space-4);
+  font-size: var(--type-scale-xs);
+  color: var(--color-text-secondary);
+}

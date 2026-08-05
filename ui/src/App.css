@@ -90,6 +90,44 @@
   color: var(--color-text-secondary);
 }
 
+/* Dashboard (09_UI §4): four fixed-position zones. Zone 1 spans the full
+   width and sits first (largest, first in focus order); Zones 2-4 share
+   an equal-width row beneath it. Positions are constitutional (UI-P5) —
+   content within each zone is data-driven, the grid itself is not. */
+.dashboard {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-areas:
+    "zone-1 zone-1 zone-1"
+    "zone-2 zone-3 zone-4";
+  gap: var(--space-6);
+  /* KANG's real main window is 800x600 (ui/shell/tauri.conf.json) — this
+     isn't a hypothetical narrow viewport, it's the actual shipped size.
+     Grid items default to min-width:auto, which floors each column at
+     its content's intrinsic width and overflows the row; minmax(0, 1fr)
+     lets columns actually shrink to the space they're given. */
+}
+
+.dashboard__zone-1 {
+  grid-area: zone-1;
+  min-width: 0;
+}
+
+.dashboard__zone-2 {
+  grid-area: zone-2;
+  min-width: 0;
+}
+
+.dashboard__zone-3 {
+  grid-area: zone-3;
+  min-width: 0;
+}
+
+.dashboard__zone-4 {
+  grid-area: zone-4;
+  min-width: 0;
+}
+
 .status-strip {
   grid-area: status-strip;
   padding: var(--space-1) var(--space-4);

@@ -25,6 +25,8 @@ from kang.api.errors import ERROR_CODES
 from kang.api.schemas.deadline import (
     DeadlineCreateRequest,
     DeadlineCreateResponse,
+    DeadlineListRequest,
+    DeadlineListResponse,
     DeadlineSweepRequest,
     DeadlineSweepResponse,
 )
@@ -195,6 +197,23 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         "Alert every tracked deadline whose lead threshold has been crossed.",
         schemas=OperationSchemas(
             request=DeadlineSweepRequest, response=DeadlineSweepResponse
+        ),
+    ),
+    # deadline.list: added 2026-08-05 for the dashboard's Zone 2 (09_UI §4).
+    # `deadlines.read` follows `task.read`'s exact naming pattern (05 §9
+    # domain-verb vocabulary) — a query scope, not a new kind of scope.
+    # Exposes DeadlineStore.active(), which already existed and was already
+    # used internally by deadline_sweep and plan.generate; no new domain
+    # logic, no ADR trigger (12_API §16: "the set grows additively as each
+    # milestone adds domain surface").
+    _op(
+        "deadline.list",
+        "query",
+        "deadlines.read",
+        False,
+        "List every tracked deadline, soonest first.",
+        schemas=OperationSchemas(
+            request=DeadlineListRequest, response=DeadlineListResponse
         ),
     ),
     # plan.generate (FR-001): the deterministic morning plan. Scope follows
