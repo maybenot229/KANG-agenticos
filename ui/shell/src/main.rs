@@ -135,32 +135,31 @@ fn main() {
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
 
-            // icons/ is a known, named open item (no source asset exists
-            // yet — see ui/shell/README.md): tauri.conf.json's `bundle.icon`
-            // is deliberately empty, so `default_window_icon()` is expected
-            // to return None until real icons land. Building the tray is
-            // skipped rather than hard-failed in that case — this branch
-            // exists solely because of that documented gap, not as a
-            // general-purpose error swallow, and must be revisited (tray
-            // unconditionally built) once icons/ is populated.
-            if let Some(icon) = app.default_window_icon().cloned() {
-                let _tray = TrayIconBuilder::new()
-                    .icon(icon)
-                    .menu(&menu)
-                    .show_menu_on_left_click(true)
-                    .tooltip("KANG")
-                    .on_menu_event(|app, event| match event.id().as_ref() {
-                        "show" => {
-                            if let Some(win) = app.get_webview_window("main") {
-                                let _ = win.show();
-                                let _ = win.set_focus();
-                            }
+            // icons/ is populated and tauri.conf.json's `bundle.icon` names
+            // real paths under it (see ui/shell/README.md), so
+            // `default_window_icon()` always resolves here — the tray is
+            // built unconditionally, per the revert this branch called for
+            // once real icons landed.
+            let icon = app
+                .default_window_icon()
+                .cloned()
+                .expect("bundle.icon is populated (tauri.conf.json); default_window_icon() must resolve");
+            let _tray = TrayIconBuilder::new()
+                .icon(icon)
+                .menu(&menu)
+                .show_menu_on_left_click(true)
+                .tooltip("KANG")
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "show" => {
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.show();
+                            let _ = win.set_focus();
                         }
-                        "quit" => app.exit(0),
-                        _ => {}
-                    })
-                    .build(app)?;
-            }
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .build(app)?;
 
             // Decision 016: core lives in the tray, UI opens on demand.
             // The main window is configured `visible: false`
