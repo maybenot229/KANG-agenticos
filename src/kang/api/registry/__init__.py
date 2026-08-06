@@ -23,6 +23,12 @@ from pydantic import BaseModel
 
 from kang.api.errors import ERROR_CODES
 from kang.api.schemas.audit import AuditListRequest, AuditListResponse
+from kang.api.schemas.competition import (
+    CompetitionCreateRequest,
+    CompetitionCreateResponse,
+    CompetitionListRequest,
+    CompetitionListResponse,
+)
 from kang.api.schemas.deadline import (
     DeadlineCreateRequest,
     DeadlineCreateResponse,
@@ -421,6 +427,29 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         "List every tracked project, name then id.",
         schemas=OperationSchemas(
             request=ProjectListRequest, response=ProjectListResponse
+        ),
+    ),
+    # competition.create / competition.list (ADR-014): the Competitions
+    # domain's first real operations, tracking only — same reasoning and
+    # naming convention as project.create/.list above.
+    _op(
+        "competition.create",
+        "command",
+        "competitions.write",
+        True,
+        "Track a competition Kang already knows about.",
+        schemas=OperationSchemas(
+            request=CompetitionCreateRequest, response=CompetitionCreateResponse
+        ),
+    ),
+    _op(
+        "competition.list",
+        "query",
+        "competitions.read",
+        False,
+        "List every tracked competition, name then id.",
+        schemas=OperationSchemas(
+            request=CompetitionListRequest, response=CompetitionListResponse
         ),
     ),
 )

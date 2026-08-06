@@ -19,6 +19,11 @@ change.
 
 from __future__ import annotations
 
+from kang.api.operations.competition_ops import (
+    COMPETITIONS_PRINCIPAL,
+    make_competition_create_handler,
+    make_competition_list_handler,
+)
 from kang.api.operations.deadline_ops import (
     DEADLINES_PRINCIPAL,
     make_deadline_create_handler,
@@ -59,12 +64,15 @@ from kang.api.operations.task_ops import (
 )
 
 __all__ = [
+    "COMPETITIONS_PRINCIPAL",
     "DEADLINES_PRINCIPAL",
     "PLANNER_PRINCIPAL",
     "PROJECTS_PRINCIPAL",
     "PlannerDeps",
     "TASKS_PRINCIPAL",
     "make_audit_list_handler",
+    "make_competition_create_handler",
+    "make_competition_list_handler",
     "make_deadline_create_handler",
     "make_deadline_list_handler",
     "make_deadline_sweep_handler",

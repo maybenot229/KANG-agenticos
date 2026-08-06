@@ -88,6 +88,26 @@ _PROJECT_PAYLOAD_FIELDS = (
     "revision",
 )
 
+# Same contract for the competition entity (ADR-014): the full field set,
+# so a lost competition.created write replays exactly. Mirrors 07 §5.2's
+# columns and `competition_service.competition_event_payload()`, which
+# builds it. `evaluation`/`result` are always None from this handler
+# (Phase 3's own write path), but present in the shape for when that
+# consumer arrives.
+_COMPETITION_PAYLOAD_FIELDS = (
+    "id",
+    "name",
+    "url",
+    "status",
+    "evaluation",
+    "result",
+    "project_id",
+    "created_at",
+    "updated_at",
+    "device_id",
+    "revision",
+)
+
 
 class UnregisteredEventTypeError(Exception):
     """A type not in the closed taxonomy was offered for publication (§6.3):
@@ -206,6 +226,20 @@ _TYPES: tuple[EventType, ...] = (
         plugin_visible=True,
         version_introduced="0.1",
         required_payload_fields=_PROJECT_PAYLOAD_FIELDS,
+    ),
+    # ---- competition.created, per ADR-014 --------------------------------
+    # EB-003 names "competition truth mutations" as REQUIRED recovery-grade
+    # directly (unlike project, which ADR-013 had to argue by analogy).
+    # competition.updated is deliberately NOT registered: no status-
+    # transition or evaluation-write operation exists yet (Phase 3
+    # territory) — same non-speculation discipline as project.updated.
+    EventType(
+        name="competition.created",
+        category="domain",
+        recovery_grade=True,
+        plugin_visible=True,
+        version_introduced="0.1",
+        required_payload_fields=_COMPETITION_PAYLOAD_FIELDS,
     ),
 )
 

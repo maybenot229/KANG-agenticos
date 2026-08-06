@@ -19,3 +19,4 @@ Append-only; an ADR that reverses or narrows another MUST cite it.
 | [011](011-ts-client-generator.md) | Registry→TypeScript client generator: json-schema-to-typescript | proposed | 03_ROADMAP §8, 17_PROJECT_STRUCTURE §2, 18_IMPLEMENTATION_MASTER_PLAN §3 M6 |
 | [012](012-ui-interaction-test-harness.md) | UI-interaction test harness: Vitest + React Testing Library | accepted | 13_TESTING §2.6, 17_PROJECT_STRUCTURE (no new top-level dir), 18_IMPLEMENTATION_MASTER_PLAN §3 M6 |
 | [013](013-project-created-event.md) | Register `project.created`: the Projects domain's first write path | accepted | 15_EVENT_BUS §6.1/§6.3, 07_DATABASE §5.6, 13_TESTING §16.2 |
+| [014](014-competition-created-event.md) | Register `competition.created`: the Competitions domain's first write path | proposed | 15_EVENT_BUS §6.1/§6.3, 07_DATABASE §5.6, 13_TESTING §16.2 |

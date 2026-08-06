@@ -39,6 +39,7 @@ from kang.adapters.jsonl.audit_log import JsonlAuditLog
 from kang.adapters.os_windows.clock import SystemClock
 from kang.adapters.scheduler import CRON_PREFIX, parse_cron
 from kang.adapters.sqlite.calendar_store import SqliteCalendarStore
+from kang.adapters.sqlite.competition_store import SqliteCompetitionStore
 from kang.adapters.sqlite.connection import open_connection
 from kang.adapters.sqlite.deadline_store import SqliteDeadlineStore
 from kang.adapters.sqlite.held_action_store import SqliteHeldActionStore
@@ -56,6 +57,8 @@ from kang.api.http_binding import make_server
 from kang.api.operations import (
     PlannerDeps,
     make_audit_list_handler,
+    make_competition_create_handler,
+    make_competition_list_handler,
     make_deadline_create_handler,
     make_deadline_list_handler,
     make_deadline_sweep_handler,
@@ -289,6 +292,7 @@ class _HandlerWiring:
     job_store: object
     kill_switch: object
     project_store: object
+    competition_store: object
 
 
 def _build_handlers(w: _HandlerWiring) -> dict:
@@ -339,6 +343,10 @@ def _build_handlers(w: _HandlerWiring) -> dict:
             w.bus, w.project_store, w.clock, w.new_id, w.device_id
         ),
         "project.list": make_project_list_handler(w.project_store),
+        "competition.create": make_competition_create_handler(
+            w.bus, w.competition_store, w.clock, w.new_id, w.device_id
+        ),
+        "competition.list": make_competition_list_handler(w.competition_store),
     }
 
 
@@ -410,6 +418,7 @@ def build_core(kang_home: Path, device_id: str = "device-local") -> Core:
             job_store=stores.job_store,
             kill_switch=stores.kill_switch,
             project_store=stores.project_store,
+            competition_store=stores.competition_store,
         )
     )
     dispatcher = Dispatcher(
@@ -459,6 +468,7 @@ class _Stores:
     job_store: object
     kill_switch: object
     project_store: object
+    competition_store: object
 
 
 def _build_stores(kang, clock) -> _Stores:
@@ -476,6 +486,7 @@ def _build_stores(kang, clock) -> _Stores:
         job_store=SqliteJobStore(kang, clock),
         kill_switch=SqliteKillSwitch(kang, clock),
         project_store=SqliteProjectStore(kang),
+        competition_store=SqliteCompetitionStore(kang),
     )
 
 

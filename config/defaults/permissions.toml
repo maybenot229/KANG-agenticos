@@ -39,6 +39,10 @@
 # truth (EB-010). ADR-013: project's first write path.
 "kernel:projects" = ["events.publish:kang"]
 
+# The competition domain service publishes competition.created — the
+# entity's own truth (EB-010). ADR-014: competition's first write path.
+"kernel:competitions" = ["events.publish:kang"]
+
 # The scheduler dispatches jobs through the ordinary operation pipeline
 # (ADR-006), so it needs the scope of every operation it may trigger — and
 # nothing more. Default-deny means this line IS the answer to "what can

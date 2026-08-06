@@ -58,6 +58,8 @@ _SCOPE_CONSEQUENCES: dict[str, str] = {
     ),
     "projects.write": "Can create projects.",
     "projects.read": "Can read the list of tracked projects.",
+    "competitions.write": "Can create competitions.",
+    "competitions.read": "Can read the list of tracked competitions.",
 }
 
 

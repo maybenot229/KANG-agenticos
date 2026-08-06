@@ -49,6 +49,11 @@ _PROJECT_COLUMNS = (
     "created_at, updated_at, device_id, revision"
 )
 
+_COMPETITION_COLUMNS = (
+    "id, name, url, status, evaluation, result, project_id, created_at, "
+    "updated_at, device_id, revision"
+)
+
 
 def deadline_payload(index: int = 0, **overrides) -> dict:
     """A self-sufficient deadline payload (EB-003) — the full 07 §5.2 field
@@ -111,6 +116,37 @@ def _project_envelope(**overrides) -> EventEnvelope:
     return make_envelope(0, **fields)
 
 
+def competition_payload(index: int = 0, **overrides) -> dict:
+    """A self-sufficient competition payload (ADR-014/EB-003) — the full
+    07 §5.2 field set, matching
+    `competition_service.competition_event_payload()`."""
+    payload = {
+        "id": f"comp-{index:04d}",
+        "name": "USACO",
+        "url": "https://usaco.org",
+        "status": "discovered",
+        "evaluation": None,
+        "result": None,
+        "project_id": None,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00",
+        "device_id": "device-test",
+        "revision": 1,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _competition_envelope(**overrides) -> EventEnvelope:
+    fields = dict(
+        type="competition.created",
+        payload=competition_payload(0),
+        entity_refs=({"kind": "competition", "id": "comp-0000"},),
+    )
+    fields.update(overrides)
+    return make_envelope(0, **fields)
+
+
 @dataclass(frozen=True)
 class Fixture:
     """One recovery-grade type's proof: the envelope, and where its row
@@ -150,6 +186,9 @@ _FIXTURES = {
         _DEADLINE_COLUMNS,
     ),
     "project.created": Fixture(_project_envelope(), "project", _PROJECT_COLUMNS),
+    "competition.created": Fixture(
+        _competition_envelope(), "competition", _COMPETITION_COLUMNS
+    ),
 }
 
 
