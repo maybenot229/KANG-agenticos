@@ -56,3 +56,28 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Integration tests (real SQLite in temp dirs — 13 §2.3)
         run: pytest tests/integration -q
+
+  # ui/ — parallel to the Python tiers, not gating them (18 §1.5: every
+  # stage pays its own testing bill). Node 20 LTS pinned for CI
+  # reproducibility; ui/package.json declares no engines field of its own.
+  ui:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ui/package-lock.json
+      - name: Install
+        working-directory: ui
+        run: npm ci
+      - name: Typecheck
+        working-directory: ui
+        run: npm run typecheck
+      - name: Build
+        working-directory: ui
+        run: npm run build
+      - name: UI-interaction tests (ADR-012)
+        working-directory: ui
+        run: npm run test

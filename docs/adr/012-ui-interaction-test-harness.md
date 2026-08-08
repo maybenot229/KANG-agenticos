@@ -1,6 +1,6 @@
 # ADR-012 — UI-interaction test harness: Vitest + React Testing Library
 
-**Status:** accepted
+**Status:** accepted (with correction, 2026-08-07)
 **Date:** 2026-08-05
 **Decides:** the session handoff's Section 6 item 3 ("Automated UI-interaction test harness... may be worth a deliberate decision (and possibly a new dependency/ADR — Vitest + Testing Library or Playwright are the obvious candidates, neither currently in `ui/package.json`)").
 **Affected documents:** `13_TESTING.md` §2.6 (names "UI: same API fixtures ⇒ same render tree" as a determinism-test class; this ADR is the tooling ruling that class was waiting for), `17_PROJECT_STRUCTURE.md` (no new top-level directory — see Consequences), `18_IMPLEMENTATION_MASTER_PLAN.md` §3 M6.
@@ -61,6 +61,35 @@ Drives an actual browser (Chromium/Firefox/WebKit) against a running dev server,
   - Whether `npm run test` gets wired into a CI pipeline — no CI pipeline exists yet for this project at all (this repo runs local `pytest`/`ruff`/lint tool invocations by hand, not a hosted CI); wiring one in is separate scope, unblocked but undone by this ADR.
   - Coverage thresholds or a completeness bar for UI tests — 13_TESTING §5's "Metrics & Coverage Philosophy" governs this project's general stance (trend-tracked, not gate-blocking on an arbitrary percentage); nothing UI-specific is ruled here.
   - Whether Playwright is added later for real end-to-end coverage once a CI Core-boot story exists — Option B's rejection here is scoped to "not now, not for these three gaps," not "never."
+
+---
+
+## Correction — 2026-08-07 — the "no CI pipeline exists" claim was wrong
+
+**Status:** factual correction; the Decision and Consequences above are
+unaffected.
+
+The Consequences section's "Explicitly NOT decided here" bullet claimed *"no
+CI pipeline exists yet for this project at all (this repo runs local
+`pytest`/`ruff`/lint tool invocations by hand, not a hosted CI)."* That was
+false when written, not just since — `.github/workflows/ci.yml` has existed
+since M0 (`e359d1c`, "M0: layer skeleton per 17 §2 + import contracts +
+commit-tier lints + CI") and already ran the Python commit-tier and
+integration suites on every push/PR. The claim wasn't checked against the
+repo before being written; this correction was caught by grepping for
+`.github/workflows` directly, not assumed.
+
+Left uncorrected, that sentence would have kept telling future readers a
+hosted CI pipeline needed to be built from scratch, when the real remaining
+gap was narrower: `ci.yml` ran the Python tiers only, with no job for
+`ui/`'s `npm run test` (this ADR's own subject). That gap is now closed — a
+parallel `ui` job (typecheck, build, `npm run test`) was added to `ci.yml`
+the same day this correction was written, not left open.
+
+Per 11_CODING §28 ("ADRs are immutable once accepted; changes are new
+ADRs") and the precedent ADR-001's own Amendment section set: the original
+Decision/Consequences text above is left untouched, and this correction is
+appended rather than silently editing the prior claim away.
 
 ---
 
