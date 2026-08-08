@@ -1,6 +1,6 @@
 # ADR-015 — Register `milestone.created`: the Milestones sub-domain's first write path
 
-**Status:** proposed
+**Status:** accepted
 **Date:** 2026-08-07
 **Decides:** the same class of gap ADR-013/ADR-014 closed for `project`/`competition` — no `milestone.*` event type exists, and `milestone.create` cannot commit without one (EB-004).
 **Affected documents:** 15_EVENT_BUS §6.1/§6.3 (closed taxonomy gains one entry), 07_DATABASE §5.6 (the `milestone` table's change-capture trigger, missing since 0006 — added alongside this ADR's implementation), 13_TESTING §16.2 (payload-sufficiency obligation follows for a recovery-grade type).
