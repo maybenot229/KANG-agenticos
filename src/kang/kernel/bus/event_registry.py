@@ -108,6 +108,22 @@ _COMPETITION_PAYLOAD_FIELDS = (
     "revision",
 )
 
+# Same contract for the milestone entity (ADR-015): the full field set, so
+# a lost milestone.created write replays exactly. Mirrors 07 §5.2's
+# columns and `milestone_service.milestone_event_payload()`, which builds
+# it.
+_MILESTONE_PAYLOAD_FIELDS = (
+    "id",
+    "project_id",
+    "title",
+    "due",
+    "status",
+    "created_at",
+    "updated_at",
+    "device_id",
+    "revision",
+)
+
 
 class UnregisteredEventTypeError(Exception):
     """A type not in the closed taxonomy was offered for publication (§6.3):
@@ -240,6 +256,20 @@ _TYPES: tuple[EventType, ...] = (
         plugin_visible=True,
         version_introduced="0.1",
         required_payload_fields=_COMPETITION_PAYLOAD_FIELDS,
+    ),
+    # ---- milestone.created, per ADR-015 ----------------------------------
+    # A milestone row is real, addressable project state; losing one on
+    # crash recovery silently corrupts that project's own milestone list —
+    # same argument ADR-013 made for project.created. milestone.updated is
+    # deliberately NOT registered: no status-transition operation exists
+    # yet (reach/miss/drop), same non-speculation discipline.
+    EventType(
+        name="milestone.created",
+        category="domain",
+        recovery_grade=True,
+        plugin_visible=True,
+        version_introduced="0.1",
+        required_payload_fields=_MILESTONE_PAYLOAD_FIELDS,
     ),
 )
 

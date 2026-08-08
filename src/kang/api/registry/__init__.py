@@ -53,6 +53,12 @@ from kang.api.schemas.invocation import (
     InvocationListRequest,
     InvocationListResponse,
 )
+from kang.api.schemas.milestone import (
+    MilestoneCreateRequest,
+    MilestoneCreateResponse,
+    MilestoneListRequest,
+    MilestoneListResponse,
+)
 from kang.api.schemas.notification import (
     NotificationAckRequest,
     NotificationAckResponse,
@@ -450,6 +456,31 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         "List every tracked competition, name then id.",
         schemas=OperationSchemas(
             request=CompetitionListRequest, response=CompetitionListResponse
+        ),
+    ),
+    # milestone.create / milestone.list (ADR-015): the Milestones sub-
+    # domain's first real operations, tracking only. Scope follows
+    # project.*/competition.*'s exact naming convention — milestones.write/
+    # milestones.read as their own scope family (not nested under
+    # projects.*), matching this session's own established pattern.
+    _op(
+        "milestone.create",
+        "command",
+        "milestones.write",
+        True,
+        "Track a new milestone on a project.",
+        schemas=OperationSchemas(
+            request=MilestoneCreateRequest, response=MilestoneCreateResponse
+        ),
+    ),
+    _op(
+        "milestone.list",
+        "query",
+        "milestones.read",
+        False,
+        "List every tracked milestone for one project, due then id.",
+        schemas=OperationSchemas(
+            request=MilestoneListRequest, response=MilestoneListResponse
         ),
     ),
 )

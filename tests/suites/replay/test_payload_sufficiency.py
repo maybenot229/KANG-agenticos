@@ -54,6 +54,10 @@ _COMPETITION_COLUMNS = (
     "updated_at, device_id, revision"
 )
 
+_MILESTONE_COLUMNS = (
+    "id, project_id, title, due, status, created_at, updated_at, device_id, revision"
+)
+
 
 def deadline_payload(index: int = 0, **overrides) -> dict:
     """A self-sufficient deadline payload (EB-003) — the full 07 §5.2 field
@@ -147,14 +151,60 @@ def _competition_envelope(**overrides) -> EventEnvelope:
     return make_envelope(0, **fields)
 
 
+def milestone_payload(index: int = 0, **overrides) -> dict:
+    """A self-sufficient milestone payload (ADR-015/EB-003) — the full
+    07 §5.2 field set, matching
+    `milestone_service.milestone_event_payload()`. `project_id` names a
+    row the fixture's own `seed_sql` inserts first — `milestone.project_id`
+    is `NOT NULL REFERENCES project(id)` (07 §5.2), unlike deadline's
+    nullable competition_id/project_id, so "empty store" here means
+    "empty except the FK this row structurally cannot exist without,"
+    the same as it would for a real crash-recovery replay (the
+    project.created event would already have landed first)."""
+    payload = {
+        "id": f"ms-{index:04d}",
+        "project_id": "proj-for-milestone-fixture",
+        "title": "Working prototype",
+        "due": "2026-06-01T00:00:00+00:00",
+        "status": "pending",
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00",
+        "device_id": "device-test",
+        "revision": 1,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _milestone_envelope(**overrides) -> EventEnvelope:
+    fields = dict(
+        type="milestone.created",
+        payload=milestone_payload(0),
+        entity_refs=({"kind": "milestone", "id": "ms-0000"},),
+    )
+    fields.update(overrides)
+    return make_envelope(0, **fields)
+
+
+_MILESTONE_FIXTURE_PROJECT_SEED = (
+    "INSERT INTO project (id, name, status, created_at, updated_at, "
+    "device_id, revision) VALUES ('proj-for-milestone-fixture', 'Fixture "
+    "project', 'active', '2026-01-01T00:00:00+00:00', "
+    "'2026-01-01T00:00:00+00:00', 'device-test', 1)",
+)
+
+
 @dataclass(frozen=True)
 class Fixture:
     """One recovery-grade type's proof: the envelope, and where its row
-    should land."""
+    should land. `seed_sql` runs before the envelope is applied — for
+    types whose row cannot exist without a real FK parent already present
+    (milestone.created; see its own payload builder's docstring)."""
 
     envelope: EventEnvelope
     table: str
     columns: str
+    seed_sql: tuple[str, ...] = ()
 
 
 # One fixture per recovery-grade type. A recovery-grade type absent from
@@ -189,6 +239,12 @@ _FIXTURES = {
     "competition.created": Fixture(
         _competition_envelope(), "competition", _COMPETITION_COLUMNS
     ),
+    "milestone.created": Fixture(
+        _milestone_envelope(),
+        "milestone",
+        _MILESTONE_COLUMNS,
+        seed_sql=_MILESTONE_FIXTURE_PROJECT_SEED,
+    ),
 }
 
 
@@ -212,6 +268,8 @@ def test_every_recovery_grade_type_has_a_fixture():
 @pytest.mark.parametrize("type_name", sorted(_FIXTURES))
 def test_payload_reconstructs_the_row_on_an_empty_store(conn, type_name):
     fixture = _FIXTURES[type_name]
+    for sql in fixture.seed_sql:
+        conn.execute(sql)
     envelope = fixture.envelope
     SqliteRecoveryApplier(conn).reapply(envelope)
     row = conn.execute(
@@ -233,6 +291,8 @@ def test_reapplication_is_idempotent(conn, type_name):
     """EB-003: 're-application MUST be idempotent … re-applying a committed
     change is a no-op'. The crash window can deliver the same event twice."""
     fixture = _FIXTURES[type_name]
+    for sql in fixture.seed_sql:
+        conn.execute(sql)
     applier = SqliteRecoveryApplier(conn)
     assert applier.reapply(fixture.envelope).outcome == "applied"
     assert applier.reapply(fixture.envelope).outcome == "noop"

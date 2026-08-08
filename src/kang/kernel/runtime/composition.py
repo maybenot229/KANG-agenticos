@@ -47,6 +47,7 @@ from kang.adapters.sqlite.idempotency_store import SqliteIdempotencyStore
 from kang.adapters.sqlite.invocation_store import SqliteInvocationStore
 from kang.adapters.sqlite.job_store import SqliteJobStore, SqliteKillSwitch
 from kang.adapters.sqlite.migrations import apply_migrations
+from kang.adapters.sqlite.milestone_store import SqliteMilestoneStore
 from kang.adapters.sqlite.notification_store import SqliteNotificationStore
 from kang.adapters.sqlite.project_store import SqliteProjectStore
 from kang.adapters.sqlite.recovery import SqliteRecoveryApplier
@@ -68,6 +69,8 @@ from kang.api.operations import (
     make_held_action_cancel_handler,
     make_held_action_list_handler,
     make_invocation_list_handler,
+    make_milestone_create_handler,
+    make_milestone_list_handler,
     make_notification_ack_handler,
     make_permission_list_handler,
     make_plan_generate_handler,
@@ -293,6 +296,7 @@ class _HandlerWiring:
     kill_switch: object
     project_store: object
     competition_store: object
+    milestone_store: object
 
 
 def _build_handlers(w: _HandlerWiring) -> dict:
@@ -347,6 +351,10 @@ def _build_handlers(w: _HandlerWiring) -> dict:
             w.bus, w.competition_store, w.clock, w.new_id, w.device_id
         ),
         "competition.list": make_competition_list_handler(w.competition_store),
+        "milestone.create": make_milestone_create_handler(
+            w.bus, w.milestone_store, w.clock, w.new_id, w.device_id
+        ),
+        "milestone.list": make_milestone_list_handler(w.milestone_store),
     }
 
 
@@ -419,6 +427,7 @@ def build_core(kang_home: Path, device_id: str = "device-local") -> Core:
             kill_switch=stores.kill_switch,
             project_store=stores.project_store,
             competition_store=stores.competition_store,
+            milestone_store=stores.milestone_store,
         )
     )
     dispatcher = Dispatcher(
@@ -469,6 +478,7 @@ class _Stores:
     kill_switch: object
     project_store: object
     competition_store: object
+    milestone_store: object
 
 
 def _build_stores(kang, clock) -> _Stores:
@@ -487,6 +497,7 @@ def _build_stores(kang, clock) -> _Stores:
         kill_switch=SqliteKillSwitch(kang, clock),
         project_store=SqliteProjectStore(kang),
         competition_store=SqliteCompetitionStore(kang),
+        milestone_store=SqliteMilestoneStore(kang),
     )
 
 

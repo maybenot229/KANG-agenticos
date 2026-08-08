@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
 import { callOperation, ApiError } from "../api/client";
-import type { ProjectListResponse } from "../generated/project";
+import type { ProjectListItem, ProjectListResponse } from "../generated/project";
 import ProjectForm from "./ProjectForm";
+import ProjectDetail from "./ProjectDetail";
 import "./ProjectsScreen.css";
 
 /**
  * Projects domain (09_UI §2/UI-001). Real now (added 2026-08-06, ADR-013)
  * — `project.create`/`.list` are the Projects domain's first operations,
  * tracking only per 03_ROADMAP's M4/M5 objective ("projects... tracking
- * only"). `milestone`/`goal` are real schema too (0006) but have no
- * operation yet; this screen shows projects only, honestly.
+ * only"). Clicking a project opens its detail view (added 2026-08-07,
+ * ADR-015) — depth 2 of 09_UI §2's hub-and-spoke, showing that project's
+ * milestones (see `ProjectDetail.tsx`). `goal` is real schema too (0006)
+ * but has no operation yet; not shown anywhere, honestly.
  */
 
 type LoadState =
@@ -20,6 +23,7 @@ type LoadState =
 export default function ProjectsScreen() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [formOpen, setFormOpen] = useState(false);
+  const [selected, setSelected] = useState<ProjectListItem | null>(null);
 
   async function load(cancelledRef: { current: boolean }) {
     try {
@@ -39,6 +43,10 @@ export default function ProjectsScreen() {
       cancelledRef.current = true;
     };
   }, []);
+
+  if (selected) {
+    return <ProjectDetail project={selected} onBack={() => setSelected(null)} />;
+  }
 
   return (
     <section aria-label="Projects" className="projects">
@@ -72,23 +80,29 @@ export default function ProjectsScreen() {
       {state.status === "ready" && state.response.projects.length > 0 && (
         <ul className="projects__list">
           {state.response.projects.map((project) => (
-            <li key={project.id} className="projects__item">
-              <span className="projects__name">{project.name}</span>
-              <span className="projects__meta">
-                {project.status}
-                {project.github_repo ? ` · ${project.github_repo}` : ""}
-              </span>
-              {project.description && (
-                <span className="projects__description">{project.description}</span>
-              )}
+            <li key={project.id}>
+              <button
+                type="button"
+                className="projects__item"
+                onClick={() => setSelected(project)}
+              >
+                <span className="projects__name">{project.name}</span>
+                <span className="projects__meta">
+                  {project.status}
+                  {project.github_repo ? ` · ${project.github_repo}` : ""}
+                </span>
+                {project.description && (
+                  <span className="projects__description">{project.description}</span>
+                )}
+              </button>
             </li>
           ))}
         </ul>
       )}
 
       <p className="projects__note">
-        Milestones and goals aren't shown yet — real schema exists (0006)
-        but no operation reads them.
+        Goals aren't shown yet — real schema exists (0006) but no
+        operation reads them.
       </p>
     </section>
   );

@@ -39,6 +39,11 @@ from kang.api.operations.held_action_ops import (
     make_held_action_cancel_handler,
     make_held_action_list_handler,
 )
+from kang.api.operations.milestone_ops import (
+    MILESTONES_PRINCIPAL,
+    make_milestone_create_handler,
+    make_milestone_list_handler,
+)
 from kang.api.operations.notification_ops import make_notification_ack_handler
 from kang.api.operations.plan_ops import (
     PLANNER_PRINCIPAL,
@@ -66,6 +71,7 @@ from kang.api.operations.task_ops import (
 __all__ = [
     "COMPETITIONS_PRINCIPAL",
     "DEADLINES_PRINCIPAL",
+    "MILESTONES_PRINCIPAL",
     "PLANNER_PRINCIPAL",
     "PROJECTS_PRINCIPAL",
     "PlannerDeps",
@@ -82,6 +88,8 @@ __all__ = [
     "make_held_action_cancel_handler",
     "make_held_action_list_handler",
     "make_invocation_list_handler",
+    "make_milestone_create_handler",
+    "make_milestone_list_handler",
     "make_notification_ack_handler",
     "make_permission_list_handler",
     "make_plan_generate_handler",
