@@ -18,6 +18,7 @@ function renderPalette(overrides: Partial<Parameters<typeof Palette>[0]> = {}) {
   const onOpenDeadlineForm = vi.fn();
   const onOpenProjectForm = vi.fn();
   const onOpenCompetitionForm = vi.fn();
+  const onOpenGoalForm = vi.fn();
   const onClose = vi.fn();
   render(
     <Palette
@@ -28,6 +29,7 @@ function renderPalette(overrides: Partial<Parameters<typeof Palette>[0]> = {}) {
       onOpenDeadlineForm={onOpenDeadlineForm}
       onOpenProjectForm={onOpenProjectForm}
       onOpenCompetitionForm={onOpenCompetitionForm}
+      onOpenGoalForm={onOpenGoalForm}
       onClose={onClose}
       {...overrides}
     />,
@@ -38,6 +40,7 @@ function renderPalette(overrides: Partial<Parameters<typeof Palette>[0]> = {}) {
     onOpenDeadlineForm,
     onOpenProjectForm,
     onOpenCompetitionForm,
+    onOpenGoalForm,
     onClose,
   };
 }
@@ -112,12 +115,19 @@ describe("Palette", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("does not offer New milestone… or New goal… — no context/surface to open them into", async () => {
+  it('"New goal…" runs the Act register\'s goal-form command', async () => {
+    const user = userEvent.setup();
+    const { onOpenGoalForm, onClose } = renderPalette();
+    await user.keyboard("new goal{Enter}");
+    expect(onOpenGoalForm).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not offer New milestone… — no project-picker to supply its required context", async () => {
     const user = userEvent.setup();
     renderPalette();
     await user.keyboard("new");
     expect(screen.queryByText("New milestone…")).not.toBeInTheDocument();
-    expect(screen.queryByText("New goal…")).not.toBeInTheDocument();
   });
 
   it("shows the Find register's honest not-built-yet note, never fabricated results", async () => {

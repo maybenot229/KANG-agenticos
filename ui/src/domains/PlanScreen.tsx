@@ -3,6 +3,8 @@ import { callOperation, ApiError } from "../api/client";
 import type { PlanGenerateResponse } from "../generated/plan";
 import type { TaskGetResponse } from "../generated/task";
 import type { DeadlineListResponse } from "../generated/deadline";
+import type { GoalListResponse } from "../generated/goal";
+import GoalForm from "./GoalForm";
 import "./PlanScreen.css";
 
 /**
@@ -17,7 +19,27 @@ import "./PlanScreen.css";
  * has no corresponding `calendar.get`/`calendar.list` operation in the
  * registry today, so this screen shows the count the Planner factored in
  * without fabricating titles it cannot actually fetch.
+ *
+ * Goals (`goal.list`, ADR-016, added 2026-08-09) live here rather than
+ * under Projects: 02_PRODUCT_REQUIREMENTS §4's own framing groups "daily
+ * quests, schedules, priorities, long-term goals" as one concept, and
+ * `goal` is schema-independent of `project` (a project may optionally
+ * point at a goal via `project.goal_id`, never the reverse) — unlike
+ * `milestone`, which genuinely is a project's own sub-resource. Grouped
+ * by horizon (quarter/year/life, 07_DATABASE §5.2's own three), each
+ * group ordered title-then-id per `GoalStore.list_all()`'s contract, an
+ * empty horizon shown as "None yet" rather than hidden — the same
+ * honesty `ProjectsScreen`'s "No projects tracked yet" already gives an
+ * empty domain.
+ *
+ * `goalFormOpen`/`onGoalFormOpenChange` are lifted to `App.tsx`
+ * (mirroring `Attention.tsx`'s own lift for `DeadlineForm`, and
+ * `ProjectsScreen`/`CompetitionsScreen`'s own lift for their forms) so
+ * the palette's "New goal…" Act command can open this form from any
+ * location, not just this screen's own "+ New goal" button.
  */
+
+const GOAL_HORIZONS = ["quarter", "year", "life"] as const;
 
 type LoadState =
   | { status: "loading" }
@@ -29,8 +51,20 @@ type LoadState =
       deadlines: DeadlineListResponse["deadlines"];
     };
 
-export default function PlanScreen() {
+type GoalLoadState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; response: GoalListResponse };
+
+export default function PlanScreen({
+  goalFormOpen,
+  onGoalFormOpenChange,
+}: {
+  goalFormOpen: boolean;
+  onGoalFormOpenChange: (open: boolean) => void;
+}) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [goalState, setGoalState] = useState<GoalLoadState>({ status: "loading" });
 
   useEffect(() => {
     let cancelled = false;
@@ -64,6 +98,25 @@ export default function PlanScreen() {
     load();
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  async function loadGoals(cancelledRef: { current: boolean }) {
+    try {
+      const response = await callOperation<GoalListResponse>("goal.list", {});
+      if (!cancelledRef.current) setGoalState({ status: "ready", response });
+    } catch (err) {
+      if (cancelledRef.current) return;
+      const message = err instanceof ApiError ? err.envelope.message : String(err);
+      setGoalState({ status: "error", message });
+    }
+  }
+
+  useEffect(() => {
+    const cancelledRef = { current: false };
+    loadGoals(cancelledRef);
+    return () => {
+      cancelledRef.current = true;
     };
   }, []);
 
@@ -126,6 +179,55 @@ export default function PlanScreen() {
           fetch them by id.
         </p>
       )}
+
+      <h3 className="plan__subheading">
+        Goals
+        <button
+          type="button"
+          className="plan__add"
+          onClick={() => onGoalFormOpenChange(!goalFormOpen)}
+        >
+          + New goal
+        </button>
+      </h3>
+
+      {goalFormOpen && (
+        <GoalForm
+          onClose={() => {
+            onGoalFormOpenChange(false);
+            loadGoals({ current: false }); // re-fetch: the tracked goal joins the list
+          }}
+        />
+      )}
+
+      {goalState.status === "loading" && <p className="plan__status">Loading…</p>}
+      {goalState.status === "error" && (
+        <p className="plan__status plan__status--error">{goalState.message}</p>
+      )}
+      {goalState.status === "ready" &&
+        GOAL_HORIZONS.map((horizon) => {
+          const goals = goalState.response.goals.filter((g) => g.horizon === horizon);
+          return (
+            <div key={horizon} className="plan__goal-group">
+              <h4 className="plan__goal-horizon">{horizon}</h4>
+              {goals.length === 0 ? (
+                <p className="plan__status">None yet.</p>
+              ) : (
+                <ul className="plan__list">
+                  {goals.map((goal) => (
+                    <li key={goal.id} className="plan__goal-item">
+                      <span className="plan__title">{goal.title}</span>
+                      <span className="plan__meta">{goal.status}</span>
+                      {goal.description && (
+                        <span className="plan__description">{goal.description}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })}
     </section>
   );
 }

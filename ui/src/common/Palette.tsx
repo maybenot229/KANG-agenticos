@@ -15,29 +15,28 @@ import "./Palette.css";
  * P0-local").
  *
  * **Act** — "registered commands... each maps 1:1 to an API operation."
- * Four real, complete commands now: "New task…" (opens `QuickCapture`),
+ * Five real, complete commands now: "New task…" (opens `QuickCapture`),
  * "New deadline…" (added 2026-08-05, opens `DeadlineForm` — jumping to
  * Dashboard first since Zone 2, where the form lives, is Dashboard-only),
- * and "New project…"/"New competition…" (added 2026-08-09, same shape:
+ * "New project…"/"New competition…" (added 2026-08-09, same shape:
  * navigate to that domain's own screen, then open the form already
- * living there — `formOpen`/`onFormOpenChange` lifted to `App.tsx`,
- * mirroring `deadlineFormOpen`'s own precedent). All four open an
- * existing panel rather than reimplementing its input a second time (the
- * same one-concept-one-implementation discipline
+ * living there), and "New goal…" (added 2026-08-09 alongside `goal`
+ * gaining a real UI home in `PlanScreen`, ADR-016 — same shape again,
+ * navigate to Plan then open `GoalForm`). All five lift
+ * `formOpen`/`onFormOpenChange` to `App.tsx` (mirroring
+ * `deadlineFormOpen`'s own precedent) and open an existing panel rather
+ * than reimplementing its input a second time (the same
+ * one-concept-one-implementation discipline
  * `useQuickCapture`/`useDeadlineCreate`/`useProjectCreate`/
- * `useCompetitionCreate` already establish).
+ * `useCompetitionCreate`/`useGoalCreate` already establish).
  *
- * Deliberately NOT added: "New milestone…" or "New goal…". A milestone
- * cannot be created without a `project_id` — the form only exists inside
+ * Deliberately NOT added: "New milestone…". A milestone cannot be
+ * created without a `project_id` — the form only exists inside
  * `ProjectDetail`, itself reached by first picking a project from
  * `ProjectsScreen`'s list (component-local `selected` state, never
  * lifted to `App.tsx`) — the palette has no project-picker to supply
  * that context, so "1:1 to an API operation" doesn't hold for it the way
- * it does for the other four. `goal.create` has no UI surface at all yet
- * (09_UI §2's fixed seven domains have no natural home for it) — a
- * command that opened a form nowhere would be worse than no command.
- * Both are real, named gaps (handoff §4 item 3's own scope boundary),
- * not oversights.
+ * it does for the other five. A real, named gap, not an oversight.
  * `plan.generate` is a real operation too, but has no UI form/refresh-
  * plumbing built yet to drive from here honestly — added when that
  * exists, not stubbed now.
@@ -65,6 +64,7 @@ export default function Palette({
   onOpenDeadlineForm,
   onOpenProjectForm,
   onOpenCompetitionForm,
+  onOpenGoalForm,
   onClose,
 }: {
   locations: readonly PaletteLocation[];
@@ -74,6 +74,7 @@ export default function Palette({
   onOpenDeadlineForm: () => void;
   onOpenProjectForm: () => void;
   onOpenCompetitionForm: () => void;
+  onOpenGoalForm: () => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -123,8 +124,23 @@ export default function Palette({
           onClose();
         },
       },
+      {
+        id: "new-goal",
+        label: "New goal…",
+        run: () => {
+          onOpenGoalForm();
+          onClose();
+        },
+      },
     ],
-    [onOpenCapture, onOpenDeadlineForm, onOpenProjectForm, onOpenCompetitionForm, onClose],
+    [
+      onOpenCapture,
+      onOpenDeadlineForm,
+      onOpenProjectForm,
+      onOpenCompetitionForm,
+      onOpenGoalForm,
+      onClose,
+    ],
   );
 
   const actResults = useMemo(() => {

@@ -41,14 +41,15 @@ const LOCATIONS: readonly Location[] = ["Dashboard", ...DOMAINS];
 // docstring for exactly what's missing and why) — never fabricated
 // content standing in for a domain that doesn't exist yet.
 //
-// Projects and Competitions are rendered separately below, not through
-// this map (added 2026-08-09): both need `formOpen`/`onFormOpenChange`
-// props so the palette's "New project…"/"New competition…" commands can
-// open their forms from any location (mirroring `deadlineFormOpen`'s
-// own lift for Zone 2/Dashboard) — every other domain screen here still
-// takes no props at all.
+// Plan, Projects, and Competitions are rendered separately below, not
+// through this map (Plan added 2026-08-09 for goals, alongside
+// Projects/Competitions from the same session): each needs
+// `formOpen`/`onFormOpenChange`-shaped props so the palette's
+// "New goal…"/"New project…"/"New competition…" commands can open their
+// forms from any location (mirroring `deadlineFormOpen`'s own lift for
+// Zone 2/Dashboard) — every other domain screen here still takes no
+// props at all.
 const DOMAIN_SCREENS: Partial<Record<Domain, () => JSX.Element>> = {
-  Plan: PlanScreen,
   Learn: LearnScreen,
   Know: KnowScreen,
   System: SystemScreen,
@@ -72,6 +73,7 @@ export default function App() {
   const [deadlineFormOpen, setDeadlineFormOpen] = useState(false);
   const [projectFormOpen, setProjectFormOpen] = useState(false);
   const [competitionFormOpen, setCompetitionFormOpen] = useState(false);
+  const [goalFormOpen, setGoalFormOpen] = useState(false);
 
   // Ctrl+K opens the palette from anywhere in the app (UI-002: "open
   // from anywhere") — a window-level listener, not scoped to one
@@ -129,6 +131,10 @@ export default function App() {
             setLocation("Competitions");
             setCompetitionFormOpen(true);
           }}
+          onOpenGoalForm={() => {
+            setLocation("Plan");
+            setGoalFormOpen(true);
+          }}
           onClose={() => setPaletteOpen(false)}
         />
       )}
@@ -177,6 +183,11 @@ export default function App() {
               <Opportunities />
             </div>
           </div>
+        ) : location === "Plan" ? (
+          <PlanScreen
+            goalFormOpen={goalFormOpen}
+            onGoalFormOpenChange={setGoalFormOpen}
+          />
         ) : location === "Projects" ? (
           <ProjectsScreen
             formOpen={projectFormOpen}
