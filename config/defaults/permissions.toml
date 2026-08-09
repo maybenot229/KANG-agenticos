@@ -47,6 +47,11 @@
 # own truth (EB-010). ADR-015: milestone's first write path.
 "kernel:milestones" = ["events.publish:kang"]
 
+# The goal domain service publishes goal.created — the entity's own truth
+# (EB-010). ADR-016: goal's first write path (the standing pattern
+# ADR-013/014/015 established, first applied here).
+"kernel:goals" = ["events.publish:kang"]
+
 # The scheduler dispatches jobs through the ordinary operation pipeline
 # (ADR-006), so it needs the scope of every operation it may trigger — and
 # nothing more. Default-deny means this line IS the answer to "what can

@@ -21,3 +21,4 @@ Append-only; an ADR that reverses or narrows another MUST cite it.
 | [013](013-project-created-event.md) | Register `project.created`: the Projects domain's first write path | accepted | 15_EVENT_BUS §6.1/§6.3, 07_DATABASE §5.6, 13_TESTING §16.2 |
 | [014](014-competition-created-event.md) | Register `competition.created`: the Competitions domain's first write path | accepted | 15_EVENT_BUS §6.1/§6.3, 07_DATABASE §5.6, 13_TESTING §16.2 |
 | [015](015-milestone-created-event.md) | Register `milestone.created`: the Milestones sub-domain's first write path | accepted | 15_EVENT_BUS §6.1/§6.3, 07_DATABASE §5.6, 13_TESTING §16.2 |
+| [016](016-standing-created-event-registration.md) | Standing pattern: registering a new entity's first `.created` event, applied to `goal.created` | accepted | 15_EVENT_BUS §6.1/§6.3, 07_DATABASE §5.6, 13_TESTING §16.2 |

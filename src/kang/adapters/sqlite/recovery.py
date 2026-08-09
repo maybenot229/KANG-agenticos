@@ -57,6 +57,7 @@ _EXISTS_TABLE = {
     "project": "project",
     "competition": "competition",
     "milestone": "milestone",
+    "goal": "goal",
 }
 
 _DEADLINE_FIELDS = (
@@ -107,6 +108,18 @@ _MILESTONE_FIELDS = (
     "project_id",
     "title",
     "due",
+    "status",
+    "created_at",
+    "updated_at",
+    "device_id",
+    "revision",
+)
+
+_GOAL_FIELDS = (
+    "id",
+    "title",
+    "description",
+    "horizon",
     "status",
     "created_at",
     "updated_at",
@@ -343,6 +356,49 @@ def _apply_milestone_upsert(conn: sqlite3.Connection, envelope: EventEnvelope) -
     return "applied"
 
 
+def _payload_goal_row(envelope: EventEnvelope) -> tuple:
+    payload = envelope.payload
+    missing = [f for f in _GOAL_FIELDS if f not in payload]
+    if missing:
+        raise RecoveryError(
+            f"recovery-grade payload for {envelope.type} is not "
+            f"self-sufficient (EB-003): missing {missing}"
+        )
+    return tuple(payload[f] for f in _GOAL_FIELDS)
+
+
+def _apply_goal_upsert(conn: sqlite3.Connection, envelope: EventEnvelope) -> str:
+    row = _payload_goal_row(envelope)
+    goal_id, revision = row[0], row[-1]
+    current = conn.execute(
+        "SELECT revision FROM goal WHERE id = ?", (goal_id,)
+    ).fetchone()
+    if current is not None and current[0] >= revision:
+        return "noop"  # already committed — idempotent by id + revision
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        if current is None:
+            conn.execute(
+                "INSERT INTO goal (id, title, description, horizon, status, "
+                "created_at, updated_at, device_id, revision) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                row,
+            )
+        else:
+            conn.execute(
+                "UPDATE goal SET title = ?, description = ?, horizon = ?, "
+                "status = ?, created_at = ?, updated_at = ?, device_id = ?, "
+                "revision = ? WHERE id = ?",
+                row[1:] + (goal_id,),
+            )
+        conn.execute("COMMIT")
+    except sqlite3.Error:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
+    return "applied"
+
+
 _APPLIERS = {
     "task.created": _apply_task_upsert,
     "task.updated": _apply_task_upsert,
@@ -356,6 +412,8 @@ _APPLIERS = {
     "competition.created": _apply_competition_upsert,
     # ADR-015: milestone.created's own obligation, same reasoning.
     "milestone.created": _apply_milestone_upsert,
+    # ADR-016: goal.created's own obligation, same reasoning.
+    "goal.created": _apply_goal_upsert,
 }
 
 

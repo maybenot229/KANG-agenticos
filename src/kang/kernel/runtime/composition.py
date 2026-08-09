@@ -42,6 +42,7 @@ from kang.adapters.sqlite.calendar_store import SqliteCalendarStore
 from kang.adapters.sqlite.competition_store import SqliteCompetitionStore
 from kang.adapters.sqlite.connection import open_connection
 from kang.adapters.sqlite.deadline_store import SqliteDeadlineStore
+from kang.adapters.sqlite.goal_store import SqliteGoalStore
 from kang.adapters.sqlite.held_action_store import SqliteHeldActionStore
 from kang.adapters.sqlite.idempotency_store import SqliteIdempotencyStore
 from kang.adapters.sqlite.invocation_store import SqliteInvocationStore
@@ -65,6 +66,8 @@ from kang.api.operations import (
     make_deadline_sweep_handler,
     make_explain_invocation_handler,
     make_explain_stub_handler,
+    make_goal_create_handler,
+    make_goal_list_handler,
     make_held_action_approve_handler,
     make_held_action_cancel_handler,
     make_held_action_list_handler,
@@ -297,6 +300,7 @@ class _HandlerWiring:
     project_store: object
     competition_store: object
     milestone_store: object
+    goal_store: object
 
 
 def _build_handlers(w: _HandlerWiring) -> dict:
@@ -355,6 +359,10 @@ def _build_handlers(w: _HandlerWiring) -> dict:
             w.bus, w.milestone_store, w.clock, w.new_id, w.device_id
         ),
         "milestone.list": make_milestone_list_handler(w.milestone_store),
+        "goal.create": make_goal_create_handler(
+            w.bus, w.goal_store, w.clock, w.new_id, w.device_id
+        ),
+        "goal.list": make_goal_list_handler(w.goal_store),
     }
 
 
@@ -428,6 +436,7 @@ def build_core(kang_home: Path, device_id: str = "device-local") -> Core:
             project_store=stores.project_store,
             competition_store=stores.competition_store,
             milestone_store=stores.milestone_store,
+            goal_store=stores.goal_store,
         )
     )
     dispatcher = Dispatcher(
@@ -479,6 +488,7 @@ class _Stores:
     project_store: object
     competition_store: object
     milestone_store: object
+    goal_store: object
 
 
 def _build_stores(kang, clock) -> _Stores:
@@ -498,6 +508,7 @@ def _build_stores(kang, clock) -> _Stores:
         project_store=SqliteProjectStore(kang),
         competition_store=SqliteCompetitionStore(kang),
         milestone_store=SqliteMilestoneStore(kang),
+        goal_store=SqliteGoalStore(kang),
     )
 
 

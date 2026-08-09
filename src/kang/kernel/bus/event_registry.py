@@ -124,6 +124,22 @@ _MILESTONE_PAYLOAD_FIELDS = (
     "revision",
 )
 
+# Same contract for the goal entity (ADR-016, the standing pattern
+# ADR-013/014/015 established, generalized): the full field set, so a
+# lost goal.created write replays exactly. Mirrors 07 §5.2's columns and
+# `goal_service.goal_event_payload()`, which builds it.
+_GOAL_PAYLOAD_FIELDS = (
+    "id",
+    "title",
+    "description",
+    "horizon",
+    "status",
+    "created_at",
+    "updated_at",
+    "device_id",
+    "revision",
+)
+
 
 class UnregisteredEventTypeError(Exception):
     """A type not in the closed taxonomy was offered for publication (§6.3):
@@ -270,6 +286,23 @@ _TYPES: tuple[EventType, ...] = (
         plugin_visible=True,
         version_introduced="0.1",
         required_payload_fields=_MILESTONE_PAYLOAD_FIELDS,
+    ),
+    # ---- goal.created, per ADR-016 (the standing pattern, first applied
+    # here) -------------------------------------------------------------
+    # A goal row is real, addressable state — project.goal_id can
+    # reference it, and 07 §5.2 already commits to this table holding
+    # Kang's real quarter/year goals from M5's first runtime population.
+    # goal.updated is deliberately NOT registered: no status-transition
+    # operation exists yet (achieve/revise/retire are real enum values
+    # with zero operations behind them), same non-speculation discipline
+    # as project.updated/competition.updated/milestone.updated.
+    EventType(
+        name="goal.created",
+        category="domain",
+        recovery_grade=True,
+        plugin_visible=True,
+        version_introduced="0.1",
+        required_payload_fields=_GOAL_PAYLOAD_FIELDS,
     ),
 )
 

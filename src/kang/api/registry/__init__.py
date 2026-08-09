@@ -41,6 +41,12 @@ from kang.api.schemas.explain import (
     ExplainInvocationRequest,
     ExplainInvocationResponse,
 )
+from kang.api.schemas.goal import (
+    GoalCreateRequest,
+    GoalCreateResponse,
+    GoalListRequest,
+    GoalListResponse,
+)
 from kang.api.schemas.held_action import (
     HeldActionApproveRequest,
     HeldActionApproveResponse,
@@ -482,6 +488,29 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         schemas=OperationSchemas(
             request=MilestoneListRequest, response=MilestoneListResponse
         ),
+    ),
+    # goal.create / goal.list (ADR-016): the goal entity's first real
+    # operations, tracking only — same reasoning and naming convention as
+    # project.create/.list above (self-standing, no required FK, unlike
+    # milestone.*). `goals.write`/`goals.read` are new scopes, following
+    # the established projects.*/competitions.*/milestones.* family.
+    _op(
+        "goal.create",
+        "command",
+        "goals.write",
+        True,
+        "Track a new goal.",
+        schemas=OperationSchemas(
+            request=GoalCreateRequest, response=GoalCreateResponse
+        ),
+    ),
+    _op(
+        "goal.list",
+        "query",
+        "goals.read",
+        False,
+        "List every tracked goal, title then id.",
+        schemas=OperationSchemas(request=GoalListRequest, response=GoalListResponse),
     ),
 )
 

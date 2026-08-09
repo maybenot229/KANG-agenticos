@@ -58,6 +58,11 @@ _MILESTONE_COLUMNS = (
     "id, project_id, title, due, status, created_at, updated_at, device_id, revision"
 )
 
+_GOAL_COLUMNS = (
+    "id, title, description, horizon, status, created_at, updated_at, "
+    "device_id, revision"
+)
+
 
 def deadline_payload(index: int = 0, **overrides) -> dict:
     """A self-sufficient deadline payload (EB-003) — the full 07 §5.2 field
@@ -186,6 +191,36 @@ def _milestone_envelope(**overrides) -> EventEnvelope:
     return make_envelope(0, **fields)
 
 
+def goal_payload(index: int = 0, **overrides) -> dict:
+    """A self-sufficient goal payload (ADR-016/EB-003) — the full 07 §5.2
+    field set, matching `goal_service.goal_event_payload()`. Self-standing,
+    same as `project_payload`/`competition_payload` — no `seed_sql` needed
+    (unlike `milestone_payload`, which has a required FK)."""
+    payload = {
+        "id": f"goal-{index:04d}",
+        "title": "Ship KANG v0.1",
+        "description": "This quarter's aim",
+        "horizon": "quarter",
+        "status": "active",
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00",
+        "device_id": "device-test",
+        "revision": 1,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _goal_envelope(**overrides) -> EventEnvelope:
+    fields = dict(
+        type="goal.created",
+        payload=goal_payload(0),
+        entity_refs=({"kind": "goal", "id": "goal-0000"},),
+    )
+    fields.update(overrides)
+    return make_envelope(0, **fields)
+
+
 _MILESTONE_FIXTURE_PROJECT_SEED = (
     "INSERT INTO project (id, name, status, created_at, updated_at, "
     "device_id, revision) VALUES ('proj-for-milestone-fixture', 'Fixture "
@@ -245,6 +280,7 @@ _FIXTURES = {
         _MILESTONE_COLUMNS,
         seed_sql=_MILESTONE_FIXTURE_PROJECT_SEED,
     ),
+    "goal.created": Fixture(_goal_envelope(), "goal", _GOAL_COLUMNS),
 }
 
 
