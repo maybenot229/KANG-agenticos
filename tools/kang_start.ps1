@@ -15,9 +15,17 @@
 # time, no autostart, no singleton enforcement beyond what already
 # exists today (ADR-008 is why there isn't more).
 #
-# Rebuild the release binary after any ui/src change: cd ui && npm run
-# build && cd shell && cargo build --release (the frontend is embedded
-# at compile time, not read from disk at runtime).
+# Rebuild the release binary after any ui/src change: cd ui/shell &&
+# cargo tauri build --no-bundle (the frontend is embedded at compile
+# time, not read from disk at runtime). MUST be `cargo tauri build`,
+# NOT a plain `cargo build --release` — found the hard way, 2026-08-09:
+# a bare cargo build doesn't run tauri.conf.json's beforeBuildCommand
+# (`npm run build`) or trigger tauri-build's devUrl-vs-embedded-assets
+# codegen reliably, so it can silently produce a binary that still
+# points at the (absent) Vite dev server and fails with
+# ERR_CONNECTION_REFUSED — exactly the bug this script was written to
+# route around, reintroduced by using the wrong build command. `cargo
+# tauri build` runs the real build pipeline every time.
 #
 # Usage: powershell -File tools/kang_start.ps1
 # Stop:  the script prints the Core's PID; Stop-Process -Id <pid> when
@@ -45,7 +53,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $shellExe = Join-Path $repoRoot "ui\shell\target\release\kang-shell.exe"
 
 if (-not (Test-Path $shellExe)) {
-    Write-Error "kang-shell.exe not found at $shellExe. Build it first: cd ui; npm run build; cd shell; cargo build --release"
+    Write-Error "kang-shell.exe not found at $shellExe. Build it first: cd ui/shell; cargo tauri build --no-bundle"
     exit 1
 }
 
