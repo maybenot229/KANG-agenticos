@@ -8,14 +8,14 @@ Constitutional home: 07_DATABASE §5.2 (goal shape, horizon/status enums);
 ADR-016 (goal.created, the entity's first write path — the standing
 pattern ADR-013/014/015 established, generalized here).
 
-Tracking only this pass: `create_goal` is the entity's whole surface — no
-status-transition function exists yet (mirrors project_service.py's own
-precedent exactly).
+`achieve_goal`/`revise_goal`/`retire_goal` (ADR-018, 2026-08-09) are the
+entity's first status transitions, each `active -> <terminal>`, mirroring
+`deadline_service.py`'s `mark_alerted`/`mark_met`/`mark_missed` exact shape.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from kang.domain.ports.clock import Clock
 from kang.domain.ports.goal_store import GOAL_HORIZONS, GOAL_STATUSES, Goal
@@ -23,8 +23,11 @@ from kang.domain.ports.goal_store import GOAL_HORIZONS, GOAL_STATUSES, Goal
 __all__ = [
     "GoalDraft",
     "GoalValidationError",
+    "achieve_goal",
     "create_goal",
     "goal_event_payload",
+    "retire_goal",
+    "revise_goal",
 ]
 
 
@@ -69,6 +72,32 @@ def create_goal(draft: GoalDraft, goal_id: str, clock: Clock, device_id: str) ->
         device_id=device_id,
         revision=1,
     )
+
+
+def _transition(goal: Goal, target: str, clock: Clock) -> Goal:
+    if goal.status != "active":
+        raise GoalValidationError(f"goal {goal.id} is {goal.status}, not active")
+    return replace(goal, status=target, updated_at=clock.now())
+
+
+def achieve_goal(goal: Goal, clock: Clock) -> Goal:
+    """`active -> achieved`: Kang made it."""
+    return _transition(goal, "achieved", clock)
+
+
+def revise_goal(goal: Goal, clock: Clock) -> Goal:
+    """`active -> revised`: the goal's own scope/aim changed enough that
+    the original statement no longer holds — recorded honestly rather
+    than silently editing the row in place, same "never quietly rewrite
+    intent" reasoning `deadline_service.mark_missed` states for its own
+    entity."""
+    return _transition(goal, "revised", clock)
+
+
+def retire_goal(goal: Goal, clock: Clock) -> Goal:
+    """`active -> retired`: no longer pursued, not because it was met or
+    revised — distinct from both."""
+    return _transition(goal, "retired", clock)
 
 
 def goal_event_payload(goal: Goal) -> dict:

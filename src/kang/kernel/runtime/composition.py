@@ -66,8 +66,11 @@ from kang.api.operations import (
     make_deadline_sweep_handler,
     make_explain_invocation_handler,
     make_explain_stub_handler,
+    make_goal_achieve_handler,
     make_goal_create_handler,
     make_goal_list_handler,
+    make_goal_retire_handler,
+    make_goal_revise_handler,
     make_held_action_approve_handler,
     make_held_action_cancel_handler,
     make_held_action_list_handler,
@@ -354,6 +357,21 @@ def _build_handlers(w: _HandlerWiring) -> dict:
         "audit.list": make_audit_list_handler(w.audit, w.clock),
         "system.health": make_system_health_handler(w.job_store, w.kill_switch),
         "invocation.list": make_invocation_list_handler(w.invocations),
+        **_build_project_cluster_handlers(w),
+    }
+
+
+def _build_project_cluster_handlers(w: _HandlerWiring) -> dict:
+    """project/competition/milestone/goal operations — extracted from
+    `_build_handlers` (11 §4 — the flat dict crossed the size lint's
+    80-line hard limit the moment goal's transitions landed; per
+    11_CODING §25, a lint failure is answered by splitting the unit,
+    never relaxing the limit). Not a domain concept of its own, same
+    reasoning `_build_stores`/`_build_bus_wiring` were extracted for —
+    these four entities already share `domain/projects/`'s own package
+    grouping (this session's `goal_service.py`/`milestone_service.py`
+    docstrings), so the split mirrors a boundary that already exists."""
+    return {
         "project.create": make_project_create_handler(
             w.bus, w.project_store, w.clock, w.new_id, w.device_id
         ),
@@ -379,6 +397,15 @@ def _build_handlers(w: _HandlerWiring) -> dict:
             w.bus, w.goal_store, w.clock, w.new_id, w.device_id
         ),
         "goal.list": make_goal_list_handler(w.goal_store),
+        "goal.achieve": make_goal_achieve_handler(
+            w.bus, w.goal_store, w.clock, w.new_id, w.device_id
+        ),
+        "goal.revise": make_goal_revise_handler(
+            w.bus, w.goal_store, w.clock, w.new_id, w.device_id
+        ),
+        "goal.retire": make_goal_retire_handler(
+            w.bus, w.goal_store, w.clock, w.new_id, w.device_id
+        ),
     }
 
 
@@ -524,7 +551,7 @@ def _build_stores(kang, clock) -> _Stores:
         project_store=SqliteProjectStore(kang),
         competition_store=SqliteCompetitionStore(kang),
         milestone_store=SqliteMilestoneStore(kang, clock),
-        goal_store=SqliteGoalStore(kang),
+        goal_store=SqliteGoalStore(kang, clock),
     )
 
 

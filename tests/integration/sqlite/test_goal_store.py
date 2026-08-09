@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -11,7 +12,8 @@ from kang.adapters.fakes.clock import FakeClock
 from kang.adapters.sqlite.connection import open_connection
 from kang.adapters.sqlite.goal_store import SqliteGoalStore
 from kang.adapters.sqlite.migrations import apply_migrations
-from kang.domain.projects.goal_service import GoalDraft, create_goal
+from kang.domain.ports.goal_store import GoalNotFoundError, GoalRevisionConflictError
+from kang.domain.projects.goal_service import GoalDraft, achieve_goal, create_goal
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MIGRATIONS_DIR = REPO_ROOT / "migrations"
@@ -35,7 +37,7 @@ def _goal(index: int, **overrides):
 
 
 def test_create_then_list_all(conn):
-    store = SqliteGoalStore(conn)
+    store = SqliteGoalStore(conn, FakeClock())
     store.create(_goal(0, title="Zebra goal"))
     store.create(_goal(1, title="alpha goal"))
     titles = [g.title for g in store.list_all()]
@@ -44,7 +46,7 @@ def test_create_then_list_all(conn):
 
 
 def test_list_all_carries_every_field(conn):
-    store = SqliteGoalStore(conn)
+    store = SqliteGoalStore(conn, FakeClock())
     store.create(_goal(0, horizon="year", description="Ranked list, 1 = highest"))
     (goal,) = store.list_all()
     assert goal.horizon == "year"
@@ -56,10 +58,12 @@ def test_list_all_carries_every_field(conn):
 def test_survives_reopen(tmp_path):
     first = open_connection(tmp_path / "kang.db")
     apply_migrations(first, MIGRATIONS_DIR, FakeClock())
-    SqliteGoalStore(first).create(_goal(0))
+    SqliteGoalStore(first, FakeClock()).create(_goal(0))
     first.close()
     second = open_connection(tmp_path / "kang.db")
-    assert [g.id for g in SqliteGoalStore(second).list_all()] == ["goal-0000"]
+    assert [g.id for g in SqliteGoalStore(second, FakeClock()).list_all()] == [
+        "goal-0000"
+    ]
     second.close()
 
 
@@ -81,11 +85,52 @@ def test_status_check_constraint_is_enforced(conn):
         )
 
 
+def test_get_unknown_id_raises_typed_not_found(conn):
+    with pytest.raises(GoalNotFoundError):
+        SqliteGoalStore(conn, FakeClock()).get("goal-ghost")
+
+
+def test_update_bumps_revision_and_updated_at(conn):
+    clock = FakeClock()
+    store = SqliteGoalStore(conn, clock)
+    goal = _goal(0)
+    store.create(goal)
+    clock.advance(60)
+    committed = store.update(achieve_goal(goal, clock))
+    assert committed.revision == 2
+    assert committed.updated_at == clock.now()
+    assert committed.status == "achieved"
+    assert store.get(goal.id) == committed
+
+
+def test_update_with_stale_revision_conflicts(conn):
+    clock = FakeClock()
+    store = SqliteGoalStore(conn, clock)
+    goal = _goal(0)
+    store.create(goal)
+    store.update(achieve_goal(goal, clock))
+    with pytest.raises(GoalRevisionConflictError):
+        store.update(achieve_goal(goal, clock))  # still revision 1
+
+
+def test_update_capture_names_the_changed_fields(conn):
+    clock = FakeClock()
+    store = SqliteGoalStore(conn, clock)
+    goal = _goal(0)
+    store.create(goal)
+    store.update(achieve_goal(goal, clock))
+    fields, revision = conn.execute(
+        "SELECT fields, revision FROM change_log WHERE op = 'update'"
+    ).fetchone()
+    assert set(json.loads(fields)) == {"status"}
+    assert revision == 2
+
+
 def test_create_writes_a_change_log_row(conn):
     # ADR-016: goal's first write path, and the change-capture trigger
     # (migration 0014) that arrived with it — 07 §5.6's "exercised from
     # day one" is not automatic; this proves the trigger actually fires.
-    SqliteGoalStore(conn).create(_goal(0))
+    SqliteGoalStore(conn, FakeClock()).create(_goal(0))
     captured = conn.execute(
         "SELECT entity, entity_id, op FROM change_log WHERE entity = 'goal'"
     ).fetchall()

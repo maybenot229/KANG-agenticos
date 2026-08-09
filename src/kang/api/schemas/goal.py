@@ -5,9 +5,9 @@ Constitutional home: 12_API §2, ADR-016 (goal.created — the entity's
 first write path). Mirrors `project.py`'s own shape: schemas describe the
 real contract as the handler already behaves, not a wish list.
 
-Tracking only (ADR-016): `goal.create` + `goal.list`, nothing more this
-pass — no `goal.get`/`.update` operation exists yet (mirrors `project.py`'s
-own precedent of not schema-ing ahead of a real handler).
+`goal.achieve`/`.revise`/`.retire` (ADR-018, 2026-08-09) are the entity's
+first status transitions — `GoalTransitionRequest`/`Response` are shared
+across all three (identical shape), not three near-duplicate schemas.
 """
 
 from __future__ import annotations
@@ -22,6 +22,8 @@ __all__ = [
     "GoalListItem",
     "GoalListRequest",
     "GoalListResponse",
+    "GoalTransitionRequest",
+    "GoalTransitionResponse",
 ]
 
 
@@ -88,3 +90,20 @@ class GoalListResponse(BaseModel):
     `GoalStore.list_all()`'s contract, exposed verbatim."""
 
     goals: list[GoalListItem]
+
+
+class GoalTransitionRequest(BaseModel):
+    """`goal.achieve`/`.revise`/`.retire` params (ADR-018) — identical
+    shape across all three, one schema shared rather than three
+    near-duplicates. No non-empty constraint on `id`, mirroring
+    `TaskCompleteRequest`'s own documented convention."""
+
+    id: str
+
+
+class GoalTransitionResponse(BaseModel):
+    """`goal.achieve`/`.revise`/`.retire` result (ADR-018) — shared
+    across all three, same reasoning as the request."""
+
+    goal_id: str
+    revision: int

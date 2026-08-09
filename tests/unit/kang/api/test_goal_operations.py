@@ -21,7 +21,13 @@ from kang.adapters.fakes.recovery import FakeRecoveryApplier
 from kang.adapters.fakes.sleeper import FakeSleeper
 from kang.api.dispatch import HandlerContext
 from kang.api.errors import ApiError
-from kang.api.operations import make_goal_create_handler, make_goal_list_handler
+from kang.api.operations import (
+    make_goal_achieve_handler,
+    make_goal_create_handler,
+    make_goal_list_handler,
+    make_goal_retire_handler,
+    make_goal_revise_handler,
+)
 from kang.kernel.audit.service import AuditService
 from kang.kernel.bus.bus import EventBus
 from kang.kernel.bus.delivery import Delivery
@@ -50,7 +56,7 @@ def wiring():
         PermissionEngine({"kernel:goals": ("events.publish:kang",)}),
         audit,
     )
-    store = FakeGoalStore()
+    store = FakeGoalStore(clock)
     context = HandlerContext(
         principal="kang", correlation_id="corr-1", trigger="cli", first_party=True
     )
@@ -78,6 +84,27 @@ def _list(wiring):
 
 def _published(wiring) -> list[str]:
     return [s.envelope.type for s in wiring["log"].read_from(0)]
+
+
+def _achieve(wiring, **params):
+    handler = make_goal_achieve_handler(
+        wiring["bus"], wiring["store"], wiring["clock"], wiring["new_id"], DEVICE
+    )
+    return handler(wiring["context"], params)
+
+
+def _revise(wiring, **params):
+    handler = make_goal_revise_handler(
+        wiring["bus"], wiring["store"], wiring["clock"], wiring["new_id"], DEVICE
+    )
+    return handler(wiring["context"], params)
+
+
+def _retire(wiring, **params):
+    handler = make_goal_retire_handler(
+        wiring["bus"], wiring["store"], wiring["clock"], wiring["new_id"], DEVICE
+    )
+    return handler(wiring["context"], params)
 
 
 class TestCreate:
@@ -151,3 +178,34 @@ class TestList:
         _create(wiring, title="alpha goal", horizon="year")
         titles = [g["title"] for g in _list(wiring)["goals"]]
         assert titles == ["alpha goal", "Zebra goal"]
+
+
+class TestAchieveReviseRetire:
+    """`goal.achieve`/`.revise`/`.retire` (ADR-018). Each transitions
+    `active -> <terminal>`, publishing the newly-registered `goal.updated`
+    under `kernel:goals`."""
+
+    @pytest.mark.parametrize(
+        "call,expected_status",
+        [(_achieve, "achieved"), (_revise, "revised"), (_retire, "retired")],
+    )
+    def test_transitions_and_publishes_goal_updated(
+        self, wiring, call, expected_status
+    ):
+        created = _create(wiring, title="Ship KANG v0.1", horizon="quarter")
+        result = call(wiring, id=created["goal_id"])
+        assert result["revision"] == 2
+        assert wiring["store"].get(created["goal_id"]).status == expected_status
+        assert _published(wiring) == ["goal.created", "goal.updated"]
+
+    def test_unknown_id_is_not_found(self, wiring):
+        with pytest.raises(ApiError) as exc_info:
+            _achieve(wiring, id="goal-ghost")
+        assert exc_info.value.code == "not_found"
+
+    def test_achieving_a_non_active_goal_is_invalid_request(self, wiring):
+        created = _create(wiring, title="Ship KANG v0.1", horizon="quarter")
+        _achieve(wiring, id=created["goal_id"])
+        with pytest.raises(ApiError) as exc_info:
+            _achieve(wiring, id=created["goal_id"])
+        assert exc_info.value.code == "invalid_request"

@@ -36,8 +36,11 @@ from kang.api.operations.explain_ops import (
 )
 from kang.api.operations.goal_ops import (
     GOALS_PRINCIPAL,
+    make_goal_achieve_handler,
     make_goal_create_handler,
     make_goal_list_handler,
+    make_goal_retire_handler,
+    make_goal_revise_handler,
 )
 from kang.api.operations.held_action_ops import (
     make_held_action_approve_handler,
@@ -94,8 +97,11 @@ __all__ = [
     "make_deadline_sweep_handler",
     "make_explain_invocation_handler",
     "make_explain_stub_handler",
+    "make_goal_achieve_handler",
     "make_goal_create_handler",
     "make_goal_list_handler",
+    "make_goal_retire_handler",
+    "make_goal_revise_handler",
     "make_held_action_approve_handler",
     "make_held_action_cancel_handler",
     "make_held_action_list_handler",

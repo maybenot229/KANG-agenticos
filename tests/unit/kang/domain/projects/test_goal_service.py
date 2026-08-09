@@ -14,8 +14,11 @@ from kang.adapters.fakes.clock import FakeClock
 from kang.domain.projects.goal_service import (
     GoalDraft,
     GoalValidationError,
+    achieve_goal,
     create_goal,
     goal_event_payload,
+    retire_goal,
+    revise_goal,
 )
 
 
@@ -61,6 +64,33 @@ class TestCreate:
     def test_optional_fields_are_carried_through(self):
         goal = _make(description="First real milestone for the OS")
         assert goal.description == "First real milestone for the OS"
+
+
+class TestTransitions:
+    @pytest.mark.parametrize(
+        "transition,expected",
+        [
+            (achieve_goal, "achieved"),
+            (revise_goal, "revised"),
+            (retire_goal, "retired"),
+        ],
+    )
+    def test_transition_from_active_sets_status_and_updated_at(
+        self, transition, expected
+    ):
+        goal = _make()
+        clock = FakeClock()
+        clock.advance(3600)
+        transitioned = transition(goal, clock)
+        assert transitioned.status == expected
+        assert transitioned.updated_at == clock.now()
+        assert goal.status == "active"  # snapshots are immutable
+
+    @pytest.mark.parametrize("transition", [achieve_goal, revise_goal, retire_goal])
+    def test_transition_from_a_non_active_status_is_rejected(self, transition):
+        achieved = achieve_goal(_make(), FakeClock())
+        with pytest.raises(GoalValidationError):
+            transition(achieved, FakeClock())
 
 
 class TestEventPayload:

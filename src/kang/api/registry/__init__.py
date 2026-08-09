@@ -46,6 +46,8 @@ from kang.api.schemas.goal import (
     GoalCreateResponse,
     GoalListRequest,
     GoalListResponse,
+    GoalTransitionRequest,
+    GoalTransitionResponse,
 )
 from kang.api.schemas.held_action import (
     HeldActionApproveRequest,
@@ -569,6 +571,39 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         False,
         "List every tracked goal, title then id.",
         schemas=OperationSchemas(request=GoalListRequest, response=GoalListResponse),
+    ),
+    # goal.achieve / .revise / .retire (ADR-018): the entity's first status
+    # transitions, `active -> <terminal>`. Same scope as goal.create (no
+    # new authority). Every command requires an idempotency key.
+    _op(
+        "goal.achieve",
+        "command",
+        "goals.write",
+        True,
+        "Mark a goal achieved.",
+        schemas=OperationSchemas(
+            request=GoalTransitionRequest, response=GoalTransitionResponse
+        ),
+    ),
+    _op(
+        "goal.revise",
+        "command",
+        "goals.write",
+        True,
+        "Mark a goal revised.",
+        schemas=OperationSchemas(
+            request=GoalTransitionRequest, response=GoalTransitionResponse
+        ),
+    ),
+    _op(
+        "goal.retire",
+        "command",
+        "goals.write",
+        True,
+        "Mark a goal retired.",
+        schemas=OperationSchemas(
+            request=GoalTransitionRequest, response=GoalTransitionResponse
+        ),
     ),
 )
 
