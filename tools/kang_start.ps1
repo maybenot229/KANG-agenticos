@@ -24,6 +24,15 @@
 #        done (quitting KANG from the tray only closes the shell, not
 #        the Core - they are separate processes; the Core keeps running
 #        until stopped explicitly or the machine restarts).
+#
+# Pre-flight liveness check (ADR-017): auto-start (tools/kang_register_
+# autostart.ps1) removes the accident-prevention manual use had (Kang
+# noticing a second PowerShell window) - a forgotten already-running
+# Core plus a habitual re-run would otherwise start a second Core
+# against the same KANG_HOME. Not the real fix (ADR-008's core-side
+# startup lock is still RESERVED, unbuilt) - a narrow, cheap guard: if
+# session.json already names a Core that answers, skip straight to the
+# shell instead of starting a second one.
 
 $ErrorActionPreference = "Stop"
 
@@ -40,14 +49,38 @@ if (-not (Test-Path $shellExe)) {
     exit 1
 }
 
+$sessionFile = Join-Path $env:KANG_HOME "session.json"
+$alreadyLive = $false
+if (Test-Path $sessionFile) {
+    try {
+        $existing = Get-Content $sessionFile -Raw | ConvertFrom-Json
+        $body = @{ operation = "registry.get"; params = @{} } | ConvertTo-Json
+        $headers = @{ "X-Session-Token" = $existing.token }
+        $response = Invoke-RestMethod -Method Post `
+            -Uri "http://$($existing.host):$($existing.port)/op" `
+            -Headers $headers -ContentType "application/json" -Body $body `
+            -TimeoutSec 2
+        if ($response.ok) { $alreadyLive = $true }
+    } catch {
+        # Stale/unreachable session.json - no live Core; fall through to start one.
+    }
+}
+
+if ($alreadyLive) {
+    Write-Host "A Core is already running against $env:KANG_HOME - skipping a second launch."
+    Write-Host "Launching the shell..."
+    Start-Process -FilePath $shellExe
+    Write-Host "KANG is running in the tray - click the tray icon, then 'Show KANG'."
+    exit 0
+}
+
 Write-Host "Starting KANG Core against $env:KANG_HOME ..."
 $core = Start-Process -FilePath python `
     -ArgumentList "-m", "kang.kernel.runtime.composition", "$env:KANG_HOME" `
     -WorkingDirectory $repoRoot -WindowStyle Hidden -PassThru
 
-$sessionFile = Join-Path $env:KANG_HOME "session.json"
-# The Core always rewrites this file at startup, so a stale one from a
-# previous run can't be mistaken for a fresh handshake as long as we
+# The Core always rewrites session.json at startup, so a stale one from
+# a previous run can't be mistaken for a fresh handshake as long as we
 # wait for its write time to move past our own start time.
 $startedAt = Get-Date
 $deadline = $startedAt.AddSeconds(15)
