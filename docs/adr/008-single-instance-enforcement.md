@@ -1,7 +1,8 @@
 # ADR-008 — Single-instance enforcement at the KANG shell
 
-**Status:** proposed
+**Status:** accepted
 **Date:** 2026-07-29
+**Amended:** 2026-08-10 — Part A2 implemented (see "A2 implementation" below); this document's own text is left otherwise unedited per ADR-001's amendment precedent (append, never rewrite history).
 **Affected documents:** `04_ARCHITECTURE.md` Decision 016 (run model: "core starts at login, lives in the tray; UI opens on demand" — this ADR is what makes that model crash-safe), `17_PROJECT_STRUCTURE.md` (`ui/shell/` — the mechanism's likely home), `07_DATABASE.md` DB-001 (WAL/busy_timeout — cited, not reopened), `03_ROADMAP.md` §8 (gains a RESERVED registry row for the core-side half)
 **Cites:** `docs/adr/007-ui-shell-decision.md` §4.2/§5.2 (the finding this ADR discharges), `NFR-010` (no Windows-only core dependency), `SEC-003`/`SEC-004` (authority model — cited to confirm this ADR does not touch it)
 **Related:** [[007-ui-shell-decision.md]] (names this as owed; scope was deliberately excluded there)
@@ -123,30 +124,55 @@ proved the shape (global-shortcut registration, tray, overlay) that
 `tauri-plugin-single-instance` slots alongside — the only new constraint is
 registering it first, before `global-shortcut`.
 
-**A2 is specified by this ADR but NOT YET IMPLEMENTABLE.** There is no
-Python core startup/composition sequence to attach a startup lock to today:
-`kernel/runtime/composition.py` has no "check if already running" concept,
-and building one solely to hold a lock, with no consumer yet exercising it,
-would be exactly the speculative-structure pattern `PS-006` warns against in
-the other direction — a mechanism with no real startup path to guard. This
-is **not** optional or lower-priority scope; it is sequenced by a genuine
-dependency (a real core startup sequence must exist first), the same way
-ADR-006 deferred `job.timeout_s` enforcement to "the supervised-task
-machinery," not to indifference.
+**A2 was specified by this ADR but not implementable at the time** — there
+was no Python core startup/composition sequence to attach a startup lock
+to; `kernel/runtime/composition.py` had no "check if already running"
+concept. Registered as a `03_ROADMAP` §8 RESERVED entry (trigger: "the
+core gains a real startup/composition sequence with a natural attachment
+point"), same pattern as start-at-login (ADR-007 §5.1) — the decision was
+already made here, only the attachment point was missing.
 
-**Recommendation: register A2 as a `03_ROADMAP` §8 RESERVED registry entry**,
-not a separate follow-up ADR or issue. This project already uses exactly
-this pattern for comparably-shaped "specified now, built later, on a named
-trigger" items — start-at-login (ADR-007 §5.1) and cursor tombstoning for
-removed subscribers (`15_EVENT_BUS` §18) both went into the RESERVED
-registry rather than a second ADR, because the *decision* is already made
-here (lock under `%KANG_HOME%`, exclusive on startup) — what's missing is
-only an attachment point, not a design choice, so a new ADR at that point
-would just be restating this one. A RESERVED row is proposed:
+### A2 implementation (2026-08-10)
 
-| Reserved capability | Trigger | Source |
-|---|---|---|
-| Core-side startup lock under `%KANG_HOME%` (single-instance, core half) | The core gains a real startup/composition sequence with a natural attachment point (`kernel/runtime/composition.py` or successor) | ADR-008 |
+The trigger fired: `composition.py::build_core()`/`serve()` gained a real
+boot sequence the prior day (the scheduler's boot catch-up), giving A2 the
+attachment point it was waiting for — and a 2026-08-10 design session
+(prompted by ADR-017's own admission that its pre-flight liveness check
+is a narrow workaround, not the real fix) confirmed the trigger was
+satisfied and this ADR's decision didn't need re-deriving, only building.
+
+Implemented exactly as this ADR already specified — exclusive lock under
+`%KANG_HOME%`, taken on core startup, released by the OS on process exit
+by any means (clean shutdown or crash), no PID-file staleness window:
+
+- `domain/ports/startup_lock.py` — `StartupLock` port, `AlreadyRunningError`.
+- `adapters/os_windows/startup_lock.py` — `FileStartupLock`, an exclusive
+  `msvcrt.locking()` region on `%KANG_HOME%/core.lock`. Windows-only code,
+  correctly confined to `adapters/os_windows/` behind the port — NFR-010's
+  "no Windows-only **core** dependency" is satisfied by the port boundary,
+  not by this adapter itself being portable (a POSIX `fcntl.flock`
+  sibling adapter would join it behind the same port if a POSIX build
+  ever exists).
+- `adapters/fakes/startup_lock.py` — `FakeStartupLock`, contract-tested
+  identically against the real adapter (`tests/fixtures/
+  startup_lock_contract.py`, 13 §2.3).
+- `composition.py::build_core()` acquires the lock before opening
+  `kang.db` or the eventlog — nothing else is touched if another Core
+  already holds it. `Core.close()` releases it. `serve()` catches
+  `AlreadyRunningError` and reports a one-line message to stderr with a
+  non-zero exit — Part B's own "exits/reports" language, now true for
+  the core half exactly as it already was for the shell half (A1).
+
+Real subprocess proof (`tests/suites/replay/test_single_instance.py`,
+mirroring `test_boot_catchup.py`'s own `_Server` shape): two genuine
+`python -m kang.kernel.runtime.composition` processes against the same
+real `%KANG_HOME%` — the second exits with code 1 and a stderr message
+naming the lock, the first's own session handshake is byte-for-byte
+untouched; after the first stops, a third process starts clean with no
+manual cleanup, proving the OS-release guarantee rather than assuming it.
+
+The RESERVED row this ADR proposed is retired from `03_ROADMAP` §8 —
+implemented, not merely triggered.
 
 ---
 
@@ -242,21 +268,17 @@ Real args/cwd → acted on.** There is no third, intermediate case.
   this ADR.
 - No schema change, no new event type, no new operation.
 
-**Deferred, but specified — not forgotten scope:**
-- The core-side startup lock under `%KANG_HOME%` (A2) does **not** ship at
-  M6. It is fully specified here (exclusive lock, taken on core startup,
-  under existing `%KANG_HOME%` ownership per D003) but has no attachment
-  point yet, because no real core startup/composition sequence exists to
-  attach it to. It is registered in `03_ROADMAP` §8's RESERVED registry
-  (proposed row above), triggered the moment `kernel/runtime/composition.py`
-  or its successor gains a real startup sequence — at which point the lock
-  is implemented per this ADR's decision, not re-decided.
-- Until A2 ships, the split-brain risk it addresses (two live cores each
-  running a scheduler/notifier against the same `kang.db`) remains open in
-  the narrow case of a core launched independently of the shell (e.g., a
-  developer running the core directly via CLI while the shell is also
-  running). This is accepted as a known, named gap for the pre-M6/M6
-  window, not a silent one — the same discipline ADR-006 used for
+**Deferred at M6, implemented 2026-08-10 — see "A2 implementation" above:**
+- The core-side startup lock under `%KANG_HOME%` (A2) did not ship at M6
+  — no real core startup sequence existed to attach it to yet. It shipped
+  once one did (`serve()`'s boot catch-up landing the day before gave it
+  the attachment point), per this ADR's own decision, not re-decided.
+- Between M6 and 2026-08-10, the split-brain risk A2 addresses (two live
+  cores each running a scheduler/notifier against the same `kang.db`) was
+  open in the narrow case of a core launched independently of the shell
+  (e.g., a developer running the core directly via CLI while the shell is
+  also running). This was accepted as a known, named gap for that window,
+  not a silent one — the same discipline ADR-006 used for
   `job.timeout_s`.
 
 ---

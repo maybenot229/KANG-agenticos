@@ -37,6 +37,7 @@ from kang.adapters.eventlog.event_log import SqliteEventLog
 from kang.adapters.eventlog.schema import open_eventlog
 from kang.adapters.jsonl.audit_log import JsonlAuditLog
 from kang.adapters.os_windows.clock import SystemClock
+from kang.adapters.os_windows.startup_lock import FileStartupLock
 from kang.adapters.scheduler import CRON_PREFIX, parse_cron
 from kang.adapters.sqlite.calendar_store import SqliteCalendarStore
 from kang.adapters.sqlite.competition_store import SqliteCompetitionStore
@@ -100,6 +101,7 @@ from kang.domain.notifications import (
 from kang.domain.ports.eventlog import EventEnvelope
 from kang.domain.ports.scheduler import Job
 from kang.domain.ports.session import Session
+from kang.domain.ports.startup_lock import AlreadyRunningError
 from kang.kernel.audit.service import AuditService
 from kang.kernel.bus.bus import EventBus, Subscriber
 from kang.kernel.bus.delivery import Delivery
@@ -132,6 +134,7 @@ class Core:
     new_id: object
     _connections: list
     scheduler: object = None
+    startup_lock: object = None
 
     def mint_first_party_session(self) -> Session:
         token = self.new_id()  # type: ignore[operator]
@@ -147,6 +150,8 @@ class Core:
     def close(self) -> None:
         for connection in self._connections:
             connection.close()
+        if self.startup_lock is not None:
+            self.startup_lock.release()  # ADR-008 Part A2
 
 
 class _BusNotificationPublisher:
@@ -453,6 +458,30 @@ def _build_bus_wiring(kang_home, kang, events, clock, new_id, device_id) -> _Bus
 
 def build_core(kang_home: Path, device_id: str = "device-local") -> Core:
     kang_home.mkdir(parents=True, exist_ok=True)
+
+    # ADR-008 Part A2: taken before any other resource (kang.db, the
+    # eventlog) so a second live Core never gets far enough to contend
+    # for either — AlreadyRunningError propagates immediately, nothing
+    # yet opened to clean up. Everything from here on releases the lock
+    # on its own failure (see the try/except below) rather than leaving
+    # it held by a half-initialized Core a retry would then be blocked
+    # by.
+    startup_lock = FileStartupLock(kang_home / "core.lock")
+    startup_lock.acquire()
+    try:
+        return _build_core_locked(kang_home, device_id, startup_lock)
+    except Exception:
+        startup_lock.release()
+        raise
+
+
+def _build_core_locked(
+    kang_home: Path, device_id: str, startup_lock: FileStartupLock
+) -> Core:
+    """The rest of `build_core`, run only once the startup lock is held —
+    split out so its own exceptions can be caught by name in one place
+    (11 §4: not a domain concept of its own, purely so `build_core`'s
+    lock/release bracket stays readable)."""
     clock = SystemClock()
 
     def new_id() -> str:
@@ -517,6 +546,7 @@ def build_core(kang_home: Path, device_id: str = "device-local") -> Core:
                 kill_switch=stores.kill_switch,
             )
         ),
+        startup_lock=startup_lock,
     )
 
 
@@ -643,8 +673,19 @@ def serve(kang_home: Path, host: str = "127.0.0.1", port: int = 0) -> None:
     `kang.toml` is missing/invalid (`_wire_scheduler`'s own fail-closed
     path); catch-up is skipped silently in that case, same as every other
     scheduler operation already does. `dispatcher.dispatch` runs in-process
-    (no HTTP loopback), so this is safe to run before `serve_forever`."""
-    core = build_core(kang_home)
+    (no HTTP loopback), so this is safe to run before `serve_forever`.
+
+    ADR-008 Part A2: `build_core` takes an exclusive startup lock under
+    `%KANG_HOME%` before touching anything else. A second live Core
+    against the same home "detects the lock and exits/reports" (the
+    ADR's own words) — a clear one-line stderr message and a non-zero
+    exit, never a raw traceback, and never a second scheduler/notifier
+    racing the first against the same `kang.db`."""
+    try:
+        core = build_core(kang_home)
+    except AlreadyRunningError as exc:
+        sys.stderr.write(f"KANG Core: {exc}\n")
+        sys.exit(1)
     if core.scheduler is not None:
         core.scheduler.catch_up()
     session = core.mint_first_party_session()
