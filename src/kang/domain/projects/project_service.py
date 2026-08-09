@@ -4,15 +4,16 @@ Layer: domain/projects (capability service; deterministic, zero I/O).
 Constitutional home: 07_DATABASE §5.2 (project shape, status enum);
 ADR-013 (project.created, the entity's first write path).
 
-Tracking only this pass: `create_project` is the entity's whole surface —
-no status-transition function exists yet (mirrors deadline_service.py's
-own precedent: build the transitions a real operation needs, not ahead of
-one).
+`complete_project` (ADR-018, 2026-08-09) is the entity's first status
+transition, `active -> completed` — the one verb this pass builds;
+`pause`/`resume`/`archive`/`abandon` stay unbuilt (ADR-018's own scope
+ruling: no named consumer beyond "the enum allows it" for any of those
+yet, same non-speculation discipline this project holds everywhere).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from kang.domain.ports.clock import Clock
 from kang.domain.ports.project_store import PROJECT_STATUSES, Project
@@ -20,6 +21,7 @@ from kang.domain.ports.project_store import PROJECT_STATUSES, Project
 __all__ = [
     "ProjectDraft",
     "ProjectValidationError",
+    "complete_project",
     "create_project",
     "project_event_payload",
 ]
@@ -70,6 +72,17 @@ def create_project(
         device_id=device_id,
         revision=1,
     )
+
+
+def complete_project(project: Project, clock: Clock) -> Project:
+    """`active -> completed`: Kang shipped it. Mirrors `complete_task`'s
+    exact shape (the only other single-verb transition in this
+    codebase)."""
+    if project.status != "active":
+        raise ProjectValidationError(
+            f"project {project.id} is {project.status}, not active"
+        )
+    return replace(project, status="completed", updated_at=clock.now())
 
 
 def project_event_payload(project: Project) -> dict:

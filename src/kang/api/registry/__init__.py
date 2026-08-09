@@ -79,6 +79,8 @@ from kang.api.schemas.permission import (
 )
 from kang.api.schemas.plan import PlanGenerateRequest, PlanGenerateResponse
 from kang.api.schemas.project import (
+    ProjectCompleteRequest,
+    ProjectCompleteResponse,
     ProjectCreateRequest,
     ProjectCreateResponse,
     ProjectListRequest,
@@ -464,6 +466,20 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         "List every tracked project, name then id.",
         schemas=OperationSchemas(
             request=ProjectListRequest, response=ProjectListResponse
+        ),
+    ),
+    # project.complete (ADR-018): the entity's first status transition,
+    # active -> completed. Same scope as project.create (no new
+    # authority). pause/resume/archive/abandon stay unbuilt (ADR-018's
+    # own scope ruling).
+    _op(
+        "project.complete",
+        "command",
+        "projects.write",
+        True,
+        "Mark a project completed.",
+        schemas=OperationSchemas(
+            request=ProjectCompleteRequest, response=ProjectCompleteResponse
         ),
     ),
     # competition.create / competition.list (ADR-014): the Competitions

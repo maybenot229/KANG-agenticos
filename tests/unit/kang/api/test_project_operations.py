@@ -21,7 +21,11 @@ from kang.adapters.fakes.recovery import FakeRecoveryApplier
 from kang.adapters.fakes.sleeper import FakeSleeper
 from kang.api.dispatch import HandlerContext
 from kang.api.errors import ApiError
-from kang.api.operations import make_project_create_handler, make_project_list_handler
+from kang.api.operations import (
+    make_project_complete_handler,
+    make_project_create_handler,
+    make_project_list_handler,
+)
 from kang.kernel.audit.service import AuditService
 from kang.kernel.bus.bus import EventBus
 from kang.kernel.bus.delivery import Delivery
@@ -50,7 +54,7 @@ def wiring():
         PermissionEngine({"kernel:projects": ("events.publish:kang",)}),
         audit,
     )
-    store = FakeProjectStore()
+    store = FakeProjectStore(clock)
     context = HandlerContext(
         principal="kang", correlation_id="corr-1", trigger="cli", first_party=True
     )
@@ -78,6 +82,13 @@ def _list(wiring):
 
 def _published(wiring) -> list[str]:
     return [s.envelope.type for s in wiring["log"].read_from(0)]
+
+
+def _complete(wiring, **params):
+    handler = make_project_complete_handler(
+        wiring["bus"], wiring["store"], wiring["clock"], wiring["new_id"], DEVICE
+    )
+    return handler(wiring["context"], params)
 
 
 class TestCreate:
@@ -140,3 +151,27 @@ class TestList:
         _create(wiring, name="alpha project")
         names = [p["name"] for p in _list(wiring)["projects"]]
         assert names == ["alpha project", "Zebra project"]
+
+
+class TestComplete:
+    """`project.complete` (ADR-018): `active -> completed`, publishing
+    the newly-registered `project.updated` under `kernel:projects`."""
+
+    def test_completes_and_publishes_project_updated(self, wiring):
+        created = _create(wiring, name="KANG v0.1")
+        result = _complete(wiring, id=created["project_id"])
+        assert result["revision"] == 2
+        assert wiring["store"].get(created["project_id"]).status == "completed"
+        assert _published(wiring) == ["project.created", "project.updated"]
+
+    def test_unknown_id_is_not_found(self, wiring):
+        with pytest.raises(ApiError) as exc_info:
+            _complete(wiring, id="proj-ghost")
+        assert exc_info.value.code == "not_found"
+
+    def test_completing_a_non_active_project_is_invalid_request(self, wiring):
+        created = _create(wiring, name="KANG v0.1")
+        _complete(wiring, id=created["project_id"])
+        with pytest.raises(ApiError) as exc_info:
+            _complete(wiring, id=created["project_id"])
+        assert exc_info.value.code == "invalid_request"

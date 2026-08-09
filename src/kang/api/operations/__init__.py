@@ -63,6 +63,7 @@ from kang.api.operations.plan_ops import (
 )
 from kang.api.operations.project_ops import (
     PROJECTS_PRINCIPAL,
+    make_project_complete_handler,
     make_project_create_handler,
     make_project_list_handler,
 )
@@ -114,6 +115,7 @@ __all__ = [
     "make_notification_ack_handler",
     "make_permission_list_handler",
     "make_plan_generate_handler",
+    "make_project_complete_handler",
     "make_project_create_handler",
     "make_project_list_handler",
     "make_registry_get_handler",

@@ -14,6 +14,7 @@ from kang.adapters.fakes.clock import FakeClock
 from kang.domain.projects.project_service import (
     ProjectDraft,
     ProjectValidationError,
+    complete_project,
     create_project,
     project_event_payload,
 )
@@ -62,6 +63,22 @@ class TestCreate:
         assert project.vault_folder == "KANG OS"
         assert project.github_repo == "maybenot229/KANG"
         assert project.goal_id == "goal-1"
+
+
+class TestComplete:
+    def test_completes_an_active_project(self):
+        project = _make()
+        clock = FakeClock()
+        clock.advance(3600)
+        completed = complete_project(project, clock)
+        assert completed.status == "completed"
+        assert completed.updated_at == clock.now()
+        assert project.status == "active"  # snapshots are immutable
+
+    def test_completing_a_non_active_project_is_rejected(self):
+        project = _make(status="paused")
+        with pytest.raises(ProjectValidationError):
+            complete_project(project, FakeClock())
 
 
 class TestEventPayload:

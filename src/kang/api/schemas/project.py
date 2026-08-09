@@ -5,10 +5,9 @@ Constitutional home: 12_API §2, ADR-013 (project.created — the entity's
 first write path). Mirrors `deadline.py`'s own shape: schemas describe the
 real contract as the handler already behaves, not a wish list.
 
-Tracking only (03_ROADMAP M4/M5): `project.create` + `project.list`,
-nothing more this pass — no `project.get`/`.update` operation exists yet
-(mirrors `deadline.py`'s own precedent of not schema-ing ahead of a real
-handler).
+`project.complete` (ADR-018, 2026-08-09) is the entity's first status
+transition — `pause`/`resume`/`archive`/`abandon` stay unbuilt, see
+`project_service.py`'s own docstring for why.
 """
 
 from __future__ import annotations
@@ -18,6 +17,8 @@ from pydantic import BaseModel, field_validator
 from kang.domain.ports.project_store import PROJECT_STATUSES
 
 __all__ = [
+    "ProjectCompleteRequest",
+    "ProjectCompleteResponse",
     "ProjectCreateRequest",
     "ProjectCreateResponse",
     "ProjectListItem",
@@ -89,3 +90,17 @@ class ProjectListResponse(BaseModel):
     `ProjectStore.list_all()`'s contract, exposed verbatim."""
 
     projects: list[ProjectListItem]
+
+
+class ProjectCompleteRequest(BaseModel):
+    """`project.complete` params (ADR-018). No non-empty constraint on
+    `id`, mirroring `TaskCompleteRequest`'s own documented convention."""
+
+    id: str
+
+
+class ProjectCompleteResponse(BaseModel):
+    """`project.complete` result (ADR-018)."""
+
+    project_id: str
+    revision: int

@@ -1,6 +1,6 @@
 # ADR-018 — Standing pattern: registering `<entity>.updated` for a status transition, applied to milestone/goal/project
 
-**Status:** proposed
+**Status:** accepted
 **Date:** 2026-08-09
 **Decides:** the mirror-image gap ADR-013/014/015/016 each named and deliberately left open — "`X.updated` is deliberately NOT registered... the next increment that adds a status-transition operation files the ADR." That increment is now, for three entities at once: milestone (`reach`/`miss`/`drop`), goal (`achieve`/`revise`/`retire`), project (`complete`).
 **Affected documents:** 15_EVENT_BUS §6.1/§6.3 (closed taxonomy gains three entries: `milestone.updated`, `goal.updated`, `project.updated`), 13_TESTING §16.2 (payload-sufficiency obligation follows for each).

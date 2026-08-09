@@ -11,7 +11,15 @@ from kang.adapters.fakes.clock import FakeClock
 from kang.adapters.sqlite.connection import open_connection
 from kang.adapters.sqlite.migrations import apply_migrations
 from kang.adapters.sqlite.project_store import SqliteProjectStore
-from kang.domain.projects.project_service import ProjectDraft, create_project
+from kang.domain.ports.project_store import (
+    ProjectNotFoundError,
+    ProjectRevisionConflictError,
+)
+from kang.domain.projects.project_service import (
+    ProjectDraft,
+    complete_project,
+    create_project,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MIGRATIONS_DIR = REPO_ROOT / "migrations"
@@ -31,7 +39,7 @@ def _project(index: int, **overrides):
 
 
 def test_create_then_list_all(conn):
-    store = SqliteProjectStore(conn)
+    store = SqliteProjectStore(conn, FakeClock())
     store.create(_project(0, name="Zebra project"))
     store.create(_project(1, name="alpha project"))
     names = [p.name for p in store.list_all()]
@@ -40,7 +48,7 @@ def test_create_then_list_all(conn):
 
 
 def test_list_all_carries_every_field(conn):
-    store = SqliteProjectStore(conn)
+    store = SqliteProjectStore(conn, FakeClock())
     store.create(
         _project(
             0,
@@ -60,10 +68,12 @@ def test_list_all_carries_every_field(conn):
 def test_survives_reopen(tmp_path):
     first = open_connection(tmp_path / "kang.db")
     apply_migrations(first, MIGRATIONS_DIR, FakeClock())
-    SqliteProjectStore(first).create(_project(0))
+    SqliteProjectStore(first, FakeClock()).create(_project(0))
     first.close()
     second = open_connection(tmp_path / "kang.db")
-    assert [p.id for p in SqliteProjectStore(second).list_all()] == ["proj-0000"]
+    assert [p.id for p in SqliteProjectStore(second, FakeClock()).list_all()] == [
+        "proj-0000"
+    ]
     second.close()
 
 
@@ -75,11 +85,39 @@ def test_status_check_constraint_is_enforced(conn):
         )
 
 
+def test_get_unknown_id_raises_typed_not_found(conn):
+    with pytest.raises(ProjectNotFoundError):
+        SqliteProjectStore(conn, FakeClock()).get("proj-ghost")
+
+
+def test_update_bumps_revision_and_updated_at(conn):
+    clock = FakeClock()
+    store = SqliteProjectStore(conn, clock)
+    project = _project(0)
+    store.create(project)
+    clock.advance(60)
+    committed = store.update(complete_project(project, clock))
+    assert committed.revision == 2
+    assert committed.updated_at == clock.now()
+    assert committed.status == "completed"
+    assert store.get(project.id) == committed
+
+
+def test_update_with_stale_revision_conflicts(conn):
+    clock = FakeClock()
+    store = SqliteProjectStore(conn, clock)
+    project = _project(0)
+    store.create(project)
+    store.update(complete_project(project, clock))
+    with pytest.raises(ProjectRevisionConflictError):
+        store.update(complete_project(project, clock))  # still revision 1
+
+
 def test_create_writes_a_change_log_row(conn):
     # ADR-013: project's first write path, and the change-capture trigger
     # (migration 0011) that arrived with it — 07 §5.6's "exercised from
     # day one" is not automatic; this proves the trigger actually fires.
-    SqliteProjectStore(conn).create(_project(0))
+    SqliteProjectStore(conn, FakeClock()).create(_project(0))
     captured = conn.execute(
         "SELECT entity, entity_id, op FROM change_log WHERE entity = 'project'"
     ).fetchall()

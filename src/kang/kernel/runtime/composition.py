@@ -83,6 +83,7 @@ from kang.api.operations import (
     make_notification_ack_handler,
     make_permission_list_handler,
     make_plan_generate_handler,
+    make_project_complete_handler,
     make_project_create_handler,
     make_project_list_handler,
     make_registry_get_handler,
@@ -376,6 +377,9 @@ def _build_project_cluster_handlers(w: _HandlerWiring) -> dict:
             w.bus, w.project_store, w.clock, w.new_id, w.device_id
         ),
         "project.list": make_project_list_handler(w.project_store),
+        "project.complete": make_project_complete_handler(
+            w.bus, w.project_store, w.clock, w.new_id, w.device_id
+        ),
         "competition.create": make_competition_create_handler(
             w.bus, w.competition_store, w.clock, w.new_id, w.device_id
         ),
@@ -548,7 +552,7 @@ def _build_stores(kang, clock) -> _Stores:
         held_action_store=SqliteHeldActionStore(kang),
         job_store=SqliteJobStore(kang, clock),
         kill_switch=SqliteKillSwitch(kang, clock),
-        project_store=SqliteProjectStore(kang),
+        project_store=SqliteProjectStore(kang, clock),
         competition_store=SqliteCompetitionStore(kang),
         milestone_store=SqliteMilestoneStore(kang, clock),
         goal_store=SqliteGoalStore(kang, clock),

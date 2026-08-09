@@ -7,11 +7,14 @@ Constitutional home: 07_DATABASE §5.2 (project table), DB-002 (SQL confined
 to the store layer behind this port), ADR-013 (project.created — the
 entity's first write path).
 
-Tracking only (03_ROADMAP M4/M5 objective: "projects... tracking only"):
-this pass's port surface is create + list, nothing more. `milestone`,
-status transitions, and any update/delete path are real schema (0006
-already shapes `milestone`) but have no operation yet — added when one
-exists, not speculatively widened now (PS-006).
+`complete` (ADR-018, 2026-08-09) is the entity's first status transition:
+`get`/`update` join `create`/`list_all`, mirroring `TaskStore`'s exact
+optimistic-concurrency contract. `pause`/`resume`/`archive`/`abandon`
+stay unbuilt — ADR-018's own scope ruling: no prior document names a
+specific verb set for project the way milestone/goal's own ADRs did,
+and building all five transitions with no named consumer beyond "the
+enum allows it" would be the speculative-structure anti-pattern this
+project rejects everywhere else.
 """
 
 from __future__ import annotations
@@ -23,7 +26,10 @@ from typing import Protocol
 __all__ = [
     "PROJECT_STATUSES",
     "Project",
+    "ProjectNotFoundError",
+    "ProjectRevisionConflictError",
     "ProjectStore",
+    "ProjectStoreError",
 ]
 
 PROJECT_STATUSES = ("active", "paused", "completed", "archived", "abandoned")
@@ -47,15 +53,39 @@ class Project:
     goal_id: str | None = None
 
 
+class ProjectStoreError(Exception):
+    """Base of the project-store failure hierarchy (11 §9: typed errors)."""
+
+
+class ProjectNotFoundError(ProjectStoreError):
+    """No project with the given id exists."""
+
+
+class ProjectRevisionConflictError(ProjectStoreError):
+    """Optimistic concurrency check failed: expected revision is stale."""
+
+
 class ProjectStore(Protocol):
     """Persistence port for projects. Implementations: SqliteProjectStore
     (real), FakeProjectStore (adapters/fakes — contract-tested against the
-    real one, 13 §2.3). Tracking-only surface: create + list; see module
-    docstring for why get/update/delete aren't here yet."""
+    real one, 13 §2.3). `get`/`update` (ADR-018) join `create`/`list_all`;
+    delete still has no caller."""
 
     def create(self, project: Project) -> None:
         """Persist a new project. The change is capture-logged (07 §5.6,
         ADR-013's trigger)."""
+        ...
+
+    def get(self, project_id: str) -> Project:
+        """Return the project or raise ProjectNotFoundError."""
+        ...
+
+    def update(self, project: Project) -> Project:
+        """Persist a status transition; `project.revision` is the
+        expected current revision. Returns the committed snapshot
+        (revision bumped, `updated_at` stamped). Raises
+        ProjectRevisionConflictError on staleness, ProjectNotFoundError
+        if the id no longer exists."""
         ...
 
     def list_all(self) -> list[Project]:

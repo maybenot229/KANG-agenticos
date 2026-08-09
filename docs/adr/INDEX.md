@@ -23,4 +23,4 @@ Append-only; an ADR that reverses or narrows another MUST cite it.
 | [015](015-milestone-created-event.md) | Register `milestone.created`: the Milestones sub-domain's first write path | accepted | 15_EVENT_BUS §6.1/§6.3, 07_DATABASE §5.6, 13_TESTING §16.2 |
 | [016](016-standing-created-event-registration.md) | Standing pattern: registering a new entity's first `.created` event, applied to `goal.created` | accepted | 15_EVENT_BUS §6.1/§6.3, 07_DATABASE §5.6, 13_TESTING §16.2 |
 | [017](017-start-at-login.md) | Activating RESERVED: start-at-login via a Windows Startup shortcut | accepted | 03_ROADMAP §8, docs/adr/007-ui-shell-decision.md §5.1, docs/adr/008-single-instance-enforcement.md |
-| [018](018-status-transition-updated-events.md) | Standing pattern: registering `<entity>.updated` for a status transition, applied to milestone/goal/project | proposed | 15_EVENT_BUS §6.1/§6.3, 13_TESTING §16.2 |
+| [018](018-status-transition-updated-events.md) | Standing pattern: registering `<entity>.updated` for a status transition, applied to milestone/goal/project | accepted | 15_EVENT_BUS §6.1/§6.3, 13_TESTING §16.2 |
