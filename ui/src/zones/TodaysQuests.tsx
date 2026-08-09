@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { callOperation, ApiError } from "../api/client";
+import { callOperation, newIdempotencyKey, ApiError } from "../api/client";
 import type { PlanGenerateResponse } from "../generated/plan";
 import type { TaskGetResponse } from "../generated/task";
 import "./TodaysQuests.css";
@@ -18,6 +18,14 @@ import "./TodaysQuests.css";
  * — "degraded" is an M7 (AI provider outage) concept that cannot occur
  * yet. Not an oversight; there is genuinely nothing to mark until M7
  * introduces a model call the Planner could fall back from.
+ *
+ * "Done" (added 2026-08-09, `task.complete`) calls the task entity's
+ * first status-transition operation, then re-fetches the plan — a
+ * completed task no longer matches `TaskStore.plannable()`'s `open`/
+ * `scheduled` filter, so it drops off this list the same way an alerted
+ * deadline drops off Zone 2 once `deadline_sweep` stops re-alerting it
+ * (same re-fetch-not-locally-mutate discipline every other screen here
+ * already uses).
  */
 
 interface Quest extends TaskGetResponse {}
@@ -29,35 +37,46 @@ type LoadState =
 
 export default function TodaysQuests() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [completingId, setCompletingId] = useState<string | null>(null);
+
+  async function load(cancelledRef: { current: boolean }) {
+    try {
+      const plan = await callOperation<PlanGenerateResponse>(
+        "plan.generate",
+        {},
+        crypto.randomUUID(),
+      );
+      const quests = await Promise.all(
+        plan.quest_ids.map((id) => callOperation<TaskGetResponse>("task.get", { id })),
+      );
+      if (!cancelledRef.current) setState({ status: "ready", quests, plan });
+    } catch (err) {
+      if (cancelledRef.current) return;
+      const message = err instanceof ApiError ? err.envelope.message : String(err);
+      setState({ status: "error", message });
+    }
+  }
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const plan = await callOperation<PlanGenerateResponse>(
-          "plan.generate",
-          {},
-          crypto.randomUUID(),
-        );
-        const quests = await Promise.all(
-          plan.quest_ids.map((id) =>
-            callOperation<TaskGetResponse>("task.get", { id }),
-          ),
-        );
-        if (!cancelled) setState({ status: "ready", quests, plan });
-      } catch (err) {
-        if (cancelled) return;
-        const message = err instanceof ApiError ? err.envelope.message : String(err);
-        setState({ status: "error", message });
-      }
-    }
-
-    load();
+    const cancelledRef = { current: false };
+    load(cancelledRef);
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
     };
   }, []);
+
+  async function completeQuest(id: string) {
+    setCompletingId(id);
+    try {
+      await callOperation("task.complete", { id }, newIdempotencyKey());
+      await load({ current: false }); // re-fetch: done quests drop off
+    } catch (err) {
+      const message = err instanceof ApiError ? err.envelope.message : String(err);
+      setState({ status: "error", message });
+    } finally {
+      setCompletingId(null);
+    }
+  }
 
   if (state.status === "loading") {
     return <p className="quests__status">Loading today's quests…</p>;
@@ -80,6 +99,15 @@ export default function TodaysQuests() {
       <ul className="quests__list">
         {state.quests.map((quest) => (
           <li key={quest.id} className="quests__item">
+            <button
+              type="button"
+              className="quests__done"
+              disabled={completingId === quest.id}
+              onClick={() => completeQuest(quest.id)}
+              aria-label={`Mark "${quest.title}" done`}
+            >
+              ✓
+            </button>
             <span className="quests__title">{quest.title}</span>
             <span className="quests__meta">
               priority {quest.priority} · {quest.status}

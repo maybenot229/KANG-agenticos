@@ -22,15 +22,34 @@
 
 .quests__item {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
+  gap: var(--space-3);
   padding: var(--space-3);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
 }
 
+.quests__done {
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  line-height: 1;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.quests__done:disabled {
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}
+
 .quests__title {
+  flex: 1;
   font-size: var(--type-scale-base);
 }
 

@@ -6,10 +6,18 @@
 # unbuilt. This is a stopgap: it starts the Python Core against the
 # real, persistent %KANG_HOME%, waits for the session handshake file the
 # Core writes (API-003), then launches the already-built Tauri shell
-# (ui/shell/target/debug/kang-shell.exe), which reads that same file
-# (ui/shell/src/main.rs::get_session). Manual every time, no autostart,
-# no singleton enforcement beyond what already exists today (ADR-008 is
-# why there isn't more).
+# release binary (ui/shell/target/release/kang-shell.exe — NOT the debug
+# build: debug expects Vite's dev server running at localhost:1420 per
+# tauri.conf.json's devUrl and fails with ERR_CONNECTION_REFUSED the
+# moment nothing is serving that port; release bundles the built
+# ui/dist/ directly and needs nothing else running), which reads that
+# same session file (ui/shell/src/main.rs::get_session). Manual every
+# time, no autostart, no singleton enforcement beyond what already
+# exists today (ADR-008 is why there isn't more).
+#
+# Rebuild the release binary after any ui/src change: cd ui && npm run
+# build && cd shell && cargo build --release (the frontend is embedded
+# at compile time, not read from disk at runtime).
 #
 # Usage: powershell -File tools/kang_start.ps1
 # Stop:  the script prints the Core's PID; Stop-Process -Id <pid> when
@@ -25,10 +33,10 @@ if (-not $env:KANG_HOME) {
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$shellExe = Join-Path $repoRoot "ui\shell\target\debug\kang-shell.exe"
+$shellExe = Join-Path $repoRoot "ui\shell\target\release\kang-shell.exe"
 
 if (-not (Test-Path $shellExe)) {
-    Write-Error "kang-shell.exe not found at $shellExe. Build it first: cd ui/shell; cargo build"
+    Write-Error "kang-shell.exe not found at $shellExe. Build it first: cd ui; npm run build; cd shell; cargo build --release"
     exit 1
 }
 
