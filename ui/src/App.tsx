@@ -40,10 +40,15 @@ const LOCATIONS: readonly Location[] = ["Dashboard", ...DOMAINS];
 // today; the rest are honest empty screens (see each file's own
 // docstring for exactly what's missing and why) — never fabricated
 // content standing in for a domain that doesn't exist yet.
-const DOMAIN_SCREENS: Record<Domain, () => JSX.Element> = {
+//
+// Projects and Competitions are rendered separately below, not through
+// this map (added 2026-08-09): both need `formOpen`/`onFormOpenChange`
+// props so the palette's "New project…"/"New competition…" commands can
+// open their forms from any location (mirroring `deadlineFormOpen`'s
+// own lift for Zone 2/Dashboard) — every other domain screen here still
+// takes no props at all.
+const DOMAIN_SCREENS: Partial<Record<Domain, () => JSX.Element>> = {
   Plan: PlanScreen,
-  Projects: ProjectsScreen,
-  Competitions: CompetitionsScreen,
   Learn: LearnScreen,
   Know: KnowScreen,
   System: SystemScreen,
@@ -65,6 +70,8 @@ export default function App() {
   const [location, setLocation] = useState<Location>("Dashboard");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [deadlineFormOpen, setDeadlineFormOpen] = useState(false);
+  const [projectFormOpen, setProjectFormOpen] = useState(false);
+  const [competitionFormOpen, setCompetitionFormOpen] = useState(false);
 
   // Ctrl+K opens the palette from anywhere in the app (UI-002: "open
   // from anywhere") — a window-level listener, not scoped to one
@@ -83,7 +90,7 @@ export default function App() {
   }, []);
 
   const ActiveDomainScreen =
-    location === "Dashboard" ? null : DOMAIN_SCREENS[location];
+    location === "Dashboard" ? null : DOMAIN_SCREENS[location] ?? null;
 
   return (
     <div className="shell">
@@ -113,6 +120,14 @@ export default function App() {
           onOpenDeadlineForm={() => {
             setLocation("Dashboard"); // Zone 2 (where the form lives) is Dashboard-only
             setDeadlineFormOpen(true);
+          }}
+          onOpenProjectForm={() => {
+            setLocation("Projects");
+            setProjectFormOpen(true);
+          }}
+          onOpenCompetitionForm={() => {
+            setLocation("Competitions");
+            setCompetitionFormOpen(true);
           }}
           onClose={() => setPaletteOpen(false)}
         />
@@ -144,7 +159,7 @@ export default function App() {
       </nav>
 
       <main className="content-area">
-        {ActiveDomainScreen === null ? (
+        {location === "Dashboard" ? (
           <div className="dashboard">
             <div className="dashboard__zone-1">
               <TodaysQuests />
@@ -162,8 +177,18 @@ export default function App() {
               <Opportunities />
             </div>
           </div>
+        ) : location === "Projects" ? (
+          <ProjectsScreen
+            formOpen={projectFormOpen}
+            onFormOpenChange={setProjectFormOpen}
+          />
+        ) : location === "Competitions" ? (
+          <CompetitionsScreen
+            formOpen={competitionFormOpen}
+            onFormOpenChange={setCompetitionFormOpen}
+          />
         ) : (
-          <ActiveDomainScreen />
+          ActiveDomainScreen && <ActiveDomainScreen />
         )}
       </main>
 

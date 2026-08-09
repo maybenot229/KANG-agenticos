@@ -11,8 +11,15 @@ import "./ProjectsScreen.css";
  * tracking only per 03_ROADMAP's M4/M5 objective ("projects... tracking
  * only"). Clicking a project opens its detail view (added 2026-08-07,
  * ADR-015) — depth 2 of 09_UI §2's hub-and-spoke, showing that project's
- * milestones (see `ProjectDetail.tsx`). `goal` is real schema too (0006)
- * but has no operation yet; not shown anywhere, honestly.
+ * milestones (see `ProjectDetail.tsx`). `goal` is a real operation now
+ * (ADR-016) but has no UI surface yet — a real, separately-named gap
+ * (no natural view location decided), not shown here.
+ *
+ * `formOpen`/`onFormOpenChange` are lifted to `App.tsx` (added
+ * 2026-08-09, mirroring `Attention.tsx`'s own lift for `DeadlineForm`)
+ * so the palette's "New project…" Act command can open this screen's
+ * form from any location, not just this screen's own "+ New project"
+ * button.
  */
 
 type LoadState =
@@ -20,9 +27,14 @@ type LoadState =
   | { status: "error"; message: string }
   | { status: "ready"; response: ProjectListResponse };
 
-export default function ProjectsScreen() {
+export default function ProjectsScreen({
+  formOpen,
+  onFormOpenChange,
+}: {
+  formOpen: boolean;
+  onFormOpenChange: (open: boolean) => void;
+}) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
-  const [formOpen, setFormOpen] = useState(false);
   const [selected, setSelected] = useState<ProjectListItem | null>(null);
 
   async function load(cancelledRef: { current: boolean }) {
@@ -55,7 +67,7 @@ export default function ProjectsScreen() {
         <button
           type="button"
           className="projects__add"
-          onClick={() => setFormOpen((open) => !open)}
+          onClick={() => onFormOpenChange(!formOpen)}
         >
           + New project
         </button>
@@ -64,7 +76,7 @@ export default function ProjectsScreen() {
       {formOpen && (
         <ProjectForm
           onClose={() => {
-            setFormOpen(false);
+            onFormOpenChange(false);
             load({ current: false }); // re-fetch: the tracked project joins the list
           }}
         />

@@ -18,6 +18,12 @@ import "./CompetitionsScreen.css";
  * tracking (a competition Kang already knows about) was always M4/M5
  * scope, just unbuilt until now. Corrected here rather than left to
  * silently contradict the roadmap it cited.
+ *
+ * `formOpen`/`onFormOpenChange` are lifted to `App.tsx` (added
+ * 2026-08-09, mirroring `Attention.tsx`'s own lift for `DeadlineForm`)
+ * so the palette's "New competition…" Act command can open this screen's
+ * form from any location, not just this screen's own "+ New competition"
+ * button.
  */
 
 type LoadState =
@@ -25,9 +31,14 @@ type LoadState =
   | { status: "error"; message: string }
   | { status: "ready"; response: CompetitionListResponse };
 
-export default function CompetitionsScreen() {
+export default function CompetitionsScreen({
+  formOpen,
+  onFormOpenChange,
+}: {
+  formOpen: boolean;
+  onFormOpenChange: (open: boolean) => void;
+}) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
-  const [formOpen, setFormOpen] = useState(false);
 
   async function load(cancelledRef: { current: boolean }) {
     try {
@@ -58,7 +69,7 @@ export default function CompetitionsScreen() {
         <button
           type="button"
           className="competitions__add"
-          onClick={() => setFormOpen((open) => !open)}
+          onClick={() => onFormOpenChange(!formOpen)}
         >
           + New competition
         </button>
@@ -67,7 +78,7 @@ export default function CompetitionsScreen() {
       {formOpen && (
         <CompetitionForm
           onClose={() => {
-            setFormOpen(false);
+            onFormOpenChange(false);
             load({ current: false }); // re-fetch: the tracked competition joins the list
           }}
         />

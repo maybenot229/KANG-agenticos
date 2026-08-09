@@ -16,6 +16,8 @@ function renderPalette(overrides: Partial<Parameters<typeof Palette>[0]> = {}) {
   const onNavigate = vi.fn();
   const onOpenCapture = vi.fn();
   const onOpenDeadlineForm = vi.fn();
+  const onOpenProjectForm = vi.fn();
+  const onOpenCompetitionForm = vi.fn();
   const onClose = vi.fn();
   render(
     <Palette
@@ -24,11 +26,20 @@ function renderPalette(overrides: Partial<Parameters<typeof Palette>[0]> = {}) {
       onNavigate={onNavigate}
       onOpenCapture={onOpenCapture}
       onOpenDeadlineForm={onOpenDeadlineForm}
+      onOpenProjectForm={onOpenProjectForm}
+      onOpenCompetitionForm={onOpenCompetitionForm}
       onClose={onClose}
       {...overrides}
     />,
   );
-  return { onNavigate, onOpenCapture, onOpenDeadlineForm, onClose };
+  return {
+    onNavigate,
+    onOpenCapture,
+    onOpenDeadlineForm,
+    onOpenProjectForm,
+    onOpenCompetitionForm,
+    onClose,
+  };
 }
 
 describe("Palette", () => {
@@ -83,6 +94,30 @@ describe("Palette", () => {
     await user.keyboard("new deadline{Enter}");
     expect(onOpenDeadlineForm).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('"New project…" runs the Act register\'s project-form command', async () => {
+    const user = userEvent.setup();
+    const { onOpenProjectForm, onClose } = renderPalette();
+    await user.keyboard("new project{Enter}");
+    expect(onOpenProjectForm).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('"New competition…" runs the Act register\'s competition-form command', async () => {
+    const user = userEvent.setup();
+    const { onOpenCompetitionForm, onClose } = renderPalette();
+    await user.keyboard("new competition{Enter}");
+    expect(onOpenCompetitionForm).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not offer New milestone… or New goal… — no context/surface to open them into", async () => {
+    const user = userEvent.setup();
+    renderPalette();
+    await user.keyboard("new");
+    expect(screen.queryByText("New milestone…")).not.toBeInTheDocument();
+    expect(screen.queryByText("New goal…")).not.toBeInTheDocument();
   });
 
   it("shows the Find register's honest not-built-yet note, never fabricated results", async () => {
