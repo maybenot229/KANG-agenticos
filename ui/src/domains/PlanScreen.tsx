@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { callOperation, ApiError } from "../api/client";
+import { callOperation, newIdempotencyKey, ApiError } from "../api/client";
 import type { PlanGenerateResponse } from "../generated/plan";
 import type { TaskGetResponse } from "../generated/task";
 import type { DeadlineListResponse } from "../generated/deadline";
@@ -37,6 +37,13 @@ import "./PlanScreen.css";
  * `ProjectsScreen`/`CompetitionsScreen`'s own lift for their forms) so
  * the palette's "New goal…" Act command can open this form from any
  * location, not just this screen's own "+ New goal" button.
+ *
+ * `Achieve`/`Revise`/`Retire` (added 2026-08-10, ADR-018/`goal.achieve`
+ * `.revise`/`.retire`) appear only on `active` goals — the transition
+ * operations reject any other starting status, so offering the buttons
+ * on an already-terminal goal would be a control that always errors.
+ * Re-fetches the goal list on success, same discipline every other
+ * write on this screen already uses.
  */
 
 const GOAL_HORIZONS = ["quarter", "year", "life"] as const;
@@ -65,6 +72,7 @@ export default function PlanScreen({
 }) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [goalState, setGoalState] = useState<GoalLoadState>({ status: "loading" });
+  const [transitioningGoalId, setTransitioningGoalId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,6 +127,19 @@ export default function PlanScreen({
       cancelledRef.current = true;
     };
   }, []);
+
+  async function transitionGoal(id: string, operation: string) {
+    setTransitioningGoalId(id);
+    try {
+      await callOperation(operation, { id }, newIdempotencyKey());
+      await loadGoals({ current: false });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.envelope.message : String(err);
+      setGoalState({ status: "error", message });
+    } finally {
+      setTransitioningGoalId(null);
+    }
+  }
 
   if (state.status === "loading") {
     return <p className="plan__status">Loading the plan…</p>;
@@ -220,6 +241,34 @@ export default function PlanScreen({
                       <span className="plan__meta">{goal.status}</span>
                       {goal.description && (
                         <span className="plan__description">{goal.description}</span>
+                      )}
+                      {goal.status === "active" && (
+                        <span className="plan__goal-actions">
+                          <button
+                            type="button"
+                            className="plan__goal-action"
+                            disabled={transitioningGoalId === goal.id}
+                            onClick={() => transitionGoal(goal.id, "goal.achieve")}
+                          >
+                            Achieve
+                          </button>
+                          <button
+                            type="button"
+                            className="plan__goal-action"
+                            disabled={transitioningGoalId === goal.id}
+                            onClick={() => transitionGoal(goal.id, "goal.revise")}
+                          >
+                            Revise
+                          </button>
+                          <button
+                            type="button"
+                            className="plan__goal-action"
+                            disabled={transitioningGoalId === goal.id}
+                            onClick={() => transitionGoal(goal.id, "goal.retire")}
+                          >
+                            Retire
+                          </button>
+                        </span>
                       )}
                     </li>
                   ))}

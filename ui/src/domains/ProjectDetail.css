@@ -75,3 +75,40 @@
 .project-detail__title {
   font-size: var(--type-scale-base);
 }
+
+.project-detail__complete {
+  font-size: var(--type-scale-xs);
+  margin-left: var(--space-2);
+  padding: 2px var(--space-2);
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.project-detail__complete:disabled {
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}
+
+.project-detail__milestone-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.project-detail__milestone-action {
+  font-size: var(--type-scale-xs);
+  padding: 2px var(--space-2);
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.project-detail__milestone-action:disabled {
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}

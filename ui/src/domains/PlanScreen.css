@@ -49,6 +49,27 @@
   color: var(--color-text-secondary);
 }
 
+.plan__goal-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.plan__goal-action {
+  font-size: var(--type-scale-xs);
+  padding: 2px var(--space-2);
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.plan__goal-action:disabled {
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}
+
 .plan__status {
   color: var(--color-text-secondary);
 }

@@ -29,16 +29,30 @@ const PROJECT = {
   goal_id: null,
 };
 
-function mockListThenMilestones() {
+const PENDING_MILESTONE = {
+  id: "ms-1",
+  project_id: "proj-1",
+  title: "First real milestone",
+  status: "pending",
+  due: null,
+};
+
+function mockListThenMilestones(milestones: unknown[] = []) {
   vi.mocked(callOperation).mockImplementation((operation: string) => {
     if (operation === "project.list") {
       return Promise.resolve({ projects: [PROJECT] });
     }
     if (operation === "milestone.list") {
-      return Promise.resolve({ milestones: [] });
+      return Promise.resolve({ milestones });
     }
     return Promise.reject(new Error(`unexpected operation ${operation}`));
   });
+}
+
+async function openDetail(user: ReturnType<typeof userEvent.setup>) {
+  await waitFor(() => screen.getByText("KANG v0.1"));
+  await user.click(screen.getByRole("button", { name: /KANG v0\.1/ }));
+  await waitFor(() => screen.getByRole("heading", { name: "KANG v0.1" }));
 }
 
 describe("ProjectsScreen", () => {
@@ -96,5 +110,81 @@ describe("ProjectsScreen", () => {
       screen.getByRole("heading", { name: /Projects/ }),
     ).toBeInTheDocument();
     expect(screen.queryByText("Milestones")).not.toBeInTheDocument();
+  });
+
+  it("a pending milestone offers Reach/Miss/Drop; Reach calls milestone.reach with a fresh idempotency key", async () => {
+    const user = userEvent.setup();
+    mockListThenMilestones([PENDING_MILESTONE]);
+    render(<ProjectsScreen formOpen={false} onFormOpenChange={vi.fn()} />);
+    await openDetail(user);
+
+    await waitFor(() => {
+      expect(screen.getByText("First real milestone")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Reach" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Miss" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Drop" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Reach" }));
+
+    await waitFor(() => {
+      expect(callOperation).toHaveBeenCalledWith(
+        "milestone.reach",
+        { id: "ms-1" },
+        expect.any(String),
+      );
+    });
+  });
+
+  it("a reached milestone offers no transition buttons", async () => {
+    const user = userEvent.setup();
+    mockListThenMilestones([{ ...PENDING_MILESTONE, status: "reached" }]);
+    render(<ProjectsScreen formOpen={false} onFormOpenChange={vi.fn()} />);
+    await openDetail(user);
+
+    await waitFor(() => screen.getByText("First real milestone"));
+    expect(screen.queryByRole("button", { name: "Reach" })).not.toBeInTheDocument();
+  });
+
+  it("an active project offers Complete; clicking it calls project.complete then returns to a re-fetched list", async () => {
+    const user = userEvent.setup();
+    let listCallCount = 0;
+    vi.mocked(callOperation).mockImplementation((operation: string) => {
+      if (operation === "project.list") {
+        listCallCount += 1;
+        return Promise.resolve({
+          projects: [
+            listCallCount === 1 ? PROJECT : { ...PROJECT, status: "completed" },
+          ],
+        });
+      }
+      if (operation === "milestone.list") {
+        return Promise.resolve({ milestones: [] });
+      }
+      if (operation === "project.complete") {
+        return Promise.resolve({ project_id: "proj-1", revision: 2 });
+      }
+      return Promise.reject(new Error(`unexpected operation ${operation}`));
+    });
+    render(<ProjectsScreen formOpen={false} onFormOpenChange={vi.fn()} />);
+    await openDetail(user);
+
+    const completeButton = screen.getByRole("button", { name: "Complete" });
+    await user.click(completeButton);
+
+    await waitFor(() => {
+      expect(callOperation).toHaveBeenCalledWith(
+        "project.complete",
+        { id: "proj-1" },
+        expect.any(String),
+      );
+    });
+    // Closes the detail view and reflects the re-fetched (now completed) list.
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: /Projects/ }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText(/completed/)).toBeInTheDocument();
   });
 });

@@ -20,6 +20,12 @@ import "./ProjectsScreen.css";
  * so the palette's "New project…" Act command can open this screen's
  * form from any location, not just this screen's own "+ New project"
  * button.
+ *
+ * `project.complete` (added 2026-08-10, ADR-018) lives inside
+ * `ProjectDetail`, not here — see that file's own docstring for why.
+ * `onProjectUpdated` closes the detail view and re-fetches this
+ * screen's list so a completed project's status is reflected without a
+ * stale row lingering.
  */
 
 type LoadState =
@@ -57,7 +63,16 @@ export default function ProjectsScreen({
   }, []);
 
   if (selected) {
-    return <ProjectDetail project={selected} onBack={() => setSelected(null)} />;
+    return (
+      <ProjectDetail
+        project={selected}
+        onBack={() => setSelected(null)}
+        onProjectUpdated={() => {
+          setSelected(null);
+          load({ current: false }); // re-fetch: the completed project's status changed
+        }}
+      />
+    );
   }
 
   return (
