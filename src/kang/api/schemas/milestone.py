@@ -24,6 +24,8 @@ __all__ = [
     "MilestoneListItem",
     "MilestoneListRequest",
     "MilestoneListResponse",
+    "MilestoneTransitionRequest",
+    "MilestoneTransitionResponse",
 ]
 
 
@@ -116,3 +118,21 @@ class MilestoneListResponse(BaseModel):
     `MilestoneStore.list_for_project()`'s contract, exposed verbatim."""
 
     milestones: list[MilestoneListItem]
+
+
+class MilestoneTransitionRequest(BaseModel):
+    """`milestone.reach`/`.miss`/`.drop` params (ADR-018) — identical
+    shape across all three, one schema shared rather than three
+    near-duplicates. No non-empty constraint on `id`, mirroring
+    `TaskCompleteRequest`'s own documented convention: an empty string
+    reaches the store and surfaces as `not_found`, not `invalid_request`."""
+
+    id: str
+
+
+class MilestoneTransitionResponse(BaseModel):
+    """`milestone.reach`/`.miss`/`.drop` result (ADR-018) — shared across
+    all three, same reasoning as the request."""
+
+    milestone_id: str
+    revision: int

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -11,7 +12,15 @@ from kang.adapters.fakes.clock import FakeClock
 from kang.adapters.sqlite.connection import open_connection
 from kang.adapters.sqlite.migrations import apply_migrations
 from kang.adapters.sqlite.milestone_store import SqliteMilestoneStore
-from kang.domain.projects.milestone_service import MilestoneDraft, create_milestone
+from kang.domain.ports.milestone_store import (
+    MilestoneNotFoundError,
+    MilestoneRevisionConflictError,
+)
+from kang.domain.projects.milestone_service import (
+    MilestoneDraft,
+    create_milestone,
+    mark_reached,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MIGRATIONS_DIR = REPO_ROOT / "migrations"
@@ -44,7 +53,7 @@ def _milestone(index: int, **overrides):
 
 def test_create_then_list_for_project(conn):
     _seed_project(conn)
-    store = SqliteMilestoneStore(conn)
+    store = SqliteMilestoneStore(conn, FakeClock())
     store.create(_milestone(0, due="2026-06-01T00:00:00+00:00"))
     store.create(_milestone(1, due="2026-03-01T00:00:00+00:00"))
     store.create(_milestone(2))  # undated — sorts last
@@ -55,7 +64,7 @@ def test_create_then_list_for_project(conn):
 def test_list_for_project_scopes_to_that_project_only(conn):
     _seed_project(conn, "proj-1")
     _seed_project(conn, "proj-2")
-    store = SqliteMilestoneStore(conn)
+    store = SqliteMilestoneStore(conn, FakeClock())
     store.create(_milestone(0, project_id="proj-1"))
     store.create(_milestone(1, project_id="proj-2"))
     assert [m.id for m in store.list_for_project("proj-1")] == ["ms-0000"]
@@ -63,7 +72,7 @@ def test_list_for_project_scopes_to_that_project_only(conn):
 
 
 def test_unknown_project_id_is_rejected_by_the_fk_constraint(conn):
-    store = SqliteMilestoneStore(conn)
+    store = SqliteMilestoneStore(conn, FakeClock())
     with pytest.raises(sqlite3.IntegrityError):
         store.create(_milestone(0, project_id="no-such-project"))
 
@@ -82,11 +91,55 @@ def test_create_writes_a_change_log_row(conn):
     # ADR-015: milestone's first write path, and the change-capture
     # trigger (migration 0013) that arrived with it — proven firing.
     _seed_project(conn)
-    SqliteMilestoneStore(conn).create(_milestone(0))
+    SqliteMilestoneStore(conn, FakeClock()).create(_milestone(0))
     captured = conn.execute(
         "SELECT entity, entity_id, op FROM change_log WHERE entity = 'milestone'"
     ).fetchall()
     assert captured == [("milestone", "ms-0000", "insert")]
+
+
+def test_get_unknown_id_raises_typed_not_found(conn):
+    with pytest.raises(MilestoneNotFoundError):
+        SqliteMilestoneStore(conn, FakeClock()).get("ms-ghost")
+
+
+def test_update_bumps_revision_and_updated_at(conn):
+    _seed_project(conn)
+    clock = FakeClock()
+    store = SqliteMilestoneStore(conn, clock)
+    milestone = _milestone(0)
+    store.create(milestone)
+    clock.advance(60)
+    committed = store.update(mark_reached(milestone, clock))
+    assert committed.revision == 2
+    assert committed.updated_at == clock.now()
+    assert committed.status == "reached"
+    assert store.get(milestone.id) == committed
+
+
+def test_update_with_stale_revision_conflicts(conn):
+    _seed_project(conn)
+    clock = FakeClock()
+    store = SqliteMilestoneStore(conn, clock)
+    milestone = _milestone(0)
+    store.create(milestone)
+    store.update(mark_reached(milestone, clock))
+    with pytest.raises(MilestoneRevisionConflictError):
+        store.update(mark_reached(milestone, clock))  # still revision 1
+
+
+def test_update_capture_names_the_changed_fields(conn):
+    _seed_project(conn)
+    clock = FakeClock()
+    store = SqliteMilestoneStore(conn, clock)
+    milestone = _milestone(0)
+    store.create(milestone)
+    store.update(mark_reached(milestone, clock))
+    fields, revision = conn.execute(
+        "SELECT fields, revision FROM change_log WHERE op = 'update'"
+    ).fetchone()
+    assert set(json.loads(fields)) == {"status"}
+    assert revision == 2
 
 
 def test_deleting_the_parent_project_cascades_and_captures_the_delete(conn):
@@ -96,7 +149,7 @@ def test_deleting_the_parent_project_cascades_and_captures_the_delete(conn):
     # trigger for FK-driven deletes (not just direct DELETE statements) —
     # true by default since 3.6.18, verified here rather than assumed.
     _seed_project(conn)
-    SqliteMilestoneStore(conn).create(_milestone(0))
+    SqliteMilestoneStore(conn, FakeClock()).create(_milestone(0))
     conn.execute("DELETE FROM project WHERE id = 'proj-1'")
     remaining = conn.execute("SELECT COUNT(*) FROM milestone").fetchone()[0]
     assert remaining == 0

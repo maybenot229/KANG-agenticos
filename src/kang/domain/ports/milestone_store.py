@@ -12,8 +12,10 @@ milestone` is a pre-sanctioned CASCADE — a deleted project takes its
 milestones with it; this port owns no delete of its own since nothing
 calls one yet).
 
-Tracking only: create + list-by-project, nothing more. No status-
-transition (`reach`/`miss`/`drop`) exists yet — see ADR-015.
+`reach`/`miss`/`drop` (ADR-018, 2026-08-09) are the entity's first status
+transitions: `get`/`update` join `create`/`list_for_project`, mirroring
+`TaskStore`'s exact optimistic-concurrency contract (`WHERE id = ? AND
+revision = ?`, `NotFoundError`/`RevisionConflictError`).
 """
 
 from __future__ import annotations
@@ -25,7 +27,10 @@ from typing import Protocol
 __all__ = [
     "MILESTONE_STATUSES",
     "Milestone",
+    "MilestoneNotFoundError",
+    "MilestoneRevisionConflictError",
     "MilestoneStore",
+    "MilestoneStoreError",
 ]
 
 MILESTONE_STATUSES = ("pending", "reached", "missed", "dropped")
@@ -48,16 +53,42 @@ class Milestone:
     due: str | None = None
 
 
+class MilestoneStoreError(Exception):
+    """Base of the milestone-store failure hierarchy (11 §9: typed
+    errors)."""
+
+
+class MilestoneNotFoundError(MilestoneStoreError):
+    """No milestone with the given id exists."""
+
+
+class MilestoneRevisionConflictError(MilestoneStoreError):
+    """Optimistic concurrency check failed: expected revision is stale."""
+
+
 class MilestoneStore(Protocol):
     """Persistence port for milestones. Implementations:
     SqliteMilestoneStore (real), FakeMilestoneStore (adapters/fakes —
-    contract-tested against the real one, 13 §2.3). Tracking-only surface:
-    create + list-for-project; see module docstring for why get/update/
-    delete aren't here yet."""
+    contract-tested against the real one, 13 §2.3). `get`/`update`
+    (ADR-018) join the tracking-only `create`/`list_for_project`; delete
+    still has no caller (07_DATABASE Appendix B's CASCADE handles the
+    only removal path that exists, project deletion)."""
 
     def create(self, milestone: Milestone) -> None:
         """Persist a new milestone. The change is capture-logged (07 §5.6,
         ADR-015's trigger)."""
+        ...
+
+    def get(self, milestone_id: str) -> Milestone:
+        """Return the milestone or raise MilestoneNotFoundError."""
+        ...
+
+    def update(self, milestone: Milestone) -> Milestone:
+        """Persist a status transition; `milestone.revision` is the
+        expected current revision. Returns the committed snapshot
+        (revision bumped, `updated_at` stamped). Raises
+        MilestoneRevisionConflictError on staleness,
+        MilestoneNotFoundError if the id no longer exists."""
         ...
 
     def list_for_project(self, project_id: str) -> list[Milestone]:

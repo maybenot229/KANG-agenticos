@@ -1,8 +1,9 @@
-"""milestone.create / milestone.list handlers.
+"""milestone.create / milestone.list / .reach / .miss / .drop handlers.
 
 Layer: api.
 Constitutional home: 12_API §2/§7/§8, ADR-015 (milestone.created — the
-Milestones sub-domain's first write path).
+Milestones sub-domain's first write path), ADR-018 (.reach/.miss/.drop —
+the entity's first status transitions, publishing milestone.updated).
 """
 
 from __future__ import annotations
@@ -13,11 +14,18 @@ from kang.api.dispatch import Handler, HandlerContext
 from kang.api.errors import ApiError
 from kang.domain.ports.clock import Clock
 from kang.domain.ports.eventlog import EventEnvelope
-from kang.domain.ports.milestone_store import MilestoneStore
+from kang.domain.ports.milestone_store import (
+    MilestoneNotFoundError,
+    MilestoneRevisionConflictError,
+    MilestoneStore,
+)
 from kang.domain.projects.milestone_service import (
     MilestoneDraft,
     MilestoneValidationError,
     create_milestone,
+    mark_dropped,
+    mark_missed,
+    mark_reached,
     milestone_event_payload,
 )
 from kang.kernel.bus.bus import EventBus
@@ -25,7 +33,10 @@ from kang.kernel.bus.bus import EventBus
 __all__ = [
     "MILESTONES_PRINCIPAL",
     "make_milestone_create_handler",
+    "make_milestone_drop_handler",
     "make_milestone_list_handler",
+    "make_milestone_miss_handler",
+    "make_milestone_reach_handler",
 ]
 
 MILESTONES_PRINCIPAL = "kernel:milestones"  # owns milestone truth (EB-010, ADR-015)
@@ -88,6 +99,109 @@ def make_milestone_create_handler(
         return {"milestone_id": milestone.id, "revision": milestone.revision}
 
     return handler
+
+
+def _make_milestone_transition_handler(
+    transition,
+    bus: EventBus,
+    milestone_store: MilestoneStore,
+    clock: Clock,
+    new_id: Callable[[], str],
+    device_id: str,
+) -> Handler:
+    """Shared shape behind `.reach`/`.miss`/`.drop` (ADR-018): fetch,
+    transition, publish `milestone.updated` under `kernel:milestones`,
+    commit via the store's optimistic-concurrency `update()` — mirrors
+    `make_task_complete_handler`'s exact shape. `transition` is one of
+    `mark_reached`/`mark_missed`/`mark_dropped`."""
+
+    def handler(context: HandlerContext, params: dict[str, Any]) -> dict[str, Any]:
+        milestone_id = params.get("id")
+        if not isinstance(milestone_id, str) or not milestone_id:
+            raise ApiError("invalid_request", "requires an 'id'")
+        try:
+            milestone = milestone_store.get(milestone_id)
+        except MilestoneNotFoundError as exc:
+            raise ApiError("not_found", f"no milestone {milestone_id}") from exc
+        try:
+            transitioned = transition(milestone, clock)
+        except MilestoneValidationError as exc:
+            raise ApiError("invalid_request", str(exc)) from exc
+
+        committed_box: list = []
+
+        def _commit() -> None:
+            committed_box.append(milestone_store.update(transitioned))
+
+        try:
+            bus.publish(
+                EventEnvelope(
+                    event_id=new_id(),
+                    type="milestone.updated",
+                    occurred_at=transitioned.updated_at.isoformat(),
+                    principal=MILESTONES_PRINCIPAL,
+                    correlation_id=context.correlation_id,
+                    device_id=device_id,
+                    payload=milestone_event_payload(transitioned),
+                    recovery_grade=True,
+                    entity_refs=(
+                        {"kind": "milestone", "id": transitioned.id},
+                        {"kind": "project", "id": transitioned.project_id},
+                    ),
+                ),
+                commit_state=_commit,
+            )
+        except MilestoneRevisionConflictError as exc:
+            current = milestone_store.get(milestone_id)
+            raise ApiError(
+                "conflict",
+                f"milestone {milestone_id} changed since it was read",
+                details={"current_revision": current.revision},
+            ) from exc
+
+        committed = committed_box[0]
+        return {"milestone_id": committed.id, "revision": committed.revision}
+
+    return handler
+
+
+def make_milestone_reach_handler(
+    bus: EventBus,
+    milestone_store: MilestoneStore,
+    clock: Clock,
+    new_id: Callable[[], str],
+    device_id: str,
+) -> Handler:
+    """`milestone.reach` (ADR-018): `pending -> reached`."""
+    return _make_milestone_transition_handler(
+        mark_reached, bus, milestone_store, clock, new_id, device_id
+    )
+
+
+def make_milestone_miss_handler(
+    bus: EventBus,
+    milestone_store: MilestoneStore,
+    clock: Clock,
+    new_id: Callable[[], str],
+    device_id: str,
+) -> Handler:
+    """`milestone.miss` (ADR-018): `pending -> missed`."""
+    return _make_milestone_transition_handler(
+        mark_missed, bus, milestone_store, clock, new_id, device_id
+    )
+
+
+def make_milestone_drop_handler(
+    bus: EventBus,
+    milestone_store: MilestoneStore,
+    clock: Clock,
+    new_id: Callable[[], str],
+    device_id: str,
+) -> Handler:
+    """`milestone.drop` (ADR-018): `pending -> dropped`."""
+    return _make_milestone_transition_handler(
+        mark_dropped, bus, milestone_store, clock, new_id, device_id
+    )
 
 
 def make_milestone_list_handler(milestone_store: MilestoneStore) -> Handler:

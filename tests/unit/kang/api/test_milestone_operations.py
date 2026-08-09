@@ -24,7 +24,10 @@ from kang.api.dispatch import HandlerContext
 from kang.api.errors import ApiError
 from kang.api.operations import (
     make_milestone_create_handler,
+    make_milestone_drop_handler,
     make_milestone_list_handler,
+    make_milestone_miss_handler,
+    make_milestone_reach_handler,
 )
 from kang.kernel.audit.service import AuditService
 from kang.kernel.bus.bus import EventBus
@@ -54,7 +57,7 @@ def wiring():
         PermissionEngine({"kernel:milestones": ("events.publish:kang",)}),
         audit,
     )
-    store = FakeMilestoneStore()
+    store = FakeMilestoneStore(clock)
     context = HandlerContext(
         principal="kang", correlation_id="corr-1", trigger="cli", first_party=True
     )
@@ -82,6 +85,27 @@ def _list(wiring, project_id):
 
 def _published(wiring) -> list[str]:
     return [s.envelope.type for s in wiring["log"].read_from(0)]
+
+
+def _reach(wiring, **params):
+    handler = make_milestone_reach_handler(
+        wiring["bus"], wiring["store"], wiring["clock"], wiring["new_id"], DEVICE
+    )
+    return handler(wiring["context"], params)
+
+
+def _miss(wiring, **params):
+    handler = make_milestone_miss_handler(
+        wiring["bus"], wiring["store"], wiring["clock"], wiring["new_id"], DEVICE
+    )
+    return handler(wiring["context"], params)
+
+
+def _drop(wiring, **params):
+    handler = make_milestone_drop_handler(
+        wiring["bus"], wiring["store"], wiring["clock"], wiring["new_id"], DEVICE
+    )
+    return handler(wiring["context"], params)
 
 
 class TestCreate:
@@ -146,3 +170,34 @@ class TestList:
         _create(wiring, project_id="proj-2", title="B")
         titles = [m["title"] for m in _list(wiring, "proj-1")["milestones"]]
         assert titles == ["A"]
+
+
+class TestReachMissDrop:
+    """`milestone.reach`/`.miss`/`.drop` (ADR-018). Each transitions
+    `pending -> <terminal>`, publishing the newly-registered
+    `milestone.updated` under `kernel:milestones`."""
+
+    @pytest.mark.parametrize(
+        "call,expected_status",
+        [(_reach, "reached"), (_miss, "missed"), (_drop, "dropped")],
+    )
+    def test_transitions_and_publishes_milestone_updated(
+        self, wiring, call, expected_status
+    ):
+        created = _create(wiring, project_id="proj-1", title="Working prototype")
+        result = call(wiring, id=created["milestone_id"])
+        assert result["revision"] == 2
+        assert wiring["store"].get(created["milestone_id"]).status == expected_status
+        assert _published(wiring) == ["milestone.created", "milestone.updated"]
+
+    def test_unknown_id_is_not_found(self, wiring):
+        with pytest.raises(ApiError) as exc_info:
+            _reach(wiring, id="ms-ghost")
+        assert exc_info.value.code == "not_found"
+
+    def test_reaching_a_non_pending_milestone_is_invalid_request(self, wiring):
+        created = _create(wiring, project_id="proj-1", title="Working prototype")
+        _reach(wiring, id=created["milestone_id"])
+        with pytest.raises(ApiError) as exc_info:
+            _reach(wiring, id=created["milestone_id"])
+        assert exc_info.value.code == "invalid_request"

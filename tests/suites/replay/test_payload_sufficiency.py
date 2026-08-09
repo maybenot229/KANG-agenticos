@@ -281,6 +281,33 @@ _FIXTURES = {
         seed_sql=_MILESTONE_FIXTURE_PROJECT_SEED,
     ),
     "goal.created": Fixture(_goal_envelope(), "goal", _GOAL_COLUMNS),
+    # ADR-018: each entity's first status-transition mutation — the one
+    # a crash must not lose, same reasoning as deadline.updated above.
+    "milestone.updated": Fixture(
+        _milestone_envelope(
+            type="milestone.updated",
+            payload=milestone_payload(0, status="reached", revision=2),
+        ),
+        "milestone",
+        _MILESTONE_COLUMNS,
+        seed_sql=_MILESTONE_FIXTURE_PROJECT_SEED,
+    ),
+    "goal.updated": Fixture(
+        _goal_envelope(
+            type="goal.updated",
+            payload=goal_payload(0, status="achieved", revision=2),
+        ),
+        "goal",
+        _GOAL_COLUMNS,
+    ),
+    "project.updated": Fixture(
+        _project_envelope(
+            type="project.updated",
+            payload=project_payload(0, status="completed", revision=2),
+        ),
+        "project",
+        _PROJECT_COLUMNS,
+    ),
 }
 
 

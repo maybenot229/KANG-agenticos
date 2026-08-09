@@ -15,6 +15,9 @@ from kang.domain.projects.milestone_service import (
     MilestoneDraft,
     MilestoneValidationError,
     create_milestone,
+    mark_dropped,
+    mark_missed,
+    mark_reached,
     milestone_event_payload,
 )
 
@@ -59,6 +62,29 @@ class TestCreate:
 
     def test_project_id_is_carried_through_verbatim(self):
         assert _make(project_id="proj-42").project_id == "proj-42"
+
+
+class TestTransitions:
+    @pytest.mark.parametrize(
+        "transition,expected",
+        [(mark_reached, "reached"), (mark_missed, "missed"), (mark_dropped, "dropped")],
+    )
+    def test_transition_from_pending_sets_status_and_updated_at(
+        self, transition, expected
+    ):
+        milestone = _make()
+        clock = FakeClock()
+        clock.advance(3600)
+        transitioned = transition(milestone, clock)
+        assert transitioned.status == expected
+        assert transitioned.updated_at == clock.now()
+        assert milestone.status == "pending"  # snapshots are immutable
+
+    @pytest.mark.parametrize("transition", [mark_reached, mark_missed, mark_dropped])
+    def test_transition_from_a_non_pending_status_is_rejected(self, transition):
+        reached = mark_reached(_make(), FakeClock())
+        with pytest.raises(MilestoneValidationError):
+            transition(reached, FakeClock())
 
 
 class TestEventPayload:

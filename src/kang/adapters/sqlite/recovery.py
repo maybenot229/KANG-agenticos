@@ -414,6 +414,14 @@ _APPLIERS = {
     "milestone.created": _apply_milestone_upsert,
     # ADR-016: goal.created's own obligation, same reasoning.
     "goal.created": _apply_goal_upsert,
+    # ADR-018: each entity's own upsert applier already handled the update
+    # branch (current is not None) from the day it was written — .created
+    # was the only registered type driving it until now. No new applier
+    # code, only the dispatch entry each newly-registered .updated type
+    # obliges (EB-006 §6.3).
+    "milestone.updated": _apply_milestone_upsert,
+    "goal.updated": _apply_goal_upsert,
+    "project.updated": _apply_project_upsert,
 }
 
 

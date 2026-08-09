@@ -64,6 +64,8 @@ from kang.api.schemas.milestone import (
     MilestoneCreateResponse,
     MilestoneListRequest,
     MilestoneListResponse,
+    MilestoneTransitionRequest,
+    MilestoneTransitionResponse,
 )
 from kang.api.schemas.notification import (
     NotificationAckRequest,
@@ -508,6 +510,41 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         "List every tracked milestone for one project, due then id.",
         schemas=OperationSchemas(
             request=MilestoneListRequest, response=MilestoneListResponse
+        ),
+    ),
+    # milestone.reach / .miss / .drop (ADR-018): the entity's first status
+    # transitions, `pending -> <terminal>`. Same scope as milestone.create
+    # (no new authority — a transition is still `milestones.write`).
+    # Every command requires an idempotency key (12_API §5), same as
+    # task.complete.
+    _op(
+        "milestone.reach",
+        "command",
+        "milestones.write",
+        True,
+        "Mark a milestone reached.",
+        schemas=OperationSchemas(
+            request=MilestoneTransitionRequest, response=MilestoneTransitionResponse
+        ),
+    ),
+    _op(
+        "milestone.miss",
+        "command",
+        "milestones.write",
+        True,
+        "Mark a milestone missed.",
+        schemas=OperationSchemas(
+            request=MilestoneTransitionRequest, response=MilestoneTransitionResponse
+        ),
+    ),
+    _op(
+        "milestone.drop",
+        "command",
+        "milestones.write",
+        True,
+        "Mark a milestone dropped.",
+        schemas=OperationSchemas(
+            request=MilestoneTransitionRequest, response=MilestoneTransitionResponse
         ),
     ),
     # goal.create / goal.list (ADR-016): the goal entity's first real

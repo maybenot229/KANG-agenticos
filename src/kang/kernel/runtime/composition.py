@@ -73,7 +73,10 @@ from kang.api.operations import (
     make_held_action_list_handler,
     make_invocation_list_handler,
     make_milestone_create_handler,
+    make_milestone_drop_handler,
     make_milestone_list_handler,
+    make_milestone_miss_handler,
+    make_milestone_reach_handler,
     make_notification_ack_handler,
     make_permission_list_handler,
     make_plan_generate_handler,
@@ -363,6 +366,15 @@ def _build_handlers(w: _HandlerWiring) -> dict:
             w.bus, w.milestone_store, w.clock, w.new_id, w.device_id
         ),
         "milestone.list": make_milestone_list_handler(w.milestone_store),
+        "milestone.reach": make_milestone_reach_handler(
+            w.bus, w.milestone_store, w.clock, w.new_id, w.device_id
+        ),
+        "milestone.miss": make_milestone_miss_handler(
+            w.bus, w.milestone_store, w.clock, w.new_id, w.device_id
+        ),
+        "milestone.drop": make_milestone_drop_handler(
+            w.bus, w.milestone_store, w.clock, w.new_id, w.device_id
+        ),
         "goal.create": make_goal_create_handler(
             w.bus, w.goal_store, w.clock, w.new_id, w.device_id
         ),
@@ -511,7 +523,7 @@ def _build_stores(kang, clock) -> _Stores:
         kill_switch=SqliteKillSwitch(kang, clock),
         project_store=SqliteProjectStore(kang),
         competition_store=SqliteCompetitionStore(kang),
-        milestone_store=SqliteMilestoneStore(kang),
+        milestone_store=SqliteMilestoneStore(kang, clock),
         goal_store=SqliteGoalStore(kang),
     )
 

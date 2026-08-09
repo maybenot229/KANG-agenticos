@@ -247,10 +247,6 @@ _TYPES: tuple[EventType, ...] = (
     # deadline FKs already live in the schema — by the same argument
     # ADR-004 made for deadline.created: losing one on crash recovery would
     # silently corrupt the read-shape of everything that points at it.
-    # project.updated is deliberately NOT registered: no status-transition
-    # operation exists yet (tracking-only scope), and registering ahead of
-    # a real consumer is the speculative-structure anti-pattern ADR-004
-    # itself rejected for competition.* — the same discipline, applied here.
     EventType(
         name="project.created",
         category="domain",
@@ -276,9 +272,7 @@ _TYPES: tuple[EventType, ...] = (
     # ---- milestone.created, per ADR-015 ----------------------------------
     # A milestone row is real, addressable project state; losing one on
     # crash recovery silently corrupts that project's own milestone list —
-    # same argument ADR-013 made for project.created. milestone.updated is
-    # deliberately NOT registered: no status-transition operation exists
-    # yet (reach/miss/drop), same non-speculation discipline.
+    # same argument ADR-013 made for project.created.
     EventType(
         name="milestone.created",
         category="domain",
@@ -292,10 +286,6 @@ _TYPES: tuple[EventType, ...] = (
     # A goal row is real, addressable state — project.goal_id can
     # reference it, and 07 §5.2 already commits to this table holding
     # Kang's real quarter/year goals from M5's first runtime population.
-    # goal.updated is deliberately NOT registered: no status-transition
-    # operation exists yet (achieve/revise/retire are real enum values
-    # with zero operations behind them), same non-speculation discipline
-    # as project.updated/competition.updated/milestone.updated.
     EventType(
         name="goal.created",
         category="domain",
@@ -303,6 +293,39 @@ _TYPES: tuple[EventType, ...] = (
         plugin_visible=True,
         version_introduced="0.1",
         required_payload_fields=_GOAL_PAYLOAD_FIELDS,
+    ),
+    # ---- milestone.updated / goal.updated / project.updated, per ADR-018
+    # (the standing .updated pattern, generalizing ADR-016's own precedent
+    # to transitions) ------------------------------------------------------
+    # milestone.updated carries reach/miss/drop; goal.updated carries
+    # achieve/revise/retire; project.updated carries complete only (see
+    # ADR-018's own scope ruling on why project's remaining transitions
+    # — pause/resume/archive/abandon — stay unbuilt). Same full-row,
+    # recovery-grade shape as each entity's own .created type — losing a
+    # transition on crash recovery would silently revert the row.
+    EventType(
+        name="milestone.updated",
+        category="domain",
+        recovery_grade=True,
+        plugin_visible=True,
+        version_introduced="0.1",
+        required_payload_fields=_MILESTONE_PAYLOAD_FIELDS,
+    ),
+    EventType(
+        name="goal.updated",
+        category="domain",
+        recovery_grade=True,
+        plugin_visible=True,
+        version_introduced="0.1",
+        required_payload_fields=_GOAL_PAYLOAD_FIELDS,
+    ),
+    EventType(
+        name="project.updated",
+        category="domain",
+        recovery_grade=True,
+        plugin_visible=True,
+        version_introduced="0.1",
+        required_payload_fields=_PROJECT_PAYLOAD_FIELDS,
     ),
 )
 

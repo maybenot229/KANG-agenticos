@@ -6,14 +6,14 @@ deterministic, zero I/O.
 Constitutional home: 07_DATABASE §5.2 (milestone shape, status enum);
 ADR-015 (milestone.created, the entity's first write path).
 
-Tracking only this pass: `create_milestone` is the entity's whole
-surface — no status-transition function exists yet (mirrors
-project_service.py's own precedent exactly).
+`mark_reached`/`mark_missed`/`mark_dropped` (ADR-018, 2026-08-09) are the
+entity's first status transitions, each `pending -> <terminal>`, mirroring
+`deadline_service.py`'s `mark_alerted`/`mark_met`/`mark_missed` exact shape.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 from kang.domain.ports.clock import Clock
@@ -23,6 +23,9 @@ __all__ = [
     "MilestoneDraft",
     "MilestoneValidationError",
     "create_milestone",
+    "mark_dropped",
+    "mark_missed",
+    "mark_reached",
     "milestone_event_payload",
 ]
 
@@ -83,6 +86,32 @@ def create_milestone(
         device_id=device_id,
         revision=1,
     )
+
+
+def _transition(milestone: Milestone, target: str, clock: Clock) -> Milestone:
+    if milestone.status != "pending":
+        raise MilestoneValidationError(
+            f"milestone {milestone.id} is {milestone.status}, not pending"
+        )
+    return replace(milestone, status=target, updated_at=clock.now())
+
+
+def mark_reached(milestone: Milestone, clock: Clock) -> Milestone:
+    """`pending -> reached`: Kang hit it."""
+    return _transition(milestone, "reached", clock)
+
+
+def mark_missed(milestone: Milestone, clock: Clock) -> Milestone:
+    """`pending -> missed`. Recorded honestly, never silently dropped —
+    same reasoning as `deadline_service.mark_missed`."""
+    return _transition(milestone, "missed", clock)
+
+
+def mark_dropped(milestone: Milestone, clock: Clock) -> Milestone:
+    """`pending -> dropped`: the milestone itself is no longer relevant
+    (the project's plan changed), distinct from `missed` (it was relevant
+    and the date passed)."""
+    return _transition(milestone, "dropped", clock)
 
 
 def milestone_event_payload(milestone: Milestone) -> dict:

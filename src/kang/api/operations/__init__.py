@@ -47,7 +47,10 @@ from kang.api.operations.held_action_ops import (
 from kang.api.operations.milestone_ops import (
     MILESTONES_PRINCIPAL,
     make_milestone_create_handler,
+    make_milestone_drop_handler,
     make_milestone_list_handler,
+    make_milestone_miss_handler,
+    make_milestone_reach_handler,
 )
 from kang.api.operations.notification_ops import make_notification_ack_handler
 from kang.api.operations.plan_ops import (
@@ -98,7 +101,10 @@ __all__ = [
     "make_held_action_list_handler",
     "make_invocation_list_handler",
     "make_milestone_create_handler",
+    "make_milestone_drop_handler",
     "make_milestone_list_handler",
+    "make_milestone_miss_handler",
+    "make_milestone_reach_handler",
     "make_notification_ack_handler",
     "make_permission_list_handler",
     "make_plan_generate_handler",
