@@ -587,8 +587,23 @@ def _wire_scheduler(wiring: _SchedulerWiring):
 def serve(kang_home: Path, host: str = "127.0.0.1", port: int = 0) -> None:
     """Wire the Core, mint a first-party session, write the session file the
     CLI reads (API-003: the Core's session file), and serve the operation
-    channel until interrupted. port=0 binds an ephemeral port."""
+    channel until interrupted. port=0 binds an ephemeral port.
+
+    Runs the scheduler's boot catch-up (D014: "on startup after downtime,
+    each job's policy decides...") before accepting requests — the ONE
+    piece of `Scheduler.catch_up()` this wires in. It does not start a
+    continuous tick loop: nothing here re-checks for newly-due jobs while
+    the process keeps running, only at each fresh boot. That is a
+    separate, larger decision (a supervised background task — 11 §25 bans
+    unsupervised threads, and no such primitive exists in this codebase
+    yet) — deliberately not taken here. `core.scheduler` is `None` when
+    `kang.toml` is missing/invalid (`_wire_scheduler`'s own fail-closed
+    path); catch-up is skipped silently in that case, same as every other
+    scheduler operation already does. `dispatcher.dispatch` runs in-process
+    (no HTTP loopback), so this is safe to run before `serve_forever`."""
     core = build_core(kang_home)
+    if core.scheduler is not None:
+        core.scheduler.catch_up()
     session = core.mint_first_party_session()
     server = make_server(core.dispatcher, host, port)
     bound_host, bound_port = server.server_address[0], server.server_address[1]
