@@ -69,6 +69,7 @@ from kang.api.operations.system_ops import (
 )
 from kang.api.operations.task_ops import (
     TASKS_PRINCIPAL,
+    make_task_complete_handler,
     make_task_create_handler,
     make_task_get_handler,
 )
@@ -105,6 +106,7 @@ __all__ = [
     "make_project_list_handler",
     "make_registry_get_handler",
     "make_system_health_handler",
+    "make_task_complete_handler",
     "make_task_create_handler",
     "make_task_get_handler",
 ]

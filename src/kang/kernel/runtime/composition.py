@@ -81,6 +81,7 @@ from kang.api.operations import (
     make_project_list_handler,
     make_registry_get_handler,
     make_system_health_handler,
+    make_task_complete_handler,
     make_task_create_handler,
     make_task_get_handler,
 )
@@ -312,6 +313,9 @@ def _build_handlers(w: _HandlerWiring) -> dict:
             w.bus, w.task_store, w.clock, w.new_id, w.device_id
         ),
         "task.get": make_task_get_handler(w.task_store),
+        "task.complete": make_task_complete_handler(
+            w.bus, w.task_store, w.clock, w.new_id, w.device_id
+        ),
         "deadline.create": make_deadline_create_handler(
             w.bus, w.deadline_store, w.clock, w.new_id, w.device_id
         ),

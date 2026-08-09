@@ -12,7 +12,16 @@ Proof-of-pattern pair for ADR-010's rollout (session 2026-07-31): the first
 two operations to get real schemas, chosen as the simplest, most-obviously-
 typed params among the currently-wired operations. Not yet attached to
 dispatch validation (ADR-010 Ruling 4 is deliberately unimplemented this
-session — see the session report).
+session — see the session report; Ruling 4 landed for real in a later
+session, exercised by every schema-attached operation since, this one
+included).
+
+`TaskCompleteRequest`/`TaskCompleteResponse` (added 2026-08-09): the
+task entity's first status-transition operation — `done` is the one
+transition it has (`complete_task`, `domain/tasks/task_service.py`),
+mirroring `deadline.updated`'s existing `mark_alerted` pattern (fetch,
+transition, publish under the domain's own principal, commit via the
+store's existing optimistic-concurrency `update()`).
 """
 
 from __future__ import annotations
@@ -20,6 +29,8 @@ from __future__ import annotations
 from pydantic import BaseModel, field_validator
 
 __all__ = [
+    "TaskCompleteRequest",
+    "TaskCompleteResponse",
     "TaskCreateRequest",
     "TaskCreateResponse",
     "TaskGetRequest",
@@ -79,3 +90,21 @@ class TaskGetResponse(BaseModel):
     status: str
     priority: int
     revision: int
+
+
+class TaskCompleteRequest(BaseModel):
+    """`task.complete` params (operations.py::make_task_complete_handler).
+    No non-empty constraint on `id`, mirroring `TaskGetRequest`'s own
+    documented convention: an empty string reaches `task_store.get` and
+    surfaces as `not_found`, not `invalid_request`."""
+
+    id: str
+
+
+class TaskCompleteResponse(BaseModel):
+    """`task.complete` result
+    (operations.py::make_task_complete_handler)."""
+
+    task_id: str
+    revision: int
+    completed_at: str

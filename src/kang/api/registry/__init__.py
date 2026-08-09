@@ -82,6 +82,8 @@ from kang.api.schemas.project import (
 )
 from kang.api.schemas.system import SystemHealthRequest, SystemHealthResponse
 from kang.api.schemas.task import (
+    TaskCompleteRequest,
+    TaskCompleteResponse,
     TaskCreateRequest,
     TaskCreateResponse,
     TaskGetRequest,
@@ -233,6 +235,25 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         False,
         "Fetch a task by id.",
         schemas=OperationSchemas(request=TaskGetRequest, response=TaskGetResponse),
+    ),
+    # task.complete (added 2026-08-09): the task entity's first status-
+    # transition operation, same scope as task.create (05 §9's own
+    # "task.write" naming for this entity — not the tasks.write plural
+    # kernel:scheduler already holds; that's a pre-existing naming
+    # inconsistency between the scheduler's own grant and this entity's
+    # registered scope, noted here rather than silently reconciled).
+    # Every command MUST carry an idempotency key (12_API §5, no
+    # exceptions carved out) — a retried "complete" click must not risk
+    # double-processing, same as every other command here.
+    _op(
+        "task.complete",
+        "command",
+        "task.write",
+        True,
+        "Mark a task done.",
+        schemas=OperationSchemas(
+            request=TaskCompleteRequest, response=TaskCompleteResponse
+        ),
     ),
     # Deadlines (M5). Scope names follow 05 §9's domain-verb vocabulary
     # (`deadlines.set`, `deadlines.mark_alerted`), not a new one. Neither is

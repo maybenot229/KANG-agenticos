@@ -68,10 +68,17 @@ def create_task(draft: TaskDraft, task_id: str, clock: Clock, device_id: str) ->
 
 
 def complete_task(task: Task, clock: Clock) -> Task:
-    """Return the completed snapshot; persistence bumps the revision."""
+    """Return the completed snapshot; persistence bumps the revision.
+    `updated_at` is stamped too (D009's sync quartet — any real mutation
+    updates it), not just `completed_at`: this function predates its
+    first real caller (`task.complete`, added 2026-08-09), so this was
+    never exercised through a published event before — an event
+    announcing the transition needs a real `occurred_at`, not the task's
+    stale creation-time `updated_at`."""
     if task.status == "done":
         raise TaskValidationError(f"task {task.id} is already done")
-    return replace(task, status="done", completed_at=clock.now())
+    now = clock.now()
+    return replace(task, status="done", completed_at=now, updated_at=now)
 
 
 def task_event_payload(task: Task) -> dict:

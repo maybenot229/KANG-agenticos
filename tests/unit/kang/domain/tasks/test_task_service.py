@@ -59,6 +59,7 @@ def test_complete_sets_status_and_completion_time(clock):
     done = complete_task(task, clock)
     assert done.status == "done"
     assert done.completed_at == clock.now()
+    assert done.updated_at == clock.now()  # a real mutation, not just completed_at
     assert task.status == "open"  # snapshots are immutable
 
 
