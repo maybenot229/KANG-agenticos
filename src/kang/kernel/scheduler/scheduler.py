@@ -78,6 +78,28 @@ class Scheduler:
         self._correlation_id = deps.correlation_id
         self._parse = deps.parse
 
+    def tick(self) -> CatchUpReport | None:
+        """Re-run `catch_up()` from the live tick loop (ADR-019). `catch_up`
+        is idempotent by construction (baseline = last processed slot), so
+        calling it again mid-session is correct by construction, not a new
+        scheduling algorithm — it only ever picks up newly-due slots.
+
+        A failure `catch_up()` itself already isolates (a job body raising)
+        never reaches here — `_run_slot` catches those per-slot. What can
+        still escape is something catch_up() doesn't expect (e.g. a store
+        error) — caught here, audited as `automation.tick_failed`, and
+        swallowed: the tick loop must survive this and let the next tick
+        retry, not take the whole Core down over what may be transient."""
+        try:
+            return self.catch_up()
+        except Exception as exc:  # the tick loop must outlive this
+            self._audit.record(
+                "kernel:scheduler",
+                "automation.tick_failed",
+                {"error": f"{type(exc).__name__}: {exc}"},
+            )
+            return None
+
     def catch_up(self) -> CatchUpReport:
         """Process every job's missed slots per its policy. First reconciles
         crashed runs, then — unless the kill-switch is engaged — dispatches."""

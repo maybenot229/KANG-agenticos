@@ -20,6 +20,7 @@ import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime
+from http.server import HTTPServer
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -123,6 +124,10 @@ MORNING_PLAN_JOB = "morning_plan"  # 05 Appendix E's ritual name
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[4] / "migrations"
 
+TICK_INTERVAL_S = 60  # ADR-019: how often the live tick re-runs catch-up.
+# A plain constant, not a kang.toml key — nothing has asked to tune this
+# yet, unlike [planner.triggers]'s lived trigger times.
+
 
 @dataclass
 class Core:
@@ -135,6 +140,7 @@ class Core:
     _connections: list
     scheduler: object = None
     startup_lock: object = None
+    clock: object = None  # ADR-019: times the tick loop's interval gate
 
     def mint_first_party_session(self) -> Session:
         token = self.new_id()  # type: ignore[operator]
@@ -547,6 +553,7 @@ def _build_core_locked(
             )
         ),
         startup_lock=startup_lock,
+        clock=clock,
     )
 
 
@@ -657,23 +664,53 @@ def _wire_scheduler(wiring: _SchedulerWiring):
     )
 
 
+def _make_ticking_server_class(scheduler, clock) -> type[HTTPServer]:
+    """ADR-019: a plain `HTTPServer` subclass whose `service_actions()` —
+    called once per `serve_forever` poll cycle, on the same thread that
+    owns `kang.db` — re-runs the scheduler's catch-up on a tick.
+
+    No new thread, no new connection: DB-001's thread-confined single
+    writer stays exactly as it is, because this never leaves the
+    connection-owning thread. Gated by `TICK_INTERVAL_S` via `clock`, not
+    wall time (11 §25 bans wall-clock outside ports). `scheduler` is
+    closed over rather than threaded through `make_server` so
+    `http_binding.py` stays fully scheduler-ignorant — this is the
+    composition root's own bridge (ADR-006 ruling 4's precedent)."""
+
+    class _TickingHTTPServer(HTTPServer):
+        _last_tick = None
+
+        def service_actions(self) -> None:
+            if scheduler is None:
+                return
+            now = clock.now()
+            if (
+                self._last_tick is not None
+                and (now - self._last_tick).total_seconds() < TICK_INTERVAL_S
+            ):
+                return
+            self._last_tick = now
+            scheduler.tick()
+
+    return _TickingHTTPServer
+
+
 def serve(kang_home: Path, host: str = "127.0.0.1", port: int = 0) -> None:
     """Wire the Core, mint a first-party session, write the session file the
     CLI reads (API-003: the Core's session file), and serve the operation
     channel until interrupted. port=0 binds an ephemeral port.
 
     Runs the scheduler's boot catch-up (D014: "on startup after downtime,
-    each job's policy decides...") before accepting requests — the ONE
-    piece of `Scheduler.catch_up()` this wires in. It does not start a
-    continuous tick loop: nothing here re-checks for newly-due jobs while
-    the process keeps running, only at each fresh boot. That is a
-    separate, larger decision (a supervised background task — 11 §25 bans
-    unsupervised threads, and no such primitive exists in this codebase
-    yet) — deliberately not taken here. `core.scheduler` is `None` when
-    `kang.toml` is missing/invalid (`_wire_scheduler`'s own fail-closed
-    path); catch-up is skipped silently in that case, same as every other
-    scheduler operation already does. `dispatcher.dispatch` runs in-process
-    (no HTTP loopback), so this is safe to run before `serve_forever`.
+    each job's policy decides...") before accepting requests, then keeps
+    it live: `serve_forever`'s server is built with a `service_actions()`
+    override (ADR-019) that re-runs `Scheduler.tick()` every
+    `TICK_INTERVAL_S` — so newly-due jobs are picked up while the process
+    keeps running, not only at the next fresh boot. `core.scheduler` is
+    `None` when `kang.toml` is missing/invalid (`_wire_scheduler`'s own
+    fail-closed path); both the boot catch-up and the live tick are
+    skipped silently in that case, same as every other scheduler operation
+    already does. `dispatcher.dispatch` runs in-process (no HTTP
+    loopback), so the boot catch-up is safe to run before `serve_forever`.
 
     ADR-008 Part A2: `build_core` takes an exclusive startup lock under
     `%KANG_HOME%` before touching anything else. A second live Core
@@ -689,7 +726,12 @@ def serve(kang_home: Path, host: str = "127.0.0.1", port: int = 0) -> None:
     if core.scheduler is not None:
         core.scheduler.catch_up()
     session = core.mint_first_party_session()
-    server = make_server(core.dispatcher, host, port)
+    server = make_server(
+        core.dispatcher,
+        host,
+        port,
+        server_class=_make_ticking_server_class(core.scheduler, core.clock),
+    )
     bound_host, bound_port = server.server_address[0], server.server_address[1]
     (kang_home / SESSION_FILE).write_text(
         json.dumps({"host": bound_host, "port": bound_port, "token": session.token}),

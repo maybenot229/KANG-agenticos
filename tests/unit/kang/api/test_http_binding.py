@@ -12,6 +12,7 @@ import json
 import threading
 import urllib.error
 import urllib.request
+from http.server import HTTPServer
 
 import pytest
 
@@ -110,6 +111,32 @@ def test_error_response_also_carries_cors_headers(running_server):
         assert response.headers["Access-Control-Allow-Origin"] == "*"
         envelope = json.loads(response.read())
         assert envelope["error"]["code"] == "not_found"
+
+
+def test_make_server_honors_a_custom_server_class():
+    # ADR-019: the composition root passes a service_actions()-overriding
+    # HTTPServer subclass to drive the live tick loop. make_server stays
+    # scheduler-ignorant — it just has to build whatever class it's given.
+    class _MarkedServer(HTTPServer):
+        pass
+
+    dispatcher = Dispatcher(
+        {},
+        DispatcherDeps(
+            sessions=FakeSessionStore(),
+            permissions=PermissionEngine({}),
+            idempotency=FakeIdempotencyStore(),
+            invocations=FakeInvocationStore(),
+            audit=AuditService(FakeAuditLog(), FakeClock()),
+            clock=FakeClock(),
+            new_id=lambda: "id",
+        ),
+    )
+    server = make_server(dispatcher, "127.0.0.1", 0, server_class=_MarkedServer)
+    try:
+        assert isinstance(server, _MarkedServer)
+    finally:
+        server.server_close()
 
 
 def test_unknown_path_is_404_and_still_carries_cors_headers(running_server):

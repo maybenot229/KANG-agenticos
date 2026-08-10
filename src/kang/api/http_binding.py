@@ -60,12 +60,25 @@ def _write_json(handler: BaseHTTPRequestHandler, status: int, body: dict) -> Non
     handler.wfile.write(payload)
 
 
-def make_server(dispatcher: Dispatcher, host: str, port: int) -> HTTPServer:
+def make_server(
+    dispatcher: Dispatcher,
+    host: str,
+    port: int,
+    server_class: type[HTTPServer] = HTTPServer,
+) -> HTTPServer:
     """Build (do not start) a local HTTP server bound to host:port that
     routes POST /op through the dispatcher. Single-threaded by design: the
     kang.db connection is single-writer (DB-001) and thread-confined, so all
     requests are served in the connection-owning thread. Caller runs
-    serve_forever."""
+    serve_forever.
+
+    `server_class` defaults to plain `HTTPServer` and stays this module's
+    only concession to the caller — this module still knows nothing about
+    the scheduler. The composition root (ADR-019) passes a subclass that
+    overrides `service_actions()` to re-run the scheduler's catch-up on a
+    tick, reusing `serve_forever`'s existing per-poll-cycle hook rather
+    than a second thread (which DB-001's thread-confined connection
+    forbids)."""
 
     class _Handler(BaseHTTPRequestHandler):
         def do_OPTIONS(self) -> None:  # noqa: N802 - stdlib callback name
@@ -100,4 +113,4 @@ def make_server(dispatcher: Dispatcher, host: str, port: int) -> HTTPServer:
 
     if host not in ("127.0.0.1", "localhost"):
         raise ValueError("the API binds 127.0.0.1 exclusively (12 §1.3)")
-    return HTTPServer((host, port), _Handler)
+    return server_class((host, port), _Handler)

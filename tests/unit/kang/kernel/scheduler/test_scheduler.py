@@ -166,6 +166,51 @@ def test_kill_switch_pauses_all_automation():
     assert ran == []
 
 
+def test_tick_behaves_like_catch_up_on_success():
+    # ADR-019: tick() is catch_up() re-run from the live loop — same
+    # outcome on the happy path, no new scheduling logic.
+    clock = MovableClock(ANCHOR + timedelta(hours=5))
+    store = FakeJobStore(jobs=[_job("run_once_latest")], clock=clock)
+    ran: list = []
+    scheduler = _scheduler(
+        clock, store, FakeKillSwitch(), lambda job, slot: ran.append(slot)
+    )
+    report = scheduler.tick()
+    assert report.ran == 1
+    assert ran == [ANCHOR + timedelta(hours=5)]
+
+
+def test_tick_survives_a_failure_catch_up_does_not_isolate():
+    # A per-job runner failure is already isolated inside catch_up() itself
+    # (test_consecutive_failures_quarantine_the_job proves that). tick()'s
+    # own job is the failure catch_up() does NOT expect — e.g. the job
+    # store itself misbehaving — which must not escape tick() and take the
+    # server loop down with it (ADR-019).
+    class _BrokenJobStore(FakeJobStore):
+        def list_jobs(self):
+            raise RuntimeError("store unavailable")
+
+    clock = MovableClock(ANCHOR + timedelta(hours=1))
+    store = _BrokenJobStore(jobs=[_job("run_once_latest")], clock=clock)
+    audit_log = FakeAuditLog()
+    scheduler = Scheduler(
+        SchedulerDeps(
+            clock=clock,
+            job_store=store,
+            kill_switch=FakeKillSwitch(),
+            runner=lambda job, slot: None,
+            audit=AuditService(audit_log, clock),
+            correlation_id=lambda: "corr-sched",
+        )
+    )
+    report = scheduler.tick()  # must not raise
+    assert report is None
+    records = list(audit_log.records(ANCHOR.isoformat()[:7]))
+    assert len(records) == 1
+    assert records[0].entry.action == "automation.tick_failed"
+    assert "RuntimeError" in records[0].entry.details["error"]
+
+
 def test_recover_incomplete_marks_crashed_runs_failed():
     clock = MovableClock(ANCHOR + timedelta(hours=2))
     store = FakeJobStore(jobs=[_job("run_all_missed")], clock=clock)
