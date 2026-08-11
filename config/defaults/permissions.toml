@@ -57,5 +57,6 @@
 # nothing more. Default-deny means this line IS the answer to "what can
 # automation set off?", reviewable in one place. It holds no
 # events.publish grant: the operations it invokes publish under their own
-# domain principals.
-"kernel:scheduler" = ["tasks.write"]
+# domain principals. tasks.write (morning_plan -> plan.generate),
+# deadlines.mark_alerted (deadline_sweep -> deadline.sweep, ADR-020).
+"kernel:scheduler" = ["tasks.write", "deadlines.mark_alerted"]

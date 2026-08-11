@@ -121,6 +121,7 @@ NOTIFIER_PRINCIPAL = "kernel:notifier"  # publishes notification.requested
 SCHEDULER_PRINCIPAL = "kernel:scheduler"  # dispatches jobs (already audits
 #   under this name — ADR-006 names nothing new)
 MORNING_PLAN_JOB = "morning_plan"  # 05 Appendix E's ritual name
+DEADLINE_SWEEP_JOB = "deadline_sweep"  # 05 Appendix E's ritual name (ADR-020)
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[4] / "migrations"
 
@@ -201,7 +202,10 @@ class _BusNotificationPublisher:
 # module permitted to know both layers. It stays a plain literal because
 # SEC-005 forbids hidden execution and P5 asks that "what will KANG do next
 # and why" be answerable by reading, not by tracing.
-JOB_OPERATIONS: dict[str, str] = {"morning_plan": "plan.generate"}
+JOB_OPERATIONS: dict[str, str] = {
+    "morning_plan": "plan.generate",
+    "deadline_sweep": "deadline.sweep",  # ADR-020
+}
 
 
 def _make_schedule_parser(tz: ZoneInfo):
@@ -648,6 +652,20 @@ def _wire_scheduler(wiring: _SchedulerWiring):
             name=MORNING_PLAN_JOB,
             schedule=triggers.morning_cron(),
             catch_up=triggers.catch_up_policy,  # run_once_latest: one plan
+            created_at=wiring.clock.now(),
+        )
+    )
+    job_store.register_job(
+        Job(
+            id=DEADLINE_SWEEP_JOB,
+            name=DEADLINE_SWEEP_JOB,
+            # 05 Appendix E: hourly, any product state, run_once_latest.
+            # Anchor-relative (not kang.toml-driven) — a sweep's exact
+            # minute is meaningless, unlike morning_plan's wall-clock
+            # ritual (ADR-006's own reasoning for keeping the interval
+            # forms alongside cron).
+            schedule="hourly",
+            catch_up="run_once_latest",
             created_at=wiring.clock.now(),
         )
     )

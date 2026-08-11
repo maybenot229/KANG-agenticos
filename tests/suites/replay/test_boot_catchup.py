@@ -20,7 +20,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from kang.adapters.sqlite.connection import open_connection
-from kang.kernel.runtime.composition import MORNING_PLAN_JOB, build_core
+from kang.kernel.runtime.composition import (
+    DEADLINE_SWEEP_JOB,
+    MORNING_PLAN_JOB,
+    build_core,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULTS = REPO_ROOT / "config" / "defaults"
@@ -35,7 +39,9 @@ def _seed_config(kang_home: Path) -> None:
         )
 
 
-def _register_job_then_backdate_it(kang_home: Path, days: int) -> None:
+def _register_job_then_backdate_it(
+    kang_home: Path, days: int = 0, hours: int = 0, job_id: str = MORNING_PLAN_JOB
+) -> None:
     """A freshly-registered job has no missed slots (its catch-up baseline
     is its own creation time) — boot once to register it, then backdate,
     mirroring `test_morning_plan_job.py::_simulate_downtime` exactly."""
@@ -43,10 +49,10 @@ def _register_job_then_backdate_it(kang_home: Path, days: int) -> None:
     built.close()
     conn = open_connection(kang_home / "kang.db")
     try:
-        past = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-        conn.execute(
-            "UPDATE job SET created_at = ? WHERE id = ?", (past, MORNING_PLAN_JOB)
-        )
+        past = (
+            datetime.now(timezone.utc) - timedelta(days=days, hours=hours)
+        ).isoformat()
+        conn.execute("UPDATE job SET created_at = ? WHERE id = ?", (past, job_id))
         conn.commit()
     finally:
         conn.close()
@@ -92,12 +98,23 @@ class _Server:
             self._proc.wait(timeout=10)
 
 
-def _job_run_count(kang_home: Path) -> int:
+def _job_run_count(kang_home: Path, job_id: str = MORNING_PLAN_JOB) -> int:
     conn = open_connection(kang_home / "kang.db")
     try:
         return conn.execute(
-            "SELECT COUNT(*) FROM job_run WHERE job_id = ?", (MORNING_PLAN_JOB,)
+            "SELECT COUNT(*) FROM job_run WHERE job_id = ?", (job_id,)
         ).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def _job_run_outcome(kang_home: Path, job_id: str) -> str | None:
+    conn = open_connection(kang_home / "kang.db")
+    try:
+        row = conn.execute(
+            "SELECT outcome FROM job_run WHERE job_id = ?", (job_id,)
+        ).fetchone()
+        return row[0] if row else None
     finally:
         conn.close()
 
@@ -131,6 +148,28 @@ def test_a_real_boot_with_no_missed_slots_does_not_crash_or_double_run(tmp_path)
     try:
         server.wait_ready()
         assert _job_run_count(tmp_path) == 0
+    finally:
+        server.stop()
+
+
+def test_deadline_sweep_is_registered_and_boot_catches_up_a_missed_hour(tmp_path):
+    """ADR-020: deadline_sweep is a real second job, wired identically to
+    morning_plan — backdated by an hour, a real boot must catch it up
+    exactly once (run_once_latest), and it must actually succeed
+    (outcome='ok'), proving the deadlines.mark_alerted grant this ADR
+    added is really there, not just that a job_run row exists."""
+    _seed_config(tmp_path)
+    _register_job_then_backdate_it(tmp_path, hours=3, job_id=DEADLINE_SWEEP_JOB)
+    assert _job_run_count(tmp_path, DEADLINE_SWEEP_JOB) == 0
+
+    server = _Server(tmp_path)
+    try:
+        server.wait_ready()
+        assert _job_run_count(tmp_path, DEADLINE_SWEEP_JOB) == 1
+        assert _job_run_outcome(tmp_path, DEADLINE_SWEEP_JOB) == "ok"
+        # morning_plan is unaffected — two independently catching-up jobs,
+        # not one replacing the other.
+        assert _job_run_count(tmp_path, MORNING_PLAN_JOB) == 0
     finally:
         server.stop()
 

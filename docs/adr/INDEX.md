@@ -25,3 +25,4 @@ Append-only; an ADR that reverses or narrows another MUST cite it.
 | [017](017-start-at-login.md) | Activating RESERVED: start-at-login via a Windows Startup shortcut | accepted | 03_ROADMAP §8, docs/adr/007-ui-shell-decision.md §5.1, docs/adr/008-single-instance-enforcement.md |
 | [018](018-status-transition-updated-events.md) | Standing pattern: registering `<entity>.updated` for a status transition, applied to milestone/goal/project | accepted | 15_EVENT_BUS §6.1/§6.3, 13_TESTING §16.2 |
 | [019](019-scheduler-tick-loop.md) | The continuous scheduler tick loop: `service_actions()` on the existing single-threaded HTTP server | accepted | 04_ARCH D014, `api/http_binding.py`, `kernel/runtime/composition.py` |
+| [020](020-deadline-sweep-automatic-job.md) | Wire `deadline.sweep` as an automatic job | accepted | `config/defaults/permissions.toml`, `kernel/runtime/composition.py`, 05_AGENTS App. E |
