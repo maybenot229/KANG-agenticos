@@ -667,6 +667,12 @@ def _wire_scheduler(wiring: _SchedulerWiring):
             schedule="hourly",
             catch_up="run_once_latest",
             created_at=wiring.clock.now(),
+            # 05_AGENTS Appendix A's own deadline_sweep row names 2m
+            # directly (unlike morning_plan: the planner agent's 10m there
+            # is a budget across three different job triggers, not
+            # morning_plan's own number — not reused here to avoid
+            # inventing a figure nothing actually names).
+            timeout_s=120,
         )
     )
     return Scheduler(

@@ -8,6 +8,13 @@ one is in flight, trivially held by synchronous catch-up), 10_SECURITY D013
 (kill-switch pauses all automation). The job body is an injected runner
 (agent execution is M7); this module decides WHAT runs WHEN and records it.
 
+`job.timeout_s` gets a SOFT signal only (`_record_overrun_if_any`,
+`job.overrun` audit action) — a post-hoc "this ran past its budget" report,
+never enforcement. Real enforcement (interrupting an in-flight call) needs
+a killable subprocess and its own IPC design; ruled not ripe while every
+wired job is deterministic pure-SQL with no network/model calls to hang on
+(a real design conversation's own conclusion, not a default).
+
 Convergence (the C3 gate): the catch-up baseline is the last processed slot
 (max job_run.started). Every slot that runs or is skipped leaves a row, so
 re-running catch-up after a crash processes only the remaining slots —
@@ -148,15 +155,43 @@ class Scheduler:
         """Run one slot. Return True iff this failure quarantined the job
         (the caller stops dispatching it)."""
         run_id = self._jobs.start_run(job.id, slot, self._correlation_id())
+        started_at = self._clock.now()
         try:
             self._runner(job, slot)
         except Exception as exc:  # a failed job body — supervised here
+            self._record_overrun_if_any(job, started_at)
             self._jobs.finish_run(run_id, "failed", f"{type(exc).__name__}: {exc}")
             totals["failed"] += 1
             return self._maybe_quarantine(job, quarantined)
+        self._record_overrun_if_any(job, started_at)
         self._jobs.finish_run(run_id, "ok", None)
         totals["ran"] += 1
         return False
+
+    def _record_overrun_if_any(self, job: Job, started_at: datetime) -> None:
+        """Soft, observability-only overrun signal (D014: "health status on
+        the dashboard"). NOT enforcement — `job.timeout_s` names a budget
+        nothing can actually interrupt yet: the runner call above is
+        synchronous and blocking, Python cannot force-kill a thread, and
+        Windows has no SIGALRM. Real enforcement would need the job body
+        isolated in a killable subprocess with its own IPC back through the
+        operation channel — real, separate infrastructure, not ripe while
+        every wired job is deterministic pure-SQL with zero network/model
+        calls (confirmed by reading `plan.generate`/`deadline.sweep`'s own
+        handlers, not assumed). This only ever runs AFTER the call already
+        returned (success or failure) — it reports a budget that was
+        already blown, it does not enforce one."""
+        elapsed_s = (self._clock.now() - started_at).total_seconds()
+        if elapsed_s > job.timeout_s:
+            self._audit.record(
+                "kernel:scheduler",
+                "job.overrun",
+                {
+                    "job": job.id,
+                    "elapsed_s": round(elapsed_s, 3),
+                    "timeout_s": job.timeout_s,
+                },
+            )
 
     def _maybe_quarantine(self, job: Job, quarantined: list[str]) -> bool:
         """Quarantine the job if it has ≥3 consecutive failures (05 §11)."""

@@ -34,13 +34,14 @@ class MovableClock:
         self._now = now
 
 
-def _job(policy: str, schedule: str = "hourly") -> Job:
+def _job(policy: str, schedule: str = "hourly", timeout_s: int = 300) -> Job:
     return Job(
         id=f"job-{policy}",
         name=f"job-{policy}",
         schedule=schedule,
         catch_up=policy,
         created_at=ANCHOR,
+        timeout_s=timeout_s,
     )
 
 
@@ -209,6 +210,94 @@ def test_tick_survives_a_failure_catch_up_does_not_isolate():
     assert len(records) == 1
     assert records[0].entry.action == "automation.tick_failed"
     assert "RuntimeError" in records[0].entry.details["error"]
+
+
+def test_a_run_past_its_timeout_is_audited_but_not_stopped():
+    # The soft overrun signal: purely observational, reported only after
+    # the (blocking, uninterruptible) runner call already returned.
+    job = _job("run_once_latest", timeout_s=60)
+    clock = MovableClock(ANCHOR + timedelta(hours=1))
+    store = FakeJobStore(jobs=[job], clock=clock)
+    audit_log = FakeAuditLog()
+
+    def slow_runner(job, slot):
+        # Simulate 90s of real work inside the call — the clock only
+        # moves because the runner itself advances it, same as it would
+        # if wall time actually elapsed during a real call.
+        clock.set(clock.now() + timedelta(seconds=90))
+
+    scheduler = Scheduler(
+        SchedulerDeps(
+            clock=clock,
+            job_store=store,
+            kill_switch=FakeKillSwitch(),
+            runner=slow_runner,
+            audit=AuditService(audit_log, clock),
+            correlation_id=lambda: "corr-sched",
+        )
+    )
+    report = scheduler.catch_up()
+    assert report.ran == 1  # not stopped, not failed — ran to completion
+    records = [
+        r
+        for r in audit_log.records(ANCHOR.isoformat()[:7])
+        if r.entry.action == "job.overrun"
+    ]
+    assert len(records) == 1
+    assert records[0].entry.details["job"] == job.id
+    assert records[0].entry.details["timeout_s"] == 60
+    assert records[0].entry.details["elapsed_s"] >= 90
+
+
+def test_a_run_within_its_timeout_is_not_audited():
+    job = _job("run_once_latest", timeout_s=300)
+    clock = MovableClock(ANCHOR + timedelta(hours=1))
+    store = FakeJobStore(jobs=[job], clock=clock)
+    audit_log = FakeAuditLog()
+    scheduler = Scheduler(
+        SchedulerDeps(
+            clock=clock,
+            job_store=store,
+            kill_switch=FakeKillSwitch(),
+            runner=lambda job, slot: None,  # instant — well within budget
+            audit=AuditService(audit_log, clock),
+            correlation_id=lambda: "corr-sched",
+        )
+    )
+    scheduler.catch_up()
+    records = [
+        r
+        for r in audit_log.records(ANCHOR.isoformat()[:7])
+        if r.entry.action == "job.overrun"
+    ]
+    assert records == []
+
+
+def test_a_failed_run_past_its_timeout_is_still_audited_for_the_overrun():
+    # Failure and overrun are independent signals — a job that both hung
+    # AND failed should surface both, not have one mask the other.
+    job = _job("run_once_latest", timeout_s=60)
+    clock = MovableClock(ANCHOR + timedelta(hours=1))
+    store = FakeJobStore(jobs=[job], clock=clock)
+    audit_log = FakeAuditLog()
+
+    def slow_failing_runner(job, slot):
+        clock.set(clock.now() + timedelta(seconds=90))
+        raise RuntimeError("boom")
+
+    scheduler = Scheduler(
+        SchedulerDeps(
+            clock=clock,
+            job_store=store,
+            kill_switch=FakeKillSwitch(),
+            runner=slow_failing_runner,
+            audit=AuditService(audit_log, clock),
+            correlation_id=lambda: "corr-sched",
+        )
+    )
+    scheduler.catch_up()
+    actions = [r.entry.action for r in audit_log.records(ANCHOR.isoformat()[:7])]
+    assert "job.overrun" in actions
 
 
 def test_recover_incomplete_marks_crashed_runs_failed():
