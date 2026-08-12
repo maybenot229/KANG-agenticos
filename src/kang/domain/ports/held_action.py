@@ -20,8 +20,8 @@ step is registry metadata for `operation` — not stored on the row.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Protocol
+from dataclasses import dataclass, field
+from typing import Any, Protocol
 
 __all__ = [
     "HeldAction",
@@ -50,6 +50,9 @@ class HeldAction:
     created_at: str
     expires_at: str  # created_at + 24h (12 §7)
     status: str = "pending"
+    params: dict[str, Any] = field(default_factory=dict)  # ADR-021: the
+    #   original request's params, carried so approval can replay the
+    #   effect — the schema delta ADR-001's Consequences called "owed"
 
 
 class HeldActionError(Exception):
@@ -92,6 +95,22 @@ class HeldActionStore(Protocol):
         (ADR 001). Raises HeldActionNotFound if the action is not currently
         `approved` (guards against marking a pending or cancelled action
         executed)."""
+        ...
+
+    def approve_in_txn(self, held_action_id: str, now: str) -> HeldAction:
+        """Same as `approve`, but assumes the caller already opened a
+        transaction on the shared connection (ADR-021: `transactional`
+        commit_mode's approve-flip and effect share one `BEGIN`/`COMMIT`) —
+        does not open or close one of its own. The real adapter writes on
+        its own already-held connection; the fake mutates its dict, which
+        needs no transaction at all. Only `held_action.approve`'s handler
+        (the one place permitted to own that transaction boundary) calls
+        this — never a generic caller."""
+        ...
+
+    def mark_executed_in_txn(self, held_action_id: str) -> HeldAction:
+        """Same as `mark_executed`, transaction-participating (see
+        `approve_in_txn`)."""
         ...
 
     def approved_not_executed(self) -> list[HeldAction]:

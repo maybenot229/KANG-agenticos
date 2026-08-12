@@ -124,6 +124,20 @@ class SqliteJobStore:
                 (int(quarantined), job_id),
             )
 
+    def set_enabled(self, job_id: str, enabled: bool) -> None:
+        with self._writing():
+            self.set_enabled_in_txn(job_id, enabled)
+
+    def set_enabled_in_txn(self, job_id: str, enabled: bool) -> None:
+        """No transaction of its own (ADR-021): `held_action.approve`'s
+        `transactional`-mode driver calls this on its own already-open
+        transaction, sharing it with the held_action's own approve-flip and
+        mark-executed writes."""
+        self._conn.execute(
+            "UPDATE job SET enabled = ? WHERE id = ?",
+            (int(enabled), job_id),
+        )
+
     def recover_incomplete(self, now: datetime) -> int:
         with self._writing():
             cursor = self._conn.execute(

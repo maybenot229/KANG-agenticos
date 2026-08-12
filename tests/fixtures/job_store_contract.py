@@ -69,6 +69,23 @@ class JobStoreContract:
         store.set_quarantined("job-1", True)
         assert store.list_jobs()[0].quarantined is True
 
+    def test_set_enabled(self, store):
+        store.register_job(_job("job-1"))
+        store.set_enabled("job-1", False)
+        assert store.list_jobs()[0].enabled is False
+        store.set_enabled("job-1", True)
+        assert store.list_jobs()[0].enabled is True
+
+    def test_set_enabled_in_txn(self, store):
+        # ADR-021: the transaction-participating variant held_action.
+        # approve's transactional-mode driver uses — same effect as
+        # set_enabled() when called standalone (no shared transaction to
+        # participate in here — that property is proven at the handler
+        # level, not the store level).
+        store.register_job(_job("job-1"))
+        store.set_enabled_in_txn("job-1", False)
+        assert store.list_jobs()[0].enabled is False
+
     def test_recover_incomplete_marks_unfinished_failed(self, store):
         store.register_job(_job("job-1"))
         store.start_run("job-1", ANCHOR + timedelta(hours=1), "c")  # never finished

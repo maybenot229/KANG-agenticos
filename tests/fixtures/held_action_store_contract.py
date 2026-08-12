@@ -108,3 +108,37 @@ class HeldActionStoreContract:
         store.create(_held(1, created="2026-01-01T10:00:00+00:00"))
         store.create(_held(0, created="2026-01-01T09:00:00+00:00"))
         assert [h.id for h in store.pending()] == ["held-0000", "held-0001"]
+
+    def test_create_persists_params(self, store):
+        held = _held(0)
+        held.params.update({"job_id": "morning_plan"})
+        store.create(held)
+        assert store.get("held-0000").params == {"job_id": "morning_plan"}
+
+    def test_approve_in_txn_follows_the_same_guards_as_approve(self, store):
+        # ADR-021: approve_in_txn is the transaction-participating variant
+        # held_action.approve's handler uses for transactional commit_mode
+        # — same guard contract as approve(), just without its own
+        # BEGIN/COMMIT (the caller owns that boundary).
+        store.create(_held(0))
+        approved = store.approve_in_txn("held-0000", now="2026-01-01T12:00:00+00:00")
+        assert approved.status == "approved"
+        assert store.get("held-0000").status == "approved"
+
+    def test_approve_in_txn_past_expiry_is_refused(self, store):
+        store.create(_held(0))
+        with pytest.raises(HeldActionExpired):
+            store.approve_in_txn("held-0000", now="2026-01-03T09:00:00+00:00")
+        assert store.get("held-0000").status == "pending"
+
+    def test_mark_executed_in_txn_follows_the_same_guards_as_mark_executed(self, store):
+        store.create(_held(0))
+        store.approve_in_txn("held-0000", now="2026-01-01T12:00:00+00:00")
+        executed = store.mark_executed_in_txn("held-0000")
+        assert executed.status == "executed"
+        assert store.get("held-0000").status == "executed"
+
+    def test_mark_executed_in_txn_before_approval_raises(self, store):
+        store.create(_held(0))
+        with pytest.raises(HeldActionNotFound):
+            store.mark_executed_in_txn("held-0000")

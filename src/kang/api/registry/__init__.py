@@ -61,6 +61,7 @@ from kang.api.schemas.invocation import (
     InvocationListRequest,
     InvocationListResponse,
 )
+from kang.api.schemas.job import JobDisableRequest, JobEnableRequest
 from kang.api.schemas.milestone import (
     MilestoneCreateRequest,
     MilestoneCreateResponse,
@@ -421,6 +422,35 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         schemas=OperationSchemas(
             request=SystemHealthRequest, response=SystemHealthResponse
         ),
+    ),
+    # job.disable / job.enable (ADR-021): the first real consequential
+    # operation — 12_API.md §11 already named "job.enable/disable
+    # (consequential for core jobs)" before any code existed. Neither
+    # handler ever performs the effect itself (see
+    # `operations/job_ops.py`'s own module docstring) — commit_mode here
+    # describes what `held_action.approve` must do once approved, not
+    # anything this operation's own handler does directly (same
+    # distinction `held_action.approve`'s own entry's comment already
+    # draws for its own effect). No response_schema: the handler's only
+    # real return is the `confirmation_required` error envelope, never a
+    # success shape (see `schemas/job.py`'s own docstring).
+    _op(
+        "job.disable",
+        "command",
+        "jobs.write",
+        True,
+        "Disable a scheduled job (requires confirmation).",
+        channel=OperationChannel(commit_mode="transactional"),
+        schemas=OperationSchemas(request=JobDisableRequest),
+    ),
+    _op(
+        "job.enable",
+        "command",
+        "jobs.write",
+        True,
+        "Enable a scheduled job (requires confirmation).",
+        channel=OperationChannel(commit_mode="transactional"),
+        schemas=OperationSchemas(request=JobEnableRequest),
     ),
     # invocation.list: added 2026-08-05 for the System-domain Invocations
     # view (09_UI §12). scope=None, matching audit.list/system.health's own

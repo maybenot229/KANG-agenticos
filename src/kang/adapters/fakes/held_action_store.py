@@ -35,6 +35,12 @@ class FakeHeldActionStore:
             raise HeldActionNotFound(held_action_id) from None
 
     def approve(self, held_action_id: str, now: str) -> HeldAction:
+        return self.approve_in_txn(held_action_id, now)
+
+    def approve_in_txn(self, held_action_id: str, now: str) -> HeldAction:
+        # No real transaction concept for an in-memory dict — approve() and
+        # approve_in_txn() are identical here; the distinction only matters
+        # for the real adapter's shared-connection transaction (ADR-021).
         current = self.get(held_action_id)
         if current.status != "pending":
             raise HeldActionNotFound(f"{held_action_id} is {current.status}")
@@ -49,6 +55,9 @@ class FakeHeldActionStore:
         return self._set_status(held_action_id, "cancelled")
 
     def mark_executed(self, held_action_id: str) -> HeldAction:
+        return self.mark_executed_in_txn(held_action_id)
+
+    def mark_executed_in_txn(self, held_action_id: str) -> HeldAction:
         current = self.get(held_action_id)
         if current.status != "approved":
             raise HeldActionNotFound(f"{held_action_id} is {current.status}")

@@ -2,17 +2,21 @@
 
 Layer: api.
 Constitutional home: 12_API §7, ADR-001 (crash semantics), ADR-002
-(first_party_only channel control).
+(first_party_only channel control), ADR-021 (the transactional effect
+driver — the first real instance of "approval drives an effect").
 """
 
 from __future__ import annotations
 
-from typing import Any
+import sqlite3
+from typing import Any, Callable
 
 from kang.api.dispatch import Handler, HandlerContext
 from kang.api.errors import ApiError
+from kang.api.registry import operation as registry_operation
 from kang.domain.ports.clock import Clock
 from kang.domain.ports.held_action import (
+    HeldAction,
     HeldActionExpired,
     HeldActionNotFound,
     HeldActionStore,
@@ -24,9 +28,14 @@ __all__ = [
     "make_held_action_list_handler",
 ]
 
+TransactionalEffect = Callable[[dict[str, Any]], None]
+
 
 def make_held_action_approve_handler(
-    held_actions: HeldActionStore, clock: Clock
+    held_actions: HeldActionStore,
+    clock: Clock,
+    connection: sqlite3.Connection,
+    transactional_effects: dict[str, TransactionalEffect],
 ) -> Handler:
     """`held_action.approve` (ADR-001 Decision #5: itself idempotent —
     double-approval returns the cached outcome via API-004, already covered
@@ -35,39 +44,95 @@ def make_held_action_approve_handler(
     before this handler ever runs — a plugin session cannot reach this
     code path at all).
 
-    Transitions `pending -> approved` only. Driving the approved effect to
-    `executed` (ADR-001 Decision #3) needs the held operation's original
-    params to replay it — `held_action`'s schema carries `operation` (the
-    registry name) and `action` (a free-text description), never the
-    params themselves (`migrations/0005_held_action_lifecycle.sql`,
-    `domain/ports/held_action.py`). That's a real, named gap — ADR-001's
-    own Consequences section calls the schema delta "owed... applied by
-    the follow-through PR", not something to invent here. It is also
-    moot today: no operation currently registered is on 05_AGENTS
-    Appendix D's closed list, so nothing live produces a held action to
-    drive in the first place. This handler serves the transition that IS
-    buildable now; `approved_not_executed()`'s redrive sweep and the
-    effect-driving half remain open, not silently completed.
-    """
+    For `transactional` commit_mode (ADR-021), drives the effect all the
+    way to `executed` in one `BEGIN`/`COMMIT`: the approve-flip, the
+    target operation's own effect (looked up in `transactional_effects`
+    by the held action's `operation` name — the composition root's own
+    table, same shape `JOB_OPERATIONS` already established), and
+    `mark_executed`, sharing one transaction so a crash before commit is
+    indistinguishable from still-`pending` (ADR-001 Amendment's own
+    promise, finally made real). Any failure anywhere in that sequence
+    rolls the whole thing back — the row never durably leaves `pending`.
+
+    `redrive` commit_mode (or no operation registered — the pre-ADR-021,
+    still-real gap) falls back to a plain `pending -> approved` flip only;
+    driving a `redrive` effect remains open, ADR-021's own named
+    out-of-scope (needs a proven adapter idempotency contract first,
+    per ADR-001 Amendment)."""
 
     def handler(context: HandlerContext, params: dict[str, Any]) -> dict[str, Any]:
         held_action_id = params.get("id")
         if not isinstance(held_action_id, str) or not held_action_id:
             raise ApiError("invalid_request", "held_action.approve requires an 'id'")
         try:
-            approved = held_actions.approve(held_action_id, clock.now().isoformat())
+            current = held_actions.get(held_action_id)
+        except HeldActionNotFound as exc:
+            raise ApiError("not_found", str(exc)) from exc
+
+        entry = registry_operation(current.operation)
+        commit_mode = entry["commit_mode"] if entry else None
+        if commit_mode == "transactional":
+            return _approve_transactional(
+                held_actions,
+                connection,
+                transactional_effects,
+                held_action_id,
+                current,
+                clock,
+            )
+        return _approve_flip_only(held_actions, held_action_id, clock)
+
+    return handler
+
+
+def _approve_flip_only(
+    held_actions: HeldActionStore, held_action_id: str, clock: Clock
+) -> dict[str, Any]:
+    try:
+        approved = held_actions.approve(held_action_id, clock.now().isoformat())
+    except HeldActionExpired as exc:
+        raise ApiError("conflict", f"held action {held_action_id} has expired") from exc
+    except HeldActionNotFound as exc:
+        # The store raises this both for a genuinely absent id and for
+        # one not currently `pending` (its message names which) — the
+        # real contract, not tightened into two distinct codes here.
+        raise ApiError("not_found", str(exc)) from exc
+    return {"id": approved.id, "status": approved.status}
+
+
+def _approve_transactional(
+    held_actions: HeldActionStore,
+    connection: sqlite3.Connection,
+    transactional_effects: dict[str, TransactionalEffect],
+    held_action_id: str,
+    current: HeldAction,
+    clock: Clock,
+) -> dict[str, Any]:
+    effect = transactional_effects.get(current.operation)
+    if effect is None:
+        raise ApiError(
+            "internal",
+            f"{current.operation} declares commit_mode=transactional but has "
+            "no registered effect (composition.py::TRANSACTIONAL_EFFECTS)",
+        )
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        try:
+            held_actions.approve_in_txn(held_action_id, clock.now().isoformat())
         except HeldActionExpired as exc:
             raise ApiError(
                 "conflict", f"held action {held_action_id} has expired"
             ) from exc
         except HeldActionNotFound as exc:
-            # The store raises this both for a genuinely absent id and for
-            # one not currently `pending` (its message names which) — the
-            # real contract, not tightened into two distinct codes here.
             raise ApiError("not_found", str(exc)) from exc
-        return {"id": approved.id, "status": approved.status}
-
-    return handler
+        effect(current.params)
+        executed = held_actions.mark_executed_in_txn(held_action_id)
+        connection.execute("COMMIT")
+    except Exception:
+        if connection.in_transaction:
+            connection.execute("ROLLBACK")
+        raise
+    return {"id": executed.id, "status": executed.status}
 
 
 def make_held_action_cancel_handler(held_actions: HeldActionStore) -> Handler:

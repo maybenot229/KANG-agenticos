@@ -24,6 +24,11 @@ from kang.api.operations.competition_ops import (
     make_competition_create_handler,
     make_competition_list_handler,
 )
+from kang.api.operations.consequential import (
+    ConfirmationDeps,
+    ConfirmationRequest,
+    require_confirmation,
+)
 from kang.api.operations.deadline_ops import (
     DEADLINES_PRINCIPAL,
     make_deadline_create_handler,
@@ -46,6 +51,10 @@ from kang.api.operations.held_action_ops import (
     make_held_action_approve_handler,
     make_held_action_cancel_handler,
     make_held_action_list_handler,
+)
+from kang.api.operations.job_ops import (
+    make_job_disable_handler,
+    make_job_enable_handler,
 )
 from kang.api.operations.milestone_ops import (
     MILESTONES_PRINCIPAL,
@@ -83,6 +92,8 @@ from kang.api.operations.task_ops import (
 
 __all__ = [
     "COMPETITIONS_PRINCIPAL",
+    "ConfirmationDeps",
+    "ConfirmationRequest",
     "DEADLINES_PRINCIPAL",
     "GOALS_PRINCIPAL",
     "MILESTONES_PRINCIPAL",
@@ -107,6 +118,8 @@ __all__ = [
     "make_held_action_cancel_handler",
     "make_held_action_list_handler",
     "make_invocation_list_handler",
+    "make_job_disable_handler",
+    "make_job_enable_handler",
     "make_milestone_create_handler",
     "make_milestone_drop_handler",
     "make_milestone_list_handler",
@@ -123,4 +136,5 @@ __all__ = [
     "make_task_complete_handler",
     "make_task_create_handler",
     "make_task_get_handler",
+    "require_confirmation",
 ]

@@ -81,6 +81,19 @@ class JobStore(Protocol):
         """Quarantine (or release) a job."""
         ...
 
+    def set_enabled(self, job_id: str, enabled: bool) -> None:
+        """Enable or disable a job (ADR-021: `job.enable`/`job.disable`,
+        05_AGENTS Appendix D's consequential pair — approved held actions
+        only, never called directly)."""
+        ...
+
+    def set_enabled_in_txn(self, job_id: str, enabled: bool) -> None:
+        """Same as `set_enabled`, transaction-participating — assumes the
+        caller already opened a transaction on the shared connection
+        (`held_action.approve`'s `transactional` commit_mode driver, ADR-021;
+        mirrors `HeldActionStore.approve_in_txn`'s exact shape)."""
+        ...
+
     def recover_incomplete(self, now: datetime) -> int:
         """Mark runs left unfinished by a crash (finished NULL) as failed,
         finishing them at `now`. Returns how many. Startup housekeeping so a

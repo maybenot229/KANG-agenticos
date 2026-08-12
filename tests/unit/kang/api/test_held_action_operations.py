@@ -9,11 +9,14 @@ enforces (the dispatcher's first_party_only channel check and the
 permission engine are out of this handler's scope entirely — ADR-002).
 
 Deliberately NOT under test here: driving an approved action to
-`executed`. No live operation is on 05_AGENTS Appendix D's closed list
-today, so nothing produces a held action outside a test fixture, and the
-row has no stored params to replay against (see
-`operations.py::make_held_action_approve_handler`'s own docstring) — a
-real, named gap, not a silent one.
+`executed` for `commit_mode="transactional"` (ADR-021) — every held
+action this file seeds names an unregistered operation, so the handler's
+flip-only fallback is what's exercised. The transactional effect-driving
+path (BEGIN/approve_in_txn/effect/mark_executed_in_txn/COMMIT, sharing
+one real transaction) needs a real connection to mean anything and is
+proven in
+`tests/integration/sqlite/test_held_action_transactional_effect.py`
+instead.
 """
 
 from __future__ import annotations
@@ -67,7 +70,17 @@ def _seed_pending(wiring, *, expires_in_hours: float = 24, **overrides) -> HeldA
 
 
 def _approve(wiring, held_action_id: str) -> dict:
-    handler = make_held_action_approve_handler(wiring["store"], wiring["clock"])
+    # `connection`/`transactional_effects` are only touched by the
+    # commit_mode="transactional" branch (ADR-021) — every held action
+    # this file seeds names an operation with no registry entry
+    # (`memory.delete` isn't registered yet), so `commit_mode` resolves to
+    # None and the flip-only fallback runs, never touching either. The
+    # transactional path is proven by
+    # tests/integration/sqlite/test_held_action_transactional_effect.py
+    # against a real connection instead.
+    handler = make_held_action_approve_handler(
+        wiring["store"], wiring["clock"], connection=None, transactional_effects={}
+    )
     return handler(CONTEXT, {"id": held_action_id})
 
 
@@ -89,7 +102,9 @@ class TestApprove:
         assert wiring["store"].get(seeded.id).status == "approved"
 
     def test_missing_id_is_invalid_request(self, wiring):
-        handler = make_held_action_approve_handler(wiring["store"], wiring["clock"])
+        handler = make_held_action_approve_handler(
+            wiring["store"], wiring["clock"], connection=None, transactional_effects={}
+        )
         with pytest.raises(ApiError) as exc:
             handler(CONTEXT, {})
         assert exc.value.code == "invalid_request"

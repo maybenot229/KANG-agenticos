@@ -6,10 +6,23 @@ transactional writes (BEGIN IMMEDIATE, DB-003). Status transitions are
 guarded: only a pending action approves/cancels, only an approved action
 executes; approval past expiry is refused (the window closed). Lifecycle
 (pending → approved → executed | pending → cancelled) is ADR 001's.
+
+`params` (ADR-021): the original request's params, JSON-serialized — same
+pattern `notification_store.py`'s `payload` column already uses, no new
+idiom invented.
+
+`_in_txn` methods (ADR-021): `held_action.approve`'s handler drives a
+`transactional`-commit_mode effect in one `BEGIN`/`COMMIT` spanning this
+store's write AND the target operation's own effect write — so the
+approve-flip and mark-executed steps need variants that neither open nor
+close a transaction, trusting the caller to own that boundary. `_status_
+in_txn` is the shared inner helper; the public methods wrap it in their
+own BEGIN/COMMIT exactly as before, so every existing caller is unchanged.
 """
 
 from __future__ import annotations
 
+import json
 import sqlite3
 
 from kang.domain.ports.held_action import (
@@ -22,7 +35,7 @@ __all__ = ["SqliteHeldActionStore"]
 
 _COLUMNS = (
     "id, operation, action, principal, reason, reversibility, "
-    "correlation_id, created_at, expires_at, status"
+    "correlation_id, created_at, expires_at, status, params"
 )
 
 
@@ -38,6 +51,7 @@ def _row_to_held_action(row: tuple) -> HeldAction:
         created_at=row[7],
         expires_at=row[8],
         status=row[9],
+        params=json.loads(row[10]),
     )
 
 
@@ -52,7 +66,7 @@ class SqliteHeldActionStore:
         try:
             self._conn.execute(
                 f"INSERT INTO held_action ({_COLUMNS}) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     held_action.id,
                     held_action.operation,
@@ -64,6 +78,7 @@ class SqliteHeldActionStore:
                     held_action.created_at,
                     held_action.expires_at,
                     held_action.status,
+                    json.dumps(held_action.params),
                 ),
             )
             self._conn.execute("COMMIT")
@@ -81,6 +96,20 @@ class SqliteHeldActionStore:
         return _row_to_held_action(row)
 
     def approve(self, held_action_id: str, now: str) -> HeldAction:
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            result = self._approve_checked(held_action_id, now)
+            self._conn.execute("COMMIT")
+        except (sqlite3.Error, HeldActionNotFound, HeldActionExpired):
+            if self._conn.in_transaction:
+                self._conn.execute("ROLLBACK")
+            raise
+        return result
+
+    def approve_in_txn(self, held_action_id: str, now: str) -> HeldAction:
+        return self._approve_checked(held_action_id, now)
+
+    def _approve_checked(self, held_action_id: str, now: str) -> HeldAction:
         current = self.get(held_action_id)
         if current.status != "pending":
             raise HeldActionNotFound(
@@ -88,7 +117,7 @@ class SqliteHeldActionStore:
             )
         if now >= current.expires_at:
             raise HeldActionExpired(held_action_id)
-        return self._set_status(held_action_id, "approved")
+        return self._status_in_txn(held_action_id, "approved")
 
     def cancel(self, held_action_id: str) -> HeldAction:
         current = self.get(held_action_id)
@@ -99,12 +128,26 @@ class SqliteHeldActionStore:
         return self._set_status(held_action_id, "cancelled")
 
     def mark_executed(self, held_action_id: str) -> HeldAction:
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            result = self._mark_executed_checked(held_action_id)
+            self._conn.execute("COMMIT")
+        except (sqlite3.Error, HeldActionNotFound):
+            if self._conn.in_transaction:
+                self._conn.execute("ROLLBACK")
+            raise
+        return result
+
+    def mark_executed_in_txn(self, held_action_id: str) -> HeldAction:
+        return self._mark_executed_checked(held_action_id)
+
+    def _mark_executed_checked(self, held_action_id: str) -> HeldAction:
         current = self.get(held_action_id)
         if current.status != "approved":
             raise HeldActionNotFound(
                 f"{held_action_id} is {current.status}, not approved"
             )
-        return self._set_status(held_action_id, "executed")
+        return self._status_in_txn(held_action_id, "executed")
 
     def approved_not_executed(self) -> list[HeldAction]:
         rows = self._conn.execute(
@@ -138,13 +181,20 @@ class SqliteHeldActionStore:
     def _set_status(self, held_action_id: str, status: str) -> HeldAction:
         self._conn.execute("BEGIN IMMEDIATE")
         try:
-            self._conn.execute(
-                "UPDATE held_action SET status = ? WHERE id = ?",
-                (status, held_action_id),
-            )
+            result = self._status_in_txn(held_action_id, status)
             self._conn.execute("COMMIT")
         except sqlite3.Error:
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise
+        return result
+
+    def _status_in_txn(self, held_action_id: str, status: str) -> HeldAction:
+        """The bare UPDATE, no transaction of its own — every public path
+        above wraps this in BEGIN/COMMIT; `approve_in_txn`/`mark_executed_
+        in_txn` let the caller's own transaction own it instead (ADR-021)."""
+        self._conn.execute(
+            "UPDATE held_action SET status = ? WHERE id = ?",
+            (status, held_action_id),
+        )
         return self.get(held_action_id)

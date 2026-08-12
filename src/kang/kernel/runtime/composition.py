@@ -59,6 +59,7 @@ from kang.adapters.sqlite.task_store import SqliteTaskStore
 from kang.api.dispatch import ApiRequest, Dispatcher, DispatcherDeps
 from kang.api.http_binding import make_server
 from kang.api.operations import (
+    ConfirmationDeps,
     PlannerDeps,
     make_audit_list_handler,
     make_competition_create_handler,
@@ -77,6 +78,8 @@ from kang.api.operations import (
     make_held_action_cancel_handler,
     make_held_action_list_handler,
     make_invocation_list_handler,
+    make_job_disable_handler,
+    make_job_enable_handler,
     make_milestone_create_handler,
     make_milestone_drop_handler,
     make_milestone_list_handler,
@@ -364,16 +367,34 @@ def _build_handlers(w: _HandlerWiring) -> dict:
         "explain.notification": make_explain_stub_handler("notification"),
         "explain.suggestion": make_explain_stub_handler("suggestion"),
         "explain.memory": make_explain_stub_handler("memory record"),
-        "held_action.approve": make_held_action_approve_handler(
-            w.held_action_store, w.clock
-        ),
-        "held_action.cancel": make_held_action_cancel_handler(w.held_action_store),
-        "held_action.list": make_held_action_list_handler(w.held_action_store),
         "permission.list": make_permission_list_handler(w.permission_engine),
         "audit.list": make_audit_list_handler(w.audit, w.clock),
         "system.health": make_system_health_handler(w.job_store, w.kill_switch),
         "invocation.list": make_invocation_list_handler(w.invocations),
         **_build_project_cluster_handlers(w),
+        **_build_consequential_handlers(w),
+    }
+
+
+def _build_consequential_handlers(w: _HandlerWiring) -> dict:
+    """held_action.*/job.enable/.disable — ADR-021's pipeline, mirroring
+    `_build_project_cluster_handlers`'s own extraction (11 §4's size lint).
+    `transactional_effects` keys by operation name (JOB_OPERATIONS' shape,
+    ADR-006 ruling 4) — held_action.approve looks itself up here."""
+    js, ha = w.job_store, w.held_action_store
+    transactional_effects = {
+        "job.disable": lambda p: js.set_enabled_in_txn(p["job_id"], False),
+        "job.enable": lambda p: js.set_enabled_in_txn(p["job_id"], True),
+    }
+    confirmation = ConfirmationDeps(ha, w.clock, w.new_id)
+    return {
+        "held_action.approve": make_held_action_approve_handler(
+            ha, w.clock, w.connection, transactional_effects
+        ),
+        "held_action.cancel": make_held_action_cancel_handler(ha),
+        "held_action.list": make_held_action_list_handler(ha),
+        "job.disable": make_job_disable_handler(js, confirmation),
+        "job.enable": make_job_enable_handler(js, confirmation),
     }
 
 

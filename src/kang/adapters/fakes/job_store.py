@@ -73,6 +73,12 @@ class FakeJobStore:
     def set_quarantined(self, job_id: str, quarantined: bool) -> None:
         self._jobs[job_id] = replace(self._jobs[job_id], quarantined=quarantined)
 
+    def set_enabled(self, job_id: str, enabled: bool) -> None:
+        self.set_enabled_in_txn(job_id, enabled)
+
+    def set_enabled_in_txn(self, job_id: str, enabled: bool) -> None:
+        self._jobs[job_id] = replace(self._jobs[job_id], enabled=enabled)
+
     def recover_incomplete(self, now: datetime) -> int:
         recovered = 0
         for run in self._runs:
