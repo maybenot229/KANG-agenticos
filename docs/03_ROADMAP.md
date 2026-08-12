@@ -174,6 +174,7 @@ The single lookup table this roadmap promised. Sources cited; between triggers, 
 | Relaxing the AI-proposal gate for a narrow class | ADR, after years of near-zero rejection data | M-003 |
 | CPU/memory plugin quotas | Sidecar transport exists | PL-009 |
 | Shell tool / engineering-agent executor | Concrete feature + sandboxed-executor ADR | 05_AGENTS §9 |
+| Job-level retry-with-backoff (D014's other named "supervised task" property, alongside timeout) | A job with a genuine transient-failure mode (network/model calls) gets scheduled, AND the job→operation path gains failure classification (transient vs. permanent) to retry selectively on — until then, both wired jobs are zero-network pure SQL with no transient class to retry, and a blanket retry would block the single-threaded server for the backoff duration while delaying real-bug quarantine detection for no benefit | 04_ARCH D014; ruled not ripe 2026-08-13 after `job.timeout_s`'s soft-overrun-signal session, real design conversation, no code |
 | Judge simulation | First real competition material (Phase 4) | this doc §5 |
 | DuckDB analytics layer | Real analytical need over exports | 04_ARCH D004 |
 | Turso/LiteFS reconsideration | Sync design review, v0.5 | D009 |
