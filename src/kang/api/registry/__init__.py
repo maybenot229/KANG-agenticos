@@ -54,6 +54,8 @@ from kang.api.schemas.held_action import (
     HeldActionApproveResponse,
     HeldActionCancelRequest,
     HeldActionCancelResponse,
+    HeldActionExpireRequest,
+    HeldActionExpireResponse,
     HeldActionListRequest,
     HeldActionListResponse,
 )
@@ -399,6 +401,22 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         "List every pending held action, oldest first.",
         schemas=OperationSchemas(
             request=HeldActionListRequest, response=HeldActionListResponse
+        ),
+    ),
+    # held_action.expire (ADR-022): the missing operation wrapping
+    # HeldActionStore.expire_due(), which had no caller anywhere before
+    # this. Same shape as deadline.sweep (command, no request fields,
+    # idempotent — expiring a slot twice degrades to zero further work).
+    # No commit_mode: not consequential, same reasoning deadline.sweep's
+    # own entry already gives.
+    _op(
+        "held_action.expire",
+        "command",
+        "held_actions.expire",
+        True,
+        "Cancel every pending held action past its 24h expiry window.",
+        schemas=OperationSchemas(
+            request=HeldActionExpireRequest, response=HeldActionExpireResponse
         ),
     ),
     # audit.list / system.health: added 2026-08-05 for the System domain's

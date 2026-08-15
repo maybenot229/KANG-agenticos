@@ -71,6 +71,7 @@ from kang.api.operations import (
     make_goal_revise_handler,
     make_held_action_approve_handler,
     make_held_action_cancel_handler,
+    make_held_action_expire_handler,
     make_held_action_list_handler,
     make_invocation_list_handler,
     make_job_disable_handler,
@@ -300,6 +301,7 @@ def _build_consequential_handlers(w: _HandlerWiring) -> dict:
         ),
         "held_action.cancel": make_held_action_cancel_handler(ha),
         "held_action.list": make_held_action_list_handler(ha),
+        "held_action.expire": make_held_action_expire_handler(ha, w.clock),
         "job.disable": make_job_disable_handler(js, confirmation),
         "job.enable": make_job_enable_handler(js, confirmation),
     }

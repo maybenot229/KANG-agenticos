@@ -20,8 +20,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from kang.adapters.sqlite.connection import open_connection
+from kang.adapters.sqlite.held_action_store import SqliteHeldActionStore
+from kang.domain.ports.held_action import HeldAction
 from kang.kernel.runtime.composition import build_core
-from kang.kernel.runtime.scheduler_wiring import DEADLINE_SWEEP_JOB, MORNING_PLAN_JOB
+from kang.kernel.runtime.scheduler_wiring import (
+    DEADLINE_SWEEP_JOB,
+    HELD_ACTION_EXPIRE_JOB,
+    MORNING_PLAN_JOB,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULTS = REPO_ROOT / "config" / "defaults"
@@ -169,6 +175,58 @@ def test_deadline_sweep_is_registered_and_boot_catches_up_a_missed_hour(tmp_path
         assert _job_run_count(tmp_path, MORNING_PLAN_JOB) == 0
     finally:
         server.stop()
+
+
+def test_held_action_expire_is_registered_and_boot_catches_up_a_missed_day(tmp_path):
+    """ADR-022: held_action_expire is a real third job, wired identically
+    to morning_plan/deadline_sweep — backdated by 2 days, a real boot must
+    catch it up exactly once (run_once_latest), it must actually succeed
+    (outcome='ok'), AND a real pending-but-expired held action must
+    genuinely transition to 'cancelled' — not just that a job_run row
+    exists, that the store write it drives actually happened."""
+    _seed_config(tmp_path)
+    _register_job_then_backdate_it(tmp_path, days=2, job_id=HELD_ACTION_EXPIRE_JOB)
+    assert _job_run_count(tmp_path, HELD_ACTION_EXPIRE_JOB) == 0
+
+    conn = open_connection(tmp_path / "kang.db")
+    try:
+        now = datetime.now(timezone.utc)
+        held = HeldAction(
+            id="held-boot-expiry-0000",
+            operation="job.disable",
+            action="Disable job 'deadline_sweep'",
+            principal="kang",
+            reason="proving the real sweep",
+            reversibility="reversible — re-enable via job.enable",
+            correlation_id="corr-origin",
+            created_at=(now - timedelta(hours=25)).isoformat(),
+            expires_at=(now - timedelta(hours=1)).isoformat(),  # already expired
+            params={"job_id": "deadline_sweep"},
+        )
+        SqliteHeldActionStore(conn).create(held)
+    finally:
+        conn.close()
+
+    server = _Server(tmp_path)
+    try:
+        server.wait_ready()
+        assert _job_run_count(tmp_path, HELD_ACTION_EXPIRE_JOB) == 1
+        assert _job_run_outcome(tmp_path, HELD_ACTION_EXPIRE_JOB) == "ok"
+        # morning_plan/deadline_sweep are unaffected — three independently
+        # catching-up jobs, not one replacing the others.
+        assert _job_run_count(tmp_path, MORNING_PLAN_JOB) == 0
+        assert _job_run_count(tmp_path, DEADLINE_SWEEP_JOB) == 0
+    finally:
+        server.stop()
+
+    conn = open_connection(tmp_path / "kang.db")
+    try:
+        status = conn.execute(
+            "SELECT status FROM held_action WHERE id = ?", (held.id,)
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert status == "cancelled"  # the real sweep genuinely expired it
 
 
 def test_a_real_boot_with_no_kang_toml_does_not_crash(tmp_path):

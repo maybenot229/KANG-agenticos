@@ -58,5 +58,6 @@
 # automation set off?", reviewable in one place. It holds no
 # events.publish grant: the operations it invokes publish under their own
 # domain principals. tasks.write (morning_plan -> plan.generate),
-# deadlines.mark_alerted (deadline_sweep -> deadline.sweep, ADR-020).
-"kernel:scheduler" = ["tasks.write", "deadlines.mark_alerted"]
+# deadlines.mark_alerted (deadline_sweep -> deadline.sweep, ADR-020),
+# held_actions.expire (held_action_expire -> held_action.expire, ADR-022).
+"kernel:scheduler" = ["tasks.write", "deadlines.mark_alerted", "held_actions.expire"]

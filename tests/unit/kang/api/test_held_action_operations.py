@@ -32,6 +32,7 @@ from kang.api.errors import ApiError
 from kang.api.operations import (
     make_held_action_approve_handler,
     make_held_action_cancel_handler,
+    make_held_action_expire_handler,
     make_held_action_list_handler,
 )
 from kang.domain.ports.held_action import HeldAction
@@ -167,6 +168,37 @@ class TestCancel:
         with pytest.raises(ApiError) as exc:
             _cancel(wiring, seeded.id)
         assert exc.value.code == "not_found"
+
+
+class TestExpire:
+    """`held_action.expire` (ADR-022) — pure exposure of `HeldActionStore.
+    expire_due()`, wired as a job for the first time this session."""
+
+    def test_expires_only_past_pending_actions(self, wiring):
+        # Expires within the hour, still-fresh, and already-approved all
+        # coexist — only the first should move.
+        past_due = _seed_pending(wiring, id="ha-0000", expires_in_hours=1)
+        still_fresh = _seed_pending(wiring, id="ha-0001", expires_in_hours=48)
+        wiring["clock"].advance(2 * 3600)  # past ha-0000's window, not ha-0001's
+
+        handler = make_held_action_expire_handler(wiring["store"], wiring["clock"])
+        result = handler(CONTEXT, {})
+
+        assert result == {"count": 1}
+        assert wiring["store"].get(past_due.id).status == "cancelled"
+        assert wiring["store"].get(still_fresh.id).status == "pending"
+
+    def test_nothing_to_expire_returns_zero(self, wiring):
+        _seed_pending(wiring, expires_in_hours=48)
+        handler = make_held_action_expire_handler(wiring["store"], wiring["clock"])
+        assert handler(CONTEXT, {}) == {"count": 0}
+
+    def test_running_twice_is_idempotent(self, wiring):
+        _seed_pending(wiring, expires_in_hours=1)
+        wiring["clock"].advance(2 * 3600)
+        handler = make_held_action_expire_handler(wiring["store"], wiring["clock"])
+        assert handler(CONTEXT, {}) == {"count": 1}
+        assert handler(CONTEXT, {}) == {"count": 0}  # already cancelled, not re-swept
 
 
 class TestList:

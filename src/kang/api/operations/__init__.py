@@ -50,6 +50,7 @@ from kang.api.operations.goal_ops import (
 from kang.api.operations.held_action_ops import (
     make_held_action_approve_handler,
     make_held_action_cancel_handler,
+    make_held_action_expire_handler,
     make_held_action_list_handler,
 )
 from kang.api.operations.job_ops import (
@@ -116,6 +117,7 @@ __all__ = [
     "make_goal_revise_handler",
     "make_held_action_approve_handler",
     "make_held_action_cancel_handler",
+    "make_held_action_expire_handler",
     "make_held_action_list_handler",
     "make_invocation_list_handler",
     "make_job_disable_handler",

@@ -25,6 +25,7 @@ from kang.domain.ports.held_action import (
 __all__ = [
     "make_held_action_approve_handler",
     "make_held_action_cancel_handler",
+    "make_held_action_expire_handler",
     "make_held_action_list_handler",
 ]
 
@@ -184,5 +185,24 @@ def make_held_action_list_handler(held_actions: HeldActionStore) -> Handler:
                 for a in held_actions.pending()
             ]
         }
+
+    return handler
+
+
+def make_held_action_expire_handler(
+    held_actions: HeldActionStore, clock: Clock
+) -> Handler:
+    """`held_action.expire` (ADR-022): pure exposure of `HeldActionStore.
+    expire_due()` — cancels every `pending` held action past its 24h
+    window (12_API §7). Wired as `deadline.sweep`'s own shape (no
+    request fields, a plain count in the response); unlike that
+    operation, this one publishes no event — no `held_action.*` event
+    type is registered anywhere, and inventing one with no named
+    consumer would repeat the "enum allows it" anti-pattern ADR-021
+    already declined for `job.enable`/`.disable`."""
+
+    def handler(context: HandlerContext, params: dict[str, Any]) -> dict[str, Any]:
+        count = held_actions.expire_due(clock.now().isoformat())
+        return {"count": count}
 
     return handler

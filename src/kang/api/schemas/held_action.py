@@ -27,6 +27,8 @@ __all__ = [
     "HeldActionApproveResponse",
     "HeldActionCancelRequest",
     "HeldActionCancelResponse",
+    "HeldActionExpireRequest",
+    "HeldActionExpireResponse",
     "HeldActionListItem",
     "HeldActionListRequest",
     "HeldActionListResponse",
@@ -100,3 +102,16 @@ class HeldActionListResponse(BaseModel):
     already existed."""
 
     held_actions: list[HeldActionListItem]
+
+
+class HeldActionExpireRequest(BaseModel):
+    """`held_action.expire` params (operations.py::make_held_action_expire_
+    handler). No fields — mirrors `DeadlineSweepRequest`'s exact shape."""
+
+
+class HeldActionExpireResponse(BaseModel):
+    """`held_action.expire` result — `HeldActionStore.expire_due()`'s own
+    return value (a count, not the expired ids; ADR-022 exposes the
+    existing store contract verbatim rather than expanding it)."""
+
+    count: int
