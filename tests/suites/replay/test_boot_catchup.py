@@ -20,11 +20,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from kang.adapters.sqlite.connection import open_connection
-from kang.kernel.runtime.composition import (
-    DEADLINE_SWEEP_JOB,
-    MORNING_PLAN_JOB,
-    build_core,
-)
+from kang.kernel.runtime.composition import build_core
+from kang.kernel.runtime.scheduler_wiring import DEADLINE_SWEEP_JOB, MORNING_PLAN_JOB
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULTS = REPO_ROOT / "config" / "defaults"

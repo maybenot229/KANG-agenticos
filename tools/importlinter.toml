@@ -26,10 +26,14 @@ forbidden_modules = [
 
 # 17 §4.3 rules 3, 4 — kernel executes agent *definitions* (data), never agent
 # code; kernel receives adapter instances by injection, never imports them.
-# The ONE exemption (17 §4.3): the composition root
-# (kang.kernel.runtime.composition) MAY import adapters + api, because
-# something must instantiate concretions and inject them. Named here so the
-# exemption cannot spread.
+# The exemption (17 §4.3): the composition root MAY import adapters + api,
+# because something must instantiate concretions and inject them. Two files
+# carry it — kang.kernel.runtime.composition and, since ADR-023,
+# kang.kernel.runtime.scheduler_wiring (split out of composition.py when a
+# third scheduled job pushed that file past the size lint's hard limits;
+# both files together are one conceptual composition root, not two roles).
+# Named here, by exact module, so the exemption cannot spread further
+# without its own line and its own justification.
 [[tool.importlinter.contracts]]
 name = "17 §4.3.3-4: kernel never imports agents, adapters, or api"
 type = "forbidden"
@@ -43,6 +47,8 @@ forbidden_modules = [
 ignore_imports = [
     "kang.kernel.runtime.composition -> kang.adapters.**",
     "kang.kernel.runtime.composition -> kang.api.**",
+    "kang.kernel.runtime.scheduler_wiring -> kang.adapters.**",
+    "kang.kernel.runtime.scheduler_wiring -> kang.api.**",
 ]
 
 # 17 §4.3 rule 5 — adapters translate at the port line; importing a domain

@@ -5,6 +5,10 @@ by TICK_INTERVAL_S via the injected Clock (never wall time directly — 11
 without a real Scheduler or a real serve_forever loop — those are proven
 elsewhere (test_scheduler.py's tick() tests; the ADR's own live-verification
 pass).
+
+ADR-023: `_make_ticking_server_class`/`TICK_INTERVAL_S` moved to
+`scheduler_wiring.py` when a third scheduled job pushed `composition.py`
+past the size lint's hard limits — same composition-root role, split file.
 """
 
 from __future__ import annotations
@@ -12,7 +16,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler
 
-from kang.kernel.runtime.composition import TICK_INTERVAL_S, _make_ticking_server_class
+from kang.kernel.runtime.scheduler_wiring import (
+    TICK_INTERVAL_S,
+    _make_ticking_server_class,
+)
 
 ANCHOR = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
