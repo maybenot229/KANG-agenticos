@@ -93,6 +93,7 @@ from kang.api.operations import (
     make_task_create_handler,
     make_task_get_handler,
 )
+from kang.api.registry import OPERATIONS
 from kang.domain.notifications import (
     make_deadline_enqueue_handler,
     make_drain_handler,
@@ -284,6 +285,46 @@ def _build_handlers(w: _HandlerWiring) -> dict:
     }
 
 
+TRANSACTIONAL_SELF_EFFECT_OPERATIONS = frozenset(
+    {"held_action.approve", "held_action.cancel"}
+)
+# held_action.approve/.cancel also declare commit_mode="transactional", but
+# for a structurally different reason from job.disable/.enable: their entry
+# describes THEIR OWN direct effect (the held_action.status flip, always one
+# kang.db write — see their own registry comments), never a target looked
+# up in `transactional_effects`. A `HeldAction.operation` field can never
+# legitimately hold "held_action.approve"/".cancel" — you cannot hold-and-
+# approve an approval — so these two are excluded from the gate below by
+# construction (what `current.operation` could ever be), not by a name-list
+# convenience.
+
+
+def _check_transactional_effects_registered(transactional_effects: dict) -> None:
+    """Item 2's registration-time gate for `commit_mode="transactional"`,
+    mirroring `registry/__init__.py`'s own redrive gate in intent — fail at
+    boot, never at approval time — but necessarily living here rather than
+    there. The fact this checks (does an operation's declared
+    `transactional` mode have a matching effect?) doesn't exist as data
+    until `transactional_effects` is built from live adapter closures;
+    `kang.api.registry` may not import adapters or the composition root
+    (17 §4.3.8), so the check cannot be self-contained the way redrive's
+    is. This is the earliest point both halves — the registry's own
+    declarations and this root's actual wiring — are in scope together."""
+    for entry in OPERATIONS:
+        if entry["commit_mode"] != "transactional":
+            continue
+        if entry["name"] in TRANSACTIONAL_SELF_EFFECT_OPERATIONS:
+            continue
+        if entry["name"] not in transactional_effects:
+            raise NotImplementedError(
+                f"{entry['name']}: commit_mode='transactional' but no "
+                "matching entry in _build_consequential_handlers's "
+                "transactional_effects table (composition.py) — an "
+                "operation cannot declare transactional without a real "
+                "effect wired for it"
+            )
+
+
 def _build_consequential_handlers(w: _HandlerWiring) -> dict:
     """held_action.*/job.enable/.disable — ADR-021's pipeline, mirroring
     `_build_project_cluster_handlers`'s own extraction (11 §4's size lint).
@@ -294,6 +335,7 @@ def _build_consequential_handlers(w: _HandlerWiring) -> dict:
         "job.disable": lambda p: js.set_enabled_in_txn(p["job_id"], False),
         "job.enable": lambda p: js.set_enabled_in_txn(p["job_id"], True),
     }
+    _check_transactional_effects_registered(transactional_effects)
     confirmation = ConfirmationDeps(ha, w.clock, w.new_id)
     return {
         "held_action.approve": make_held_action_approve_handler(
