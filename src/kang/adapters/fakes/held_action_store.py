@@ -73,7 +73,7 @@ class FakeHeldActionStore:
         expired = 0
         for held_action_id, action in list(self._actions.items()):
             if action.status == "pending" and now > action.expires_at:
-                self._actions[held_action_id] = replace(action, status="cancelled")
+                self._actions[held_action_id] = replace(action, status="expired")
                 expired += 1
         return expired
 

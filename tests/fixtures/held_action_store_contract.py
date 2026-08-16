@@ -96,12 +96,14 @@ class HeldActionStoreContract:
         # held-0002 stays pending
         assert [h.id for h in store.approved_not_executed()] == ["held-0000"]
 
-    def test_expire_due_cancels_only_past_pending(self, store):
+    def test_expire_due_expires_only_past_pending(self, store):
         store.create(_held(0, expires="2026-01-02T00:00:00+00:00"))
         store.create(_held(1, expires="2026-01-05T00:00:00+00:00"))
         expired = store.expire_due(now="2026-01-03T00:00:00+00:00")
         assert expired == 1
-        assert store.get("held-0000").status == "cancelled"
+        # 'expired' (ADR-024), not 'cancelled' — distinct from Kang
+        # explicitly declining via cancel().
+        assert store.get("held-0000").status == "expired"
         assert store.get("held-0001").status == "pending"
 
     def test_pending_lists_oldest_first(self, store):

@@ -172,7 +172,9 @@ class TestCancel:
 
 class TestExpire:
     """`held_action.expire` (ADR-022) — pure exposure of `HeldActionStore.
-    expire_due()`, wired as a job for the first time this session."""
+    expire_due()`, wired as a job for the first time this session. Writes
+    `expired`, not `cancelled` (ADR-024) — distinct from Kang explicitly
+    declining via `held_action.cancel`."""
 
     def test_expires_only_past_pending_actions(self, wiring):
         # Expires within the hour, still-fresh, and already-approved all
@@ -185,7 +187,7 @@ class TestExpire:
         result = handler(CONTEXT, {})
 
         assert result == {"count": 1}
-        assert wiring["store"].get(past_due.id).status == "cancelled"
+        assert wiring["store"].get(past_due.id).status == "expired"
         assert wiring["store"].get(still_fresh.id).status == "pending"
 
     def test_nothing_to_expire_returns_zero(self, wiring):
@@ -198,7 +200,7 @@ class TestExpire:
         wiring["clock"].advance(2 * 3600)
         handler = make_held_action_expire_handler(wiring["store"], wiring["clock"])
         assert handler(CONTEXT, {}) == {"count": 1}
-        assert handler(CONTEXT, {}) == {"count": 0}  # already cancelled, not re-swept
+        assert handler(CONTEXT, {}) == {"count": 0}  # already expired, not re-swept
 
 
 class TestList:

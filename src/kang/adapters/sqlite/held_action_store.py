@@ -5,7 +5,10 @@ Constitutional home: 12_API §7 (held_action lifecycle), 07 §5.5-style
 transactional writes (BEGIN IMMEDIATE, DB-003). Status transitions are
 guarded: only a pending action approves/cancels, only an approved action
 executes; approval past expiry is refused (the window closed). Lifecycle
-(pending → approved → executed | pending → cancelled) is ADR 001's.
+(pending → approved → executed | pending → cancelled | pending → expired)
+is ADR 001's, with `cancelled`/`expired` split by ADR-024 — the former is
+Kang explicitly declining, the latter is the 24h sweep finding no
+decision was made; both collapsed into `cancelled` before ADR-024.
 
 `params` (ADR-021): the original request's params, JSON-serialized — same
 pattern `notification_store.py`'s `payload` column already uses, no new
@@ -160,7 +163,7 @@ class SqliteHeldActionStore:
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             cursor = self._conn.execute(
-                "UPDATE held_action SET status = 'cancelled' "
+                "UPDATE held_action SET status = 'expired' "
                 "WHERE status = 'pending' AND expires_at <= ?",
                 (now,),
             )

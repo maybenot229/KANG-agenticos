@@ -480,10 +480,16 @@ CREATE TABLE held_action (            -- consequential-action gate (12 §7, D-ow
   created_at    TEXT NOT NULL,
   expires_at    TEXT NOT NULL,        -- created_at + 24h (12 §7)
   status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN
-                  ('pending','approved','executed','cancelled'))
+                  ('pending','approved','executed','cancelled','expired'))
                                       -- 'approved' = intent recorded, not done;
                                       --   'executed' = the held effect committed
-                                      --   (ADR 001: approved != done)
+                                      --   (ADR 001: approved != done); 'cancelled' =
+                                      --   Kang explicitly declined; 'expired' =
+                                      --   the 24h window closed with no decision
+                                      --   (ADR-024 — both collapsed into
+                                      --   'cancelled' before this)
+  params        TEXT NOT NULL DEFAULT '{}'  -- ADR-021: the original request's
+                                      --   params, JSON — replayed on approval
 );
 CREATE INDEX idx_held_action_pending ON held_action(status, created_at)
   WHERE status = 'pending';

@@ -182,8 +182,9 @@ def test_held_action_expire_is_registered_and_boot_catches_up_a_missed_day(tmp_p
     to morning_plan/deadline_sweep — backdated by 2 days, a real boot must
     catch it up exactly once (run_once_latest), it must actually succeed
     (outcome='ok'), AND a real pending-but-expired held action must
-    genuinely transition to 'cancelled' — not just that a job_run row
-    exists, that the store write it drives actually happened."""
+    genuinely transition to 'expired' (ADR-024 — was 'cancelled' before
+    the terminal-state split) — not just that a job_run row exists, that
+    the store write it drives actually happened."""
     _seed_config(tmp_path)
     _register_job_then_backdate_it(tmp_path, days=2, job_id=HELD_ACTION_EXPIRE_JOB)
     assert _job_run_count(tmp_path, HELD_ACTION_EXPIRE_JOB) == 0
@@ -226,7 +227,7 @@ def test_held_action_expire_is_registered_and_boot_catches_up_a_missed_day(tmp_p
         ).fetchone()[0]
     finally:
         conn.close()
-    assert status == "cancelled"  # the real sweep genuinely expired it
+    assert status == "expired"  # the real sweep genuinely expired it (ADR-024)
 
 
 def test_a_real_boot_with_no_kang_toml_does_not_crash(tmp_path):

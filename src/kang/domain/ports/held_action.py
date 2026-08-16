@@ -3,7 +3,7 @@
 Layer: domain/ports. Ports own their datatypes (17 §7).
 Constitutional home: 12_API §7 (a consequential command returns
 `confirmation_required` + a held_action resource: what/who/why/reversibility;
-`held_action.approve {id}`; 24h expiry ⇒ cancelled), 09_UI §7 (the dialog
+`held_action.approve {id}`; 24h expiry ⇒ expired), 09_UI §7 (the dialog
 contents), 10_SECURITY §5.4 / SEC-003 (approval is out-of-band, Kang-only
 from a first-party session — enforced at the API/session layer, M4; this
 port is the data plumbing beneath it, built now per 18 M3).
@@ -16,6 +16,12 @@ said yes, not that the effect happened. `executed` is the terminal state
 recording the effect actually committed. Which of the two `commit_mode`s
 (`transactional` | `redrive`, ADR 001 Amendment) governs the approved→executed
 step is registry metadata for `operation` — not stored on the row.
+
+`cancelled` vs. `expired` (ADR-024): `cancelled` is Kang explicitly
+declining (`cancel()`); `expired` is the 24h window closing with no
+decision (`expire_due()`'s sweep, ADR-022). Before ADR-024 both wrote the
+same literal — deliberate at the time (the sweep had no scheduled caller),
+no longer accurate once ADR-022 wired it as a real job.
 """
 
 from __future__ import annotations
@@ -31,7 +37,7 @@ __all__ = [
     "HeldActionStore",
 ]
 
-HELD_ACTION_STATUSES = ("pending", "approved", "executed", "cancelled")
+HELD_ACTION_STATUSES = ("pending", "approved", "executed", "cancelled", "expired")
 
 
 @dataclass(frozen=True)
@@ -124,8 +130,10 @@ class HeldActionStore(Protocol):
         ...
 
     def expire_due(self, now: str) -> int:
-        """Cancel every pending held action past its expiry as of `now`
-        (the 24h sweep). Returns how many were expired."""
+        """Expire every pending held action past its expiry as of `now`
+        (the 24h sweep, ADR-022). Returns how many were expired. Writes
+        `expired`, not `cancelled` (ADR-024) — distinct from Kang
+        explicitly declining via `cancel()`."""
         ...
 
     def pending(self) -> list[HeldAction]:

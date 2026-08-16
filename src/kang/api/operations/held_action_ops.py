@@ -139,9 +139,10 @@ def _approve_transactional(
 def make_held_action_cancel_handler(held_actions: HeldActionStore) -> Handler:
     """`held_action.cancel` (ADR-002: `first_party_only`, dispatcher-enforced
     before this handler runs). Transitions `pending -> cancelled` — Kang
-    declining is final, the same terminal state the 24h expiry sweep
-    (`HeldActionStore.expire_due`, not wired to a job yet) would also
-    produce."""
+    declining is final. Distinct from `expired` (ADR-024): the 24h expiry
+    sweep (`HeldActionStore.expire_due`, wired as a scheduler job since
+    ADR-022) finding no decision was made is a different event from Kang
+    explicitly declining one, and writes a different terminal state."""
 
     def handler(context: HandlerContext, params: dict[str, Any]) -> dict[str, Any]:
         held_action_id = params.get("id")
@@ -193,13 +194,14 @@ def make_held_action_expire_handler(
     held_actions: HeldActionStore, clock: Clock
 ) -> Handler:
     """`held_action.expire` (ADR-022): pure exposure of `HeldActionStore.
-    expire_due()` — cancels every `pending` held action past its 24h
-    window (12_API §7). Wired as `deadline.sweep`'s own shape (no
-    request fields, a plain count in the response); unlike that
-    operation, this one publishes no event — no `held_action.*` event
-    type is registered anywhere, and inventing one with no named
-    consumer would repeat the "enum allows it" anti-pattern ADR-021
-    already declined for `job.enable`/`.disable`."""
+    expire_due()` — expires every `pending` held action past its 24h
+    window (12_API §7), writing `expired` (ADR-024), not `cancelled` —
+    distinct from Kang explicitly declining via `held_action.cancel`.
+    Wired as `deadline.sweep`'s own shape (no request fields, a plain
+    count in the response); unlike that operation, this one publishes no
+    event — no `held_action.*` event type is registered anywhere, and
+    inventing one with no named consumer would repeat the "enum allows
+    it" anti-pattern ADR-021 already declined for `job.enable`/`.disable`."""
 
     def handler(context: HandlerContext, params: dict[str, Any]) -> dict[str, Any]:
         count = held_actions.expire_due(clock.now().isoformat())
