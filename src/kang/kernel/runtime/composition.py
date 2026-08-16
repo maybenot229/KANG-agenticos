@@ -341,7 +341,7 @@ def _build_consequential_handlers(w: _HandlerWiring) -> dict:
         "held_action.approve": make_held_action_approve_handler(
             ha, w.clock, w.connection, transactional_effects
         ),
-        "held_action.cancel": make_held_action_cancel_handler(ha),
+        "held_action.cancel": make_held_action_cancel_handler(ha, w.clock),
         "held_action.list": make_held_action_list_handler(ha),
         "held_action.expire": make_held_action_expire_handler(ha, w.clock),
         "job.disable": make_job_disable_handler(js, confirmation),

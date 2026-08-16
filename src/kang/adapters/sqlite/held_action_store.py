@@ -14,6 +14,13 @@ decision was made; both collapsed into `cancelled` before ADR-024.
 pattern `notification_store.py`'s `payload` column already uses, no new
 idiom invented.
 
+`decided_at`/`decided_by` (ADR-025): stamped by every transition out of
+`pending`, in the same UPDATE as the status so a row can never hold a
+terminal status with an unset decider. `_decide_in_txn` is that write;
+`_status_in_txn` is the status-only one the executed step keeps using
+deliberately (see its docstring). This store never invents a principal
+value — `decided_by` is always passed in by the API layer.
+
 `_in_txn` methods (ADR-021): `held_action.approve`'s handler drives a
 `transactional`-commit_mode effect in one `BEGIN`/`COMMIT` spanning this
 store's write AND the target operation's own effect write — so the
@@ -38,7 +45,8 @@ __all__ = ["SqliteHeldActionStore"]
 
 _COLUMNS = (
     "id, operation, action, principal, reason, reversibility, "
-    "correlation_id, created_at, expires_at, status, params"
+    "correlation_id, created_at, expires_at, status, params, "
+    "decided_at, decided_by"
 )
 
 
@@ -55,6 +63,8 @@ def _row_to_held_action(row: tuple) -> HeldAction:
         expires_at=row[8],
         status=row[9],
         params=json.loads(row[10]),
+        decided_at=row[11],  # ADR-025: NULL for pending rows and for any
+        decided_by=row[12],  #   row predating that migration
     )
 
 
@@ -69,7 +79,7 @@ class SqliteHeldActionStore:
         try:
             self._conn.execute(
                 f"INSERT INTO held_action ({_COLUMNS}) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     held_action.id,
                     held_action.operation,
@@ -82,6 +92,8 @@ class SqliteHeldActionStore:
                     held_action.expires_at,
                     held_action.status,
                     json.dumps(held_action.params),
+                    held_action.decided_at,
+                    held_action.decided_by,
                 ),
             )
             self._conn.execute("COMMIT")
@@ -98,10 +110,10 @@ class SqliteHeldActionStore:
             raise HeldActionNotFound(held_action_id)
         return _row_to_held_action(row)
 
-    def approve(self, held_action_id: str, now: str) -> HeldAction:
+    def approve(self, held_action_id: str, now: str, decided_by: str) -> HeldAction:
         self._conn.execute("BEGIN IMMEDIATE")
         try:
-            result = self._approve_checked(held_action_id, now)
+            result = self._approve_checked(held_action_id, now, decided_by)
             self._conn.execute("COMMIT")
         except (sqlite3.Error, HeldActionNotFound, HeldActionExpired):
             if self._conn.in_transaction:
@@ -109,10 +121,14 @@ class SqliteHeldActionStore:
             raise
         return result
 
-    def approve_in_txn(self, held_action_id: str, now: str) -> HeldAction:
-        return self._approve_checked(held_action_id, now)
+    def approve_in_txn(
+        self, held_action_id: str, now: str, decided_by: str
+    ) -> HeldAction:
+        return self._approve_checked(held_action_id, now, decided_by)
 
-    def _approve_checked(self, held_action_id: str, now: str) -> HeldAction:
+    def _approve_checked(
+        self, held_action_id: str, now: str, decided_by: str
+    ) -> HeldAction:
         current = self.get(held_action_id)
         if current.status != "pending":
             raise HeldActionNotFound(
@@ -120,15 +136,15 @@ class SqliteHeldActionStore:
             )
         if now >= current.expires_at:
             raise HeldActionExpired(held_action_id)
-        return self._status_in_txn(held_action_id, "approved")
+        return self._decide_in_txn(held_action_id, "approved", now, decided_by)
 
-    def cancel(self, held_action_id: str) -> HeldAction:
+    def cancel(self, held_action_id: str, now: str, decided_by: str) -> HeldAction:
         current = self.get(held_action_id)
         if current.status != "pending":
             raise HeldActionNotFound(
                 f"{held_action_id} is {current.status}, not pending"
             )
-        return self._set_status(held_action_id, "cancelled")
+        return self._set_decided(held_action_id, "cancelled", now, decided_by)
 
     def mark_executed(self, held_action_id: str) -> HeldAction:
         self._conn.execute("BEGIN IMMEDIATE")
@@ -159,13 +175,14 @@ class SqliteHeldActionStore:
         ).fetchall()
         return [_row_to_held_action(row) for row in rows]
 
-    def expire_due(self, now: str) -> int:
+    def expire_due(self, now: str, decided_by: str) -> int:
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             cursor = self._conn.execute(
-                "UPDATE held_action SET status = 'expired' "
+                "UPDATE held_action "
+                "SET status = 'expired', decided_at = ?, decided_by = ? "
                 "WHERE status = 'pending' AND expires_at <= ?",
-                (now,),
+                (now, decided_by, now),
             )
             self._conn.execute("COMMIT")
         except sqlite3.Error:
@@ -181,10 +198,17 @@ class SqliteHeldActionStore:
         ).fetchall()
         return [_row_to_held_action(row) for row in rows]
 
-    def _set_status(self, held_action_id: str, status: str) -> HeldAction:
+    def _set_decided(
+        self, held_action_id: str, status: str, now: str, decided_by: str
+    ) -> HeldAction:
+        """`_decide_in_txn` wrapped in its own transaction, for the
+        transitions that are not part of a caller-owned one (ADR-025 —
+        replaced the old status-only `_set_status`, whose sole caller was
+        `cancel`; nothing writes a terminal status without provenance now
+        except the deliberate executed step)."""
         self._conn.execute("BEGIN IMMEDIATE")
         try:
-            result = self._status_in_txn(held_action_id, status)
+            result = self._decide_in_txn(held_action_id, status, now, decided_by)
             self._conn.execute("COMMIT")
         except sqlite3.Error:
             if self._conn.in_transaction:
@@ -193,11 +217,29 @@ class SqliteHeldActionStore:
         return result
 
     def _status_in_txn(self, held_action_id: str, status: str) -> HeldAction:
-        """The bare UPDATE, no transaction of its own — every public path
-        above wraps this in BEGIN/COMMIT; `approve_in_txn`/`mark_executed_
-        in_txn` let the caller's own transaction own it instead (ADR-021)."""
+        """The bare status UPDATE, no transaction of its own — every public
+        path above wraps this in BEGIN/COMMIT; `mark_executed_in_txn` lets
+        the caller's own transaction own it instead (ADR-021).
+
+        Writes NO provenance, and that is the point (ADR-025): the only
+        remaining caller is the approved → executed step, which is not a
+        transition out of `pending` and must leave the approve step's
+        `decided_at`/`decided_by` intact."""
         self._conn.execute(
             "UPDATE held_action SET status = ? WHERE id = ?",
             (status, held_action_id),
+        )
+        return self.get(held_action_id)
+
+    def _decide_in_txn(
+        self, held_action_id: str, status: str, now: str, decided_by: str
+    ) -> HeldAction:
+        """The bare transition UPDATE for every move OUT OF `pending`:
+        status plus the ADR-025 provenance pair, in one statement so a row
+        can never carry a terminal status with an unset decider."""
+        self._conn.execute(
+            "UPDATE held_action SET status = ?, decided_at = ?, decided_by = ? "
+            "WHERE id = ?",
+            (status, now, decided_by, held_action_id),
         )
         return self.get(held_action_id)

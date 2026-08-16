@@ -473,10 +473,13 @@ CREATE TABLE held_action (            -- consequential-action gate (12 §7, D-ow
   operation     TEXT NOT NULL,        -- registry operation name — resolves
                                       --   commit_mode on approval/recovery
   action        TEXT NOT NULL,        -- what will happen (exact)
-  principal     TEXT NOT NULL,        -- who asked
-  reason        TEXT NOT NULL,        -- why (one paragraph max)
+  principal     TEXT NOT NULL,        -- who ASKED (never who decided —
+                                      --   see decided_by, ADR-025)
+  reason        TEXT NOT NULL,        -- why the action was REQUESTED (never
+                                      --   why it transitioned)
   reversibility TEXT NOT NULL,        -- the reversibility statement
-  correlation_id TEXT NOT NULL,       -- thread to invocation/audit
+  correlation_id TEXT NOT NULL,       -- threads to the REQUESTING
+                                      --   invocation/audit entry
   created_at    TEXT NOT NULL,
   expires_at    TEXT NOT NULL,        -- created_at + 24h (12 §7)
   status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN
@@ -488,8 +491,18 @@ CREATE TABLE held_action (            -- consequential-action gate (12 §7, D-ow
                                       --   the 24h window closed with no decision
                                       --   (ADR-024 — both collapsed into
                                       --   'cancelled' before this)
-  params        TEXT NOT NULL DEFAULT '{}'  -- ADR-021: the original request's
+  params        TEXT NOT NULL DEFAULT '{}',  -- ADR-021: the original request's
                                       --   params, JSON — replayed on approval
+  decided_at    TEXT,                 -- ADR-025: when this row left 'pending'
+  decided_by    TEXT                  -- ADR-025: the principal who decided
+                                      --   ('kang'; 'kernel:scheduler' for the
+                                      --   expiry sweep). Written by every
+                                      --   transition OUT OF 'pending'; NOT by
+                                      --   mark_executed, which inherits the
+                                      --   approve step's pair. NULL on a
+                                      --   'pending' row = not decided yet;
+                                      --   NULL on a TERMINAL row = predates
+                                      --   ADR-025, never "nobody decided"
 );
 CREATE INDEX idx_held_action_pending ON held_action(status, created_at)
   WHERE status = 'pending';

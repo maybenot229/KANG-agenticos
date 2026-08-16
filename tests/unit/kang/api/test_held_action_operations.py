@@ -40,6 +40,15 @@ from kang.domain.ports.held_action import HeldAction
 CONTEXT = HandlerContext(
     principal="kang", correlation_id="corr-1", trigger="cli", first_party=True
 )
+# ADR-025: what the dispatcher builds for a scheduler-dispatched job —
+# `kernel:scheduler`, first_party=False (scheduler_wiring.py mints the
+# session that way; dispatch.py derives the context principal from it).
+SCHEDULER_CONTEXT = HandlerContext(
+    principal="kernel:scheduler",
+    correlation_id="corr-job",
+    trigger="kernel:scheduler",
+    first_party=False,
+)
 
 
 @pytest.fixture
@@ -86,7 +95,7 @@ def _approve(wiring, held_action_id: str) -> dict:
 
 
 def _cancel(wiring, held_action_id: str) -> dict:
-    handler = make_held_action_cancel_handler(wiring["store"])
+    handler = make_held_action_cancel_handler(wiring["store"], wiring["clock"])
     return handler(CONTEXT, {"id": held_action_id})
 
 
@@ -142,7 +151,7 @@ class TestCancel:
         assert wiring["store"].get(seeded.id).status == "cancelled"
 
     def test_missing_id_is_invalid_request(self, wiring):
-        handler = make_held_action_cancel_handler(wiring["store"])
+        handler = make_held_action_cancel_handler(wiring["store"], wiring["clock"])
         with pytest.raises(ApiError) as exc:
             handler(CONTEXT, {})
         assert exc.value.code == "invalid_request"
@@ -201,6 +210,53 @@ class TestExpire:
         handler = make_held_action_expire_handler(wiring["store"], wiring["clock"])
         assert handler(CONTEXT, {}) == {"count": 1}
         assert handler(CONTEXT, {}) == {"count": 0}  # already expired, not re-swept
+
+
+class TestProvenance:
+    """ADR-025 at the handler seam: `decided_by` is whatever principal the
+    dispatching session carries — never a literal in the handler, never a
+    sentinel. These tests are what prove the sweep records
+    `kernel:scheduler` *structurally* rather than by hardcoding."""
+
+    def test_approve_records_the_approving_principal_from_the_session(self, wiring):
+        seeded = _seed_pending(wiring)
+        _approve(wiring, seeded.id)
+        stored = wiring["store"].get(seeded.id)
+        assert stored.decided_by == "kang"
+        assert stored.decided_at == wiring["clock"].now().isoformat()
+
+    def test_cancel_records_the_declining_principal_from_the_session(self, wiring):
+        seeded = _seed_pending(wiring)
+        _cancel(wiring, seeded.id)
+        stored = wiring["store"].get(seeded.id)
+        assert stored.decided_by == "kang"
+        assert stored.decided_at == wiring["clock"].now().isoformat()
+
+    def test_the_sweep_records_kernel_scheduler_when_the_job_dispatches_it(
+        self, wiring
+    ):
+        """The value arrives from the session the scheduler minted — the
+        handler contains no principal literal at all."""
+        seeded = _seed_pending(wiring, expires_in_hours=1)
+        wiring["clock"].advance(2 * 3600)
+        handler = make_held_action_expire_handler(wiring["store"], wiring["clock"])
+
+        assert handler(SCHEDULER_CONTEXT, {}) == {"count": 1}
+
+        stored = wiring["store"].get(seeded.id)
+        assert stored.status == "expired"
+        assert stored.decided_by == "kernel:scheduler"
+
+    def test_a_manual_sweep_records_kang_not_the_scheduler(self, wiring):
+        """Same handler, same code path, different session — proof the
+        principal is genuinely read from context rather than assumed."""
+        seeded = _seed_pending(wiring, expires_in_hours=1)
+        wiring["clock"].advance(2 * 3600)
+        handler = make_held_action_expire_handler(wiring["store"], wiring["clock"])
+
+        handler(CONTEXT, {})
+
+        assert wiring["store"].get(seeded.id).decided_by == "kang"
 
 
 class TestList:

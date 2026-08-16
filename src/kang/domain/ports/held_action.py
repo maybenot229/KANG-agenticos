@@ -22,6 +22,13 @@ declining (`cancel()`); `expired` is the 24h window closing with no
 decision (`expire_due()`'s sweep, ADR-022). Before ADR-024 both wrote the
 same literal — deliberate at the time (the sweep had no scheduled caller),
 no longer accurate once ADR-022 wired it as a real job.
+
+Transition provenance (ADR-025): every transition OUT OF `pending`
+records `decided_at` + `decided_by`. `mark_executed` deliberately does
+not — `executed` inherits the approve step's provenance, because the
+decision was the approval; execution is the effect landing. `reason` and
+`correlation_id` describe the original REQUEST and are never rewritten,
+which is exactly why the transition needed its own two fields.
 """
 
 from __future__ import annotations
@@ -59,6 +66,10 @@ class HeldAction:
     params: dict[str, Any] = field(default_factory=dict)  # ADR-021: the
     #   original request's params, carried so approval can replay the
     #   effect — the schema delta ADR-001's Consequences called "owed"
+    decided_at: str | None = None  # ADR-025: when this row left `pending`
+    decided_by: str | None = None  # ADR-025: the principal who decided.
+    #   NULL on a `pending` row means "not decided yet"; NULL on a
+    #   TERMINAL row means "predates ADR-025", never "nobody decided".
 
 
 class HeldActionError(Exception):
@@ -85,25 +96,36 @@ class HeldActionStore(Protocol):
         """Return the held action or raise HeldActionNotFound."""
         ...
 
-    def approve(self, held_action_id: str, now: str) -> HeldAction:
-        """Transition pending → approved. Raises HeldActionExpired if `now`
-        is past expiry (the window closed), HeldActionNotFound if absent.
+    def approve(self, held_action_id: str, now: str, decided_by: str) -> HeldAction:
+        """Transition pending → approved, stamping `decided_at=now` and
+        `decided_by` (ADR-025). Raises HeldActionExpired if `now` is past
+        expiry (the window closed), HeldActionNotFound if absent.
         `approved` records intent only — the effect has not necessarily
         committed yet (ADR 001); the caller drives it to `executed`."""
         ...
 
-    def cancel(self, held_action_id: str) -> HeldAction:
-        """Transition pending → cancelled (Kang declined, or superseded)."""
+    def cancel(self, held_action_id: str, now: str, decided_by: str) -> HeldAction:
+        """Transition pending → cancelled (Kang declined, or superseded),
+        stamping `decided_at=now` and `decided_by` (ADR-025 — `now` and
+        `decided_by` are both new here; this method previously took
+        neither, because nothing recorded when or by whom)."""
         ...
 
     def mark_executed(self, held_action_id: str) -> HeldAction:
         """Transition approved → executed: the held effect committed
         (ADR 001). Raises HeldActionNotFound if the action is not currently
         `approved` (guards against marking a pending or cancelled action
-        executed)."""
+        executed).
+
+        Deliberately takes no provenance (ADR-025): this is not a
+        transition out of `pending`. The row keeps the `decided_at`/
+        `decided_by` its approve step already stamped — the decision was
+        the approval; execution is the effect landing."""
         ...
 
-    def approve_in_txn(self, held_action_id: str, now: str) -> HeldAction:
+    def approve_in_txn(
+        self, held_action_id: str, now: str, decided_by: str
+    ) -> HeldAction:
         """Same as `approve`, but assumes the caller already opened a
         transaction on the shared connection (ADR-021: `transactional`
         commit_mode's approve-flip and effect share one `BEGIN`/`COMMIT`) —
@@ -116,7 +138,8 @@ class HeldActionStore(Protocol):
 
     def mark_executed_in_txn(self, held_action_id: str) -> HeldAction:
         """Same as `mark_executed`, transaction-participating (see
-        `approve_in_txn`)."""
+        `approve_in_txn`). Takes no provenance, for the same reason
+        `mark_executed` does not (ADR-025)."""
         ...
 
     def approved_not_executed(self) -> list[HeldAction]:
@@ -129,11 +152,18 @@ class HeldActionStore(Protocol):
         transactional mode (§Amendment)."""
         ...
 
-    def expire_due(self, now: str) -> int:
+    def expire_due(self, now: str, decided_by: str) -> int:
         """Expire every pending held action past its expiry as of `now`
-        (the 24h sweep, ADR-022). Returns how many were expired. Writes
-        `expired`, not `cancelled` (ADR-024) — distinct from Kang
-        explicitly declining via `cancel()`."""
+        (the 24h sweep, ADR-022), stamping `decided_at=now` and
+        `decided_by` on each (ADR-025). Returns how many were expired.
+        Writes `expired`, not `cancelled` (ADR-024) — distinct from Kang
+        explicitly declining via `cancel()`.
+
+        `decided_by` is the sweep's own principal, passed in rather than
+        assumed here: the caller is the API handler, which reads it from
+        the dispatching session — `kernel:scheduler` when the job runs
+        this, `kang` if Kang invokes it by hand. A store must not know
+        principal names."""
         ...
 
     def pending(self) -> list[HeldAction]:

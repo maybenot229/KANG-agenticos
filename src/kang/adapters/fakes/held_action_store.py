@@ -34,10 +34,12 @@ class FakeHeldActionStore:
         except KeyError:
             raise HeldActionNotFound(held_action_id) from None
 
-    def approve(self, held_action_id: str, now: str) -> HeldAction:
-        return self.approve_in_txn(held_action_id, now)
+    def approve(self, held_action_id: str, now: str, decided_by: str) -> HeldAction:
+        return self.approve_in_txn(held_action_id, now, decided_by)
 
-    def approve_in_txn(self, held_action_id: str, now: str) -> HeldAction:
+    def approve_in_txn(
+        self, held_action_id: str, now: str, decided_by: str
+    ) -> HeldAction:
         # No real transaction concept for an in-memory dict — approve() and
         # approve_in_txn() are identical here; the distinction only matters
         # for the real adapter's shared-connection transaction (ADR-021).
@@ -46,13 +48,13 @@ class FakeHeldActionStore:
             raise HeldActionNotFound(f"{held_action_id} is {current.status}")
         if now >= current.expires_at:
             raise HeldActionExpired(held_action_id)
-        return self._set_status(held_action_id, "approved")
+        return self._set_decided(held_action_id, "approved", now, decided_by)
 
-    def cancel(self, held_action_id: str) -> HeldAction:
+    def cancel(self, held_action_id: str, now: str, decided_by: str) -> HeldAction:
         current = self.get(held_action_id)
         if current.status != "pending":
             raise HeldActionNotFound(f"{held_action_id} is {current.status}")
-        return self._set_status(held_action_id, "cancelled")
+        return self._set_decided(held_action_id, "cancelled", now, decided_by)
 
     def mark_executed(self, held_action_id: str) -> HeldAction:
         return self.mark_executed_in_txn(held_action_id)
@@ -69,11 +71,13 @@ class FakeHeldActionStore:
             key=lambda a: (a.created_at, a.id),
         )
 
-    def expire_due(self, now: str) -> int:
+    def expire_due(self, now: str, decided_by: str) -> int:
         expired = 0
         for held_action_id, action in list(self._actions.items()):
             if action.status == "pending" and now > action.expires_at:
-                self._actions[held_action_id] = replace(action, status="expired")
+                self._actions[held_action_id] = replace(
+                    action, status="expired", decided_at=now, decided_by=decided_by
+                )
                 expired += 1
         return expired
 
@@ -84,6 +88,22 @@ class FakeHeldActionStore:
         )
 
     def _set_status(self, held_action_id: str, status: str) -> HeldAction:
+        """Status only — the executed step, which deliberately leaves the
+        approve step's provenance intact (ADR-025)."""
         updated = replace(self._actions[held_action_id], status=status)
+        self._actions[held_action_id] = updated
+        return updated
+
+    def _set_decided(
+        self, held_action_id: str, status: str, now: str, decided_by: str
+    ) -> HeldAction:
+        """Status + provenance, for every transition out of `pending`
+        (ADR-025) — mirrors the sqlite adapter's `_decide_in_txn`."""
+        updated = replace(
+            self._actions[held_action_id],
+            status=status,
+            decided_at=now,
+            decided_by=decided_by,
+        )
         self._actions[held_action_id] = updated
         return updated
