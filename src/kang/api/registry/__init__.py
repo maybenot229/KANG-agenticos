@@ -204,17 +204,27 @@ def _op(
 # The M4 operation set. Commands carry idempotency keys (API-004); queries
 # are freely retryable (API-001).
 OPERATIONS: tuple[dict[str, Any], ...] = (
+    # registry.get stays scope=None DELIBERATELY (ADR-027 D2): it serves the
+    # contract a client must read before it can call anything — including to
+    # learn which scopes exist — so gating it behind a capability is circular.
+    # It leaks shape, never state. One of only three unscoped operations; a
+    # test locks that set closed (unit/kang/api/registry/test_registry.py),
+    # because `_authorize` SKIPS the engine for scope=None rather than
+    # default-denying, so a careless fourth would be reachable by any
+    # authenticated principal.
     _op("registry.get", "query", None, False, "Serve this registry."),
     # permission.list (added 2026-08-05, 09_UI §7's System-domain permission
-    # screen): scope=None, matching registry.get's own precedent — this
-    # serves system metadata about the contract/authority model itself,
-    # not a domain resource, so a domain-verb scope would be the wrong
-    # vocabulary. Read-only: viewing a grant is not consequential (09_UI §7
-    # draws that line at *changing* one, which this operation cannot do).
+    # screen): serves system metadata about the contract/authority model
+    # itself. Registered scope=None originally, on registry.get's precedent.
+    # Read-only: viewing a grant is not consequential (09_UI §7 draws that
+    # line at *changing* one, which this operation cannot do). SCOPED as of
+    # ADR-027 (`permissions.read`) — the grant snapshot is a map of the
+    # authority surface, which is exactly what an injected agent would read
+    # first; `registry.get`'s unscoped precedent does not extend to it.
     _op(
         "permission.list",
         "query",
-        None,
+        "permissions.read",
         False,
         "List every principal's granted scopes, with plain-language consequences.",
         schemas=OperationSchemas(
@@ -328,7 +338,7 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
     _op(
         "notification.ack",
         "command",
-        None,
+        "notifications.ack",
         True,
         "Acknowledge a notification (additive; never deletes history).",
         channel=OperationChannel(first_party_only=True),
@@ -339,20 +349,31 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
     _op(
         "explain.invocation",
         "query",
-        None,
+        "explain.read",
         False,
         "Reconstruct an invocation from permanent storage by correlation_id.",
         schemas=OperationSchemas(
             request=ExplainInvocationRequest, response=ExplainInvocationResponse
         ),
     ),
-    _op("explain.plan_item", "query", None, False, "Explain a plan item."),
-    _op("explain.notification", "query", None, False, "Explain a notification."),
-    _op("explain.suggestion", "query", None, False, "Explain a suggestion."),
-    _op("explain.memory", "query", None, False, "Explain a memory record."),
+    _op("explain.plan_item", "query", "explain.read", False, "Explain a plan item."),
+    _op(
+        "explain.notification",
+        "query",
+        "explain.read",
+        False,
+        "Explain a notification.",
+    ),
+    _op("explain.suggestion", "query", "explain.read", False, "Explain a suggestion."),
+    _op("explain.memory", "query", "explain.read", False, "Explain a memory record."),
     # held_action.* (ADR 001, ADR 002): channel-gated, not scope-gated — no
     # `kang`-only scope exists for these (API-003/SEC-004: first-party-only
-    # is a channel, never a grant). Handlers wired 2026-08-05
+    # is a channel, never a grant). ADR-027 D2 re-confirmed this rather than
+    # scoping them for uniformity: 05_AGENTS §D is normative that "the
+    # first-party channel check (not a permission scope — §8) is what stands
+    # in for that second layer", so adding a scope would imply a grant could
+    # substitute for the channel. It cannot; no grant satisfies first_party.
+    # Handlers wired 2026-08-05
     # (operations.py::make_held_action_approve_handler/
     # make_held_action_cancel_handler) — transition-only (pending ->
     # approved | cancelled); driving an approved action's effect to
@@ -420,13 +441,16 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         ),
     ),
     # audit.list / system.health: added 2026-08-05 for the System domain's
-    # Activity and Health views (09_UI §12). Both scope=None, matching
-    # registry.get/permission.list's own precedent — system metadata about
-    # the Core itself, not a domain resource a domain-verb scope would fit.
+    # Activity and Health views (09_UI §12). Both were scope=None on the
+    # reasoning that system metadata is not a domain resource; ADR-027
+    # scoped them (`audit.read`/`system.read`) because that reasoning held
+    # only while every session principal was fully trusted (`kang`,
+    # `kernel:scheduler`). 05_AGENTS §8 adds `agent:{id}`, and SEC-004
+    # allows no code path exempt from scopes but `kang`.
     _op(
         "audit.list",
         "query",
-        None,
+        "audit.read",
         False,
         "List every audit record of one month, oldest first.",
         schemas=OperationSchemas(request=AuditListRequest, response=AuditListResponse),
@@ -434,7 +458,7 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
     _op(
         "system.health",
         "query",
-        None,
+        "system.read",
         False,
         "List every scheduled job's status and whether automation is paused.",
         schemas=OperationSchemas(
@@ -481,7 +505,7 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
     _op(
         "invocation.list",
         "query",
-        None,
+        "invocations.read",
         False,
         "List the most recent invocations, newest first.",
         schemas=OperationSchemas(
