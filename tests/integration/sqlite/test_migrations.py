@@ -30,12 +30,15 @@ def conn(tmp_path):
 
 def test_full_chain_applies_on_empty_database(conn):
     applied = apply_migrations(conn, MIGRATIONS_DIR, FakeClock())
-    # initial, held_action, scheduler, api, held_action_lifecycle,
-    # domain_entities, notification_queue, calendar_cache,
-    # rename_app_state_to_setting, invocation_recent_index, project_capture,
-    # competition_capture, milestone_capture, goal_capture, held_action_params,
-    # held_action_expired_state, held_action_provenance
-    assert applied == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+    # Derived from the shipped set, not hardcoded: the real claims are
+    # that applying an empty database runs EVERY discovered migration,
+    # in order, gapless, starting at 1. A literal list additionally
+    # asserted "there are exactly N", which is a change-detector with no
+    # constitutional claim behind it — it broke on 0015, 0016 and 0017 in
+    # succession and each time the fix was to retype the number.
+    shipped = [m.version for m in discover(MIGRATIONS_DIR)]
+    assert applied == shipped
+    assert applied == list(range(1, len(shipped) + 1))
     tables = {
         row[0]
         for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
