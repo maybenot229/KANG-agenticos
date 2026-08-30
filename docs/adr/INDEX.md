@@ -35,3 +35,4 @@ Append-only; an ADR that reverses or narrows another MUST cite it.
 | [027](027-unscoped-operations.md) | `scope=None` is a decision, not a default: scoping the system-metadata reads before agent principals exist | accepted | 12_API §16, 10_SECURITY SEC-004, `api/registry/__init__.py` |
 | [028](028-m7-foundations.md) | M7 foundations: the four constraints the code imposes, the `task` collision, and the one fork that needs Kang | **proposed** | none yet (constraints + sequencing; each slice gets its own ADR) |
 | [029](029-invocation-is-the-async-work-resource.md) | `invocation`, not `task`, is the async-work resource: resolving a live doc/code contradiction before M7 | **proposed** | 12_API API-007 + §§9/10/13/16, 15_EVENT_BUS §6.1 |
+| [030](030-o1-execution-model.md) | O1: the async runtime is not a new decision — DB-001 already made it and M1 skipped it | **proposed** | 07_DATABASE DB-001, corrections to ADR-028 O1 + ADR-019's DB-001 citation |
