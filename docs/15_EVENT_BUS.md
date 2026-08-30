@@ -177,7 +177,7 @@ schema, index doctrine, and compaction mechanics.
 |---|---|---|---|
 | **Domain** | Tier-1 truth changed | `task.completed`, `deadline.approaching`, `competition.found`, `memory.saved`, `plan.generated` | Mostly yes |
 | **System** | Health/ops fact | `provider.circuit_open`, `integrity.frozen`, `backup.verified`, `budget.threshold_crossed` | No |
-| **Lifecycle** | Execution-machinery fact | `invocation.finished`, `task.updated` (API long-running tasks), `held_action.approved`, `plugin.quarantined` | `held_action.approved`: yes; others no |
+| **Lifecycle** | Execution-machinery fact | `invocation.finished`, `invocation.updated` (streaming progress), `held_action.approved`, `plugin.quarantined` | `held_action.approved`: yes; others no |
 | **Integration** | External-world observation crossed the boundary | `vault.note_changed`, `calendar.synced`, `capture.created` | No (truth lives at the source — AR6) |
 | **Plugin** | `plugin.{id}.*`, manifest-declared schemas | per 08 §7 | No (plugins cannot write Tier-1 truth directly — PL rules) |
 | **Notification** | A notification became due per policy | `notification.requested` | No |

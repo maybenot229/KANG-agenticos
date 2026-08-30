@@ -96,11 +96,11 @@ flowchart LR
 
 **Alternatives.** Transport-native errors (HTTP statuses as the model — rejected: transport-coupled, semantically poor).
 
-### API-007 — Long-running work is always a task resource
+### API-007 — Long-running work is always an invocation resource
 
-**Decision.** Any operation that cannot reliably complete in < 3 s (cognitive agent runs, pipelines, research, rebuilds, restores) MUST be modeled as: command → returns `task_id` immediately → progress/output via the event channel (`task.updated`, streamed chunks) → outcome as a queryable task resource. Blocking long calls MUST NOT exist. Chat streaming is this same mechanism with a text-chunk stream.
+**Decision.** Any operation that cannot reliably complete in < 3 s (cognitive agent runs, pipelines, research, rebuilds, restores) MUST be modeled as: command → returns `invocation_id` immediately → progress/output via the event channel (`invocation.updated`, streamed chunks) → outcome as a queryable invocation resource (ADR-029: `task.*` is the TODO domain and only that). Blocking long calls MUST NOT exist. Chat streaming is this same mechanism with a text-chunk stream.
 
-**Why.** 09_UI §14's task cards, cancellability (AG-007: cancel is `task.cancel`, a command), crash-survivability (task state persists as `invocation` rows), and headless clients (CLI, scheduler) all require work-as-resource.
+**Why.** 09_UI §14's task cards (a UI label, deliberately unrenamed — ADR-029 D4), cancellability (AG-007: cancel is `invocation.cancel`, a command), crash-survivability (the state persists as `invocation` rows), and headless clients (CLI, scheduler) all require work-as-resource.
 
 ### API-008 — Cursor pagination only; deterministic order
 
@@ -150,7 +150,7 @@ Commands additionally guarantee: transactional execution (DB-003 — the respons
 
 ## 7. Commands, Confirmations, Held Actions
 
-- Command names are verb-first, domain-scoped: `task.create`, `task.complete`, `capture.create`, `memory.propose`, `memory.approve`, `memory.delete`, `competition.decide`, `plan.adapt`, `agent.invoke`, `pipeline.run`, `task.cancel`, `plugin.enable`, `grant.modify`, `export.run`, `restore.run` …the registry is exhaustive; this list is illustrative.
+- Command names are verb-first, domain-scoped: `task.create`, `task.complete`, `capture.create`, `memory.propose`, `memory.approve`, `memory.delete`, `competition.decide`, `plan.adapt`, `agent.invoke`, `pipeline.run`, `invocation.cancel`, `plugin.enable`, `grant.modify`, `export.run`, `restore.run` …the registry is exhaustive; this list is illustrative.
 - **Consequential commands** (05_AGENTS Appendix D) follow the two-step contract: the command returns `confirmation_required` + a `held_action` resource (what/who/why/reversibility — exactly the 09_UI §7 dialog contents, as data); the client renders the unique dialog; Kang's approval is a distinct command `held_action.approve {id}` valid only from first-party UI sessions (**plugin sessions MUST NOT approve held actions** — out-of-band enforcement at the contract level, 10_SECURITY §5.4); expiry 24h ⇒ `expired` (ADR-024; distinct from `cancelled`, Kang's explicit decline).
 - **Held-action lifecycle** (docs/adr/001-held-action-crash-semantics.md): `approved` records Kang's intent only — it does not mean the effect committed. A terminal `executed` state marks completion. Every consequential operation declares a registry-level `commit_mode`: `transactional` (approval-flip and effect commit in one `kang.db` transaction — the default for effects fully representable as a DB write) or `redrive` (the effect crosses into `adapters/`; on restart, every `approved`-but-not-`executed` action of this mode is re-driven through its effect's idempotent path). An operation MUST NOT register as `redrive` until its target adapter has a proven idempotency contract + conformance test (enforced at registration time, not runtime).
 - **The approval channel** (docs/adr/002-approval-channel.md): `first_party_only` is a declared per-operation registry property, **not a permission scope** — it is a channel control, orthogonal to the Permission Engine's authorization (API-003: the engine answers "may this principal?"; the dispatcher's channel check answers "did this arrive out-of-band?"; a consequential approval requires both to pass). The dispatcher enforces it centrally, after the scope check. `held_action.approve` and `held_action.cancel` are both `first_party_only`. A `first_party_only` refusal returns a distinct error code (`first_party_required`, ADR 002 Amendment §3), never `permission_denied`, so an audit reader can tell which gate refused.
@@ -162,7 +162,7 @@ Verb `get`/`list`/`search`, side-effect-free: `task.list`, `plan.get {date}`, `m
 
 ## 9. Streaming
 
-Streaming output (chat tokens, task progress, log tails) rides the event channel as ordered chunk events under the operation's `correlation_id`, terminated by an outcome event. Streams are cancellable (`task.cancel`); a dropped client reconnects and resumes by cursor or re-queries the finished resource — **no output exists only in flight** (crash-survivability: the outcome is always also a resource).
+Streaming output (chat tokens, invocation progress, log tails) rides the event channel as ordered chunk events under the operation's `correlation_id`, terminated by an outcome event. Streams are cancellable (`invocation.cancel`); a dropped client reconnects and resumes by cursor or re-queries the finished resource — **no output exists only in flight** (crash-survivability: the outcome is always also a resource).
 
 ---
 
@@ -173,12 +173,12 @@ Streaming output (chat tokens, task progress, log tails) rides the event channel
 - `memory.update` (revision-checked; creates revision history), `memory.pin`, `memory.archive`, `memory.restore`, `memory.delete` (consequential; response includes the 30-day recovery note as data).
 - `memory.search` (modes: default | deep | structured), `memory.explain_retrieval {correlation_id}` → the manifest with per-term scores (§12).
 - **Private unlock:** `private.unlock {record_id}` — first-party only, consequential-style explicit action, returns decrypted content once, never cached by the Core in plaintext, audited (06_MEMORY §12.1; DB-005).
-- `knowledge.ask {question}` → task resource implementing FR-064 ("what do I know about X?") with citations.
+- `knowledge.ask {question}` → invocation resource implementing FR-064 ("what do I know about X?") with citations.
 
 ## 11. Planning, Agent, Plugin APIs (contract highlights)
 
 - `plan.get {date}` (P0-deterministic: MUST succeed offline/model-less), `plan.adapt {changes}`, `plan.review.submit` (evening/weekly flows), `quest.complete/defer`.
-- `agent.invoke {agent, input}` / `pipeline.run {pipeline, input}` → task resources; admission, permissions, budgets all downstream (the API adds nothing and removes nothing from 05_AGENTS semantics).
+- `agent.invoke {agent, input}` / `pipeline.run {pipeline, input}` → invocation resources; admission, permissions, budgets all downstream (the API adds nothing and removes nothing from 05_AGENTS semantics).
 - `job.list/get`, `job.enable/disable` (consequential for core jobs), `job.run_now {job}` (respects windows unless Kang overrides — override is itself the confirmation).
 - Plugin lifecycle: `plugin.validate/install/grant/enable/disable/remove` mapping 1:1 to the 08_PLUGIN state machine, install/enable/remove consequential.
 
@@ -194,10 +194,10 @@ First-class, versioned, stability-guaranteed:
 
 ## 13. Health, Audit, Notification, Export
 
-- `health.get` → the D015/07_DATABASE Part 17 metric set, typed; `health.doctor` → task resource running the full check suite.
+- `health.get` → the D015/07_DATABASE Part 17 metric set, typed; `health.doctor` → invocation resource running the full check suite.
 - `audit.list {filters, cursor}` — read-only *by contract*: no write/edit/delete operations exist on audit resources at the registry level (09_UI §12's absent-affordances, enforced below the UI).
 - `notification.list/ack` — acking is a command (it changes beacon state); acks never delete history.
-- `export.run {scope}` → task resource producing the open-format export (FR-103); `export.key_backup` → the DB-005 recovery-phrase flow (first-party, consequential).
+- `export.run {scope}` → invocation resource producing the open-format export (FR-103); `export.key_backup` → the DB-005 recovery-phrase flow (first-party, consequential).
 - `backup.snapshot_now`, `restore.run {snapshot}` (consequential; freeze-aware).
 
 ---

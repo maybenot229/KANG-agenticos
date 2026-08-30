@@ -34,3 +34,4 @@ Append-only; an ADR that reverses or narrows another MUST cite it.
 | [026](026-held-action-events-deferred.md) | `held_action.*` events are NOT registered yet: the consumer test, and what changes when one appears | accepted | none (no code/schema change — deliberate); 03_ROADMAP §8 |
 | [027](027-unscoped-operations.md) | `scope=None` is a decision, not a default: scoping the system-metadata reads before agent principals exist | accepted | 12_API §16, 10_SECURITY SEC-004, `api/registry/__init__.py` |
 | [028](028-m7-foundations.md) | M7 foundations: the four constraints the code imposes, the `task` collision, and the one fork that needs Kang | **proposed** | none yet (constraints + sequencing; each slice gets its own ADR) |
+| [029](029-invocation-is-the-async-work-resource.md) | `invocation`, not `task`, is the async-work resource: resolving a live doc/code contradiction before M7 | **proposed** | 12_API API-007 + §§9/10/13/16, 15_EVENT_BUS §6.1 |

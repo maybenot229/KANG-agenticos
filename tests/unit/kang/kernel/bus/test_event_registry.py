@@ -53,3 +53,42 @@ def test_category_is_validated_on_construction():
             plugin_visible=False,
             version_introduced="0.1",
         )
+
+
+# ---- ADR-029: `task.*` is the TODO domain, and only that -----------------
+
+
+def test_task_updated_is_a_domain_recovery_grade_todo_mutation():
+    """ADR-029 closes a live doc/code contradiction: 15_EVENT_BUS §6.1's
+    Lifecycle row used to list `task.updated` "(API long-running tasks)"
+    with grade "others no", while ADR-004 had already registered
+    `task.updated` as a domain, recovery-grade TODO mutation.
+
+    That is not cosmetic. `validate_registration` refuses any publish
+    whose recovery_grade disagrees with the registry ("the redo contract
+    is the registry's, not the publisher's" — EB-003), so M7 publishing
+    `task.updated` for an agent run, exactly as the Lifecycle row
+    instructed, would have been rejected at runtime by a guard working
+    as designed.
+
+    This test is the lock: re-specifying `task.updated` as a Lifecycle /
+    non-recovery-grade type fails here rather than surfacing as a
+    confusing publish rejection mid-way through building M7.
+    """
+    entry = require_registered("task.updated")
+    assert entry.category == "domain"
+    assert entry.recovery_grade is True
+    assert is_recovery_grade("task.updated") is True
+
+
+def test_no_async_work_type_squats_on_the_task_namespace():
+    """The async-work resource is `invocation` (ADR-029 D1). Nothing in
+    the registry may claim `task.*` for execution machinery — the TODO
+    domain owns that prefix. `invocation.updated` is deliberately NOT
+    registered yet: it has no publisher and no consumer, and registering
+    it early is the speculative-structure anti-pattern ADR-026 declined
+    for `held_action.*` (ADR-029 Consequences)."""
+    task_types = {n: e for n, e in EVENT_TYPES.items() if n.startswith("task.")}
+    assert set(task_types) == {"task.created", "task.updated"}
+    assert all(e.category == "domain" for e in task_types.values())
+    assert "invocation.updated" not in EVENT_TYPES
