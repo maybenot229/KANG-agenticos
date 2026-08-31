@@ -489,7 +489,7 @@ stateDiagram-v2
 | memory_steward.weekly | weekly | Reviewing | run_once_latest |
 | memory_steward.monthly | monthly | Sleeping | run_once_latest |
 | vault_indexer.sweep | 6h + fs events | Sleeping/Idle | run_once_latest |
-| backup.snapshot / verify | daily / monthly | Sleeping | run_all_missed |
+| backup.snapshot / verify | daily / monthly | Sleeping *(unbuildable — product state does not exist in code; ADR-031)* | run_once_latest *(**corrected** from run_all_missed by ADR-031: N days of downtime would otherwise yield N snapshots of the same current database under N different dates)* |
 | health.tick | 5m | any | skip |
 
 \* Times are config, not spec (`config/defaults/kang.toml` `[planner.triggers]`: `weekday_morning`/`saturday_morning` = 05:45, `sunday_morning` = 06:45), grounded in Kang's actual routine per `docs/guides/user-profile-intake-2026-07.md`.

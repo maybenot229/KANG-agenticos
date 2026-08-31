@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from kang.api.errors import ERROR_CODES
 from kang.api.schemas.audit import AuditListRequest, AuditListResponse
+from kang.api.schemas.backup import BackupSnapshotRequest, BackupSnapshotResponse
 from kang.api.schemas.competition import (
     CompetitionCreateRequest,
     CompetitionCreateResponse,
@@ -438,6 +439,24 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         "Cancel every pending held action past its 24h expiry window.",
         schemas=OperationSchemas(
             request=HeldActionExpireRequest, response=HeldActionExpireResponse
+        ),
+    ),
+    # backup.snapshot (ADR-031): the daily snapshot job's operation. The
+    # mechanisms (backup.py's integrity_check/vacuum_into) shipped at M1
+    # and had ZERO callers until this — the module header's own promise
+    # that "the scheduled daily job (02:30) arrives with the scheduler at
+    # M3" expired unnoticed. Named by 05_AGENTS Appendix E, not invented
+    # here. No commit_mode: it writes no kang.db state, so it is not
+    # consequential in ADR-001's sense; not first_party_only, matching
+    # deadline.sweep — routine automated maintenance.
+    _op(
+        "backup.snapshot",
+        "command",
+        "backups.write",
+        True,
+        "Snapshot the database and event log, record the manifest, prune.",
+        schemas=OperationSchemas(
+            request=BackupSnapshotRequest, response=BackupSnapshotResponse
         ),
     ),
     # audit.list / system.health: added 2026-08-05 for the System domain's

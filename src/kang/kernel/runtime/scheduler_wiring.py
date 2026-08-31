@@ -34,6 +34,7 @@ from kang.kernel.scheduler.schedule import parse_schedule
 from kang.kernel.scheduler.scheduler import Scheduler, SchedulerDeps
 
 __all__ = [
+    "BACKUP_SNAPSHOT_JOB",
     "DEADLINE_SWEEP_JOB",
     "HELD_ACTION_EXPIRE_JOB",
     "JOB_OPERATIONS",
@@ -52,6 +53,7 @@ SCHEDULER_PRINCIPAL = "kernel:scheduler"  # dispatches jobs (already audits
 MORNING_PLAN_JOB = "morning_plan"  # 05 Appendix E's ritual name
 DEADLINE_SWEEP_JOB = "deadline_sweep"  # 05 Appendix E's ritual name (ADR-020)
 HELD_ACTION_EXPIRE_JOB = "held_action_expire"  # ADR-022
+BACKUP_SNAPSHOT_JOB = "backup_snapshot"  # 05 Appendix E name (ADR-031)
 
 TICK_INTERVAL_S = 60  # ADR-019: how often the live tick re-runs catch-up.
 # A plain constant, not a kang.toml key — nothing has asked to tune this
@@ -68,6 +70,7 @@ JOB_OPERATIONS: dict[str, str] = {
     "morning_plan": "plan.generate",
     "deadline_sweep": "deadline.sweep",  # ADR-020
     "held_action_expire": "held_action.expire",  # ADR-022
+    "backup_snapshot": "backup.snapshot",  # ADR-031
 }
 
 
@@ -201,7 +204,7 @@ def _wire_scheduler(wiring: _SchedulerWiring):
 
 
 def _register_scheduled_jobs(job_store, triggers, clock) -> None:
-    """The three job rows `_wire_scheduler` registers on every boot (11 §4
+    """The four job rows `_wire_scheduler` registers on every boot (11 §4
     — extracted purely to keep `_wire_scheduler` under the size lint's
     line limit; not a domain concept of its own, same reasoning
     `_build_stores`/`_build_bus_wiring` were extracted for)."""
@@ -244,6 +247,27 @@ def _register_scheduled_jobs(job_store, triggers, clock) -> None:
             schedule="daily",
             catch_up="run_once_latest",
             created_at=clock.now(),
+        )
+    )
+    job_store.register_job(
+        Job(
+            id=BACKUP_SNAPSHOT_JOB,
+            name=BACKUP_SNAPSHOT_JOB,
+            # 05 Appendix E: daily. ADR-031 CORRECTS that table's
+            # `run_all_missed` to `run_once_latest`: after N days of
+            # downtime, run_all_missed would take N snapshots of the same
+            # current database under N different dates — N-1 of them
+            # lying about what those days held, at N times the disk. One
+            # snapshot now is the honest result; the manifest records the
+            # gap. The override is deliberate and argued in the ADR, not
+            # a silent deviation.
+            schedule="daily",
+            catch_up="run_once_latest",
+            created_at=clock.now(),
+            # 07 Part XII's own timing target is "< 60 s at 10-year size";
+            # doubled, the same way deadline_sweep took Appendix A's named
+            # figure rather than inventing one.
+            timeout_s=120,
         )
     )
 

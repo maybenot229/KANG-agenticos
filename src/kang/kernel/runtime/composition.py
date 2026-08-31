@@ -35,6 +35,7 @@ from kang.adapters.eventlog.schema import open_eventlog
 from kang.adapters.jsonl.audit_log import JsonlAuditLog
 from kang.adapters.os_windows.clock import SystemClock
 from kang.adapters.os_windows.startup_lock import FileStartupLock
+from kang.adapters.sqlite.backup_service import SqliteBackupService
 from kang.adapters.sqlite.calendar_store import SqliteCalendarStore
 from kang.adapters.sqlite.competition_store import SqliteCompetitionStore
 from kang.adapters.sqlite.connection import open_connection
@@ -57,6 +58,7 @@ from kang.api.operations import (
     ConfirmationDeps,
     PlannerDeps,
     make_audit_list_handler,
+    make_backup_snapshot_handler,
     make_competition_create_handler,
     make_competition_list_handler,
     make_deadline_create_handler,
@@ -236,6 +238,7 @@ class _HandlerWiring:
     competition_store: object
     milestone_store: object
     goal_store: object
+    backups: object
 
 
 def _build_handlers(w: _HandlerWiring) -> dict:
@@ -279,6 +282,7 @@ def _build_handlers(w: _HandlerWiring) -> dict:
         "permission.list": make_permission_list_handler(w.permission_engine),
         "audit.list": make_audit_list_handler(w.audit, w.clock),
         "system.health": make_system_health_handler(w.job_store, w.kill_switch),
+        "backup.snapshot": make_backup_snapshot_handler(w.backups, w.clock),
         "invocation.list": make_invocation_list_handler(w.invocations),
         **_build_project_cluster_handlers(w),
         **_build_consequential_handlers(w),
@@ -495,6 +499,10 @@ def _build_core_locked(
             competition_store=stores.competition_store,
             milestone_store=stores.milestone_store,
             goal_store=stores.goal_store,
+            # ADR-031: both connections injected, never opened here —
+            # DB-001 keeps the write connection thread-confined, and a
+            # snapshot must not smuggle in a second one.
+            backups=SqliteBackupService(kang, events, kang_home),
         )
     )
     dispatcher = Dispatcher(

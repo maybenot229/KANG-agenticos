@@ -24,6 +24,7 @@ from kang.adapters.sqlite.held_action_store import SqliteHeldActionStore
 from kang.domain.ports.held_action import HeldAction
 from kang.kernel.runtime.composition import build_core
 from kang.kernel.runtime.scheduler_wiring import (
+    BACKUP_SNAPSHOT_JOB,
     DEADLINE_SWEEP_JOB,
     HELD_ACTION_EXPIRE_JOB,
     MORNING_PLAN_JOB,
@@ -247,3 +248,56 @@ def test_a_real_boot_with_no_kang_toml_does_not_crash(tmp_path):
         server.wait_ready()  # must not raise / must not crash on boot
     finally:
         server.stop()
+
+
+def test_backup_snapshot_is_registered_and_a_real_boot_takes_a_real_snapshot(tmp_path):
+    """ADR-031: backup_snapshot is a real fourth job. Backed up nothing
+    for the whole of M1-M6 — the mechanisms shipped at M1 and the job
+    promised "at M3" never appeared.
+
+    Proves the write actually happened, not that a job_run row exists: a
+    real subprocess boot must leave a real, openable snapshot of BOTH
+    databases on disk, plus a manifest line.
+    """
+    _seed_config(tmp_path)
+    _register_job_then_backdate_it(tmp_path, days=2, job_id=BACKUP_SNAPSHOT_JOB)
+    assert _job_run_count(tmp_path, BACKUP_SNAPSHOT_JOB) == 0
+
+    server = _Server(tmp_path)
+    try:
+        server.wait_ready()
+        assert _job_run_count(tmp_path, BACKUP_SNAPSHOT_JOB) == 1
+        assert _job_run_outcome(tmp_path, BACKUP_SNAPSHOT_JOB) == "ok"
+    finally:
+        server.stop()
+
+    daily = tmp_path / "backups" / "daily"
+    snapshots = sorted(p.name for p in daily.iterdir())
+    assert any(n.startswith("kang-") for n in snapshots), snapshots
+    # The event log is snapshotted too — DB-001's durability pairing
+    # replays it for post-snapshot Tier-1 effects, so a database snapshot
+    # without it is a restore that silently loses the recovery window.
+    assert any(n.startswith("eventlog-") for n in snapshots), snapshots
+
+    # run_once_latest, not Appendix E's run_all_missed (ADR-031's
+    # correction): two days of downtime yields ONE snapshot, not two.
+    assert len([n for n in snapshots if n.startswith("kang-")]) == 1
+
+    manifest = (tmp_path / "backups" / "manifest.jsonl").read_text(encoding="utf-8")
+    assert len(manifest.strip().splitlines()) == 1  # exactly one run
+    assert '"integrity_ok": true' in manifest
+
+    # And the snapshot is genuinely openable, not just present.
+    restored = open_connection(
+        daily / [n for n in snapshots if n.startswith("kang-")][0]
+    )
+    try:
+        tables = {
+            r[0]
+            for r in restored.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+    finally:
+        restored.close()
+    assert {"task", "job", "schema_version"} <= tables
