@@ -35,6 +35,7 @@ from kang.kernel.scheduler.scheduler import Scheduler, SchedulerDeps
 
 __all__ = [
     "BACKUP_SNAPSHOT_JOB",
+    "BACKUP_VERIFY_JOB",
     "DEADLINE_SWEEP_JOB",
     "HELD_ACTION_EXPIRE_JOB",
     "JOB_OPERATIONS",
@@ -54,6 +55,7 @@ MORNING_PLAN_JOB = "morning_plan"  # 05 Appendix E's ritual name
 DEADLINE_SWEEP_JOB = "deadline_sweep"  # 05 Appendix E's ritual name (ADR-020)
 HELD_ACTION_EXPIRE_JOB = "held_action_expire"  # ADR-022
 BACKUP_SNAPSHOT_JOB = "backup_snapshot"  # 05 Appendix E name (ADR-031)
+BACKUP_VERIFY_JOB = "backup_verify"  # 05 Appendix E name (ADR-032)
 
 TICK_INTERVAL_S = 60  # ADR-019: how often the live tick re-runs catch-up.
 # A plain constant, not a kang.toml key — nothing has asked to tune this
@@ -71,6 +73,7 @@ JOB_OPERATIONS: dict[str, str] = {
     "deadline_sweep": "deadline.sweep",  # ADR-020
     "held_action_expire": "held_action.expire",  # ADR-022
     "backup_snapshot": "backup.snapshot",  # ADR-031
+    "backup_verify": "backup.verify",  # ADR-032
 }
 
 
@@ -204,10 +207,17 @@ def _wire_scheduler(wiring: _SchedulerWiring):
 
 
 def _register_scheduled_jobs(job_store, triggers, clock) -> None:
-    """The four job rows `_wire_scheduler` registers on every boot (11 §4
-    — extracted purely to keep `_wire_scheduler` under the size lint's
-    line limit; not a domain concept of its own, same reasoning
-    `_build_stores`/`_build_bus_wiring` were extracted for)."""
+    """The five job rows `_wire_scheduler` registers on every boot (11 §4
+    — split into two families purely to keep both this function and
+    `_wire_scheduler` under the size lint's line limit; neither split is
+    a domain concept of its own, same reasoning `_build_stores`/
+    `_build_bus_wiring` were extracted for)."""
+    _register_planning_jobs(job_store, triggers, clock)
+    _register_backup_jobs(job_store, clock)
+
+
+def _register_planning_jobs(job_store, triggers, clock) -> None:
+    """morning_plan, deadline_sweep, held_action_expire."""
     job_store.register_job(
         Job(
             id=MORNING_PLAN_JOB,
@@ -249,6 +259,10 @@ def _register_scheduled_jobs(job_store, triggers, clock) -> None:
             created_at=clock.now(),
         )
     )
+
+
+def _register_backup_jobs(job_store, clock) -> None:
+    """backup_snapshot (ADR-031), backup_verify (ADR-032)."""
     job_store.register_job(
         Job(
             id=BACKUP_SNAPSHOT_JOB,
@@ -267,6 +281,25 @@ def _register_scheduled_jobs(job_store, triggers, clock) -> None:
             # 07 Part XII's own timing target is "< 60 s at 10-year size";
             # doubled, the same way deadline_sweep took Appendix A's named
             # figure rather than inventing one.
+            timeout_s=120,
+        )
+    )
+    job_store.register_job(
+        Job(
+            id=BACKUP_VERIFY_JOB,
+            name=BACKUP_VERIFY_JOB,
+            # 05 Appendix E: monthly. Not a plain interval literal — the
+            # scheduler's interval dialect supports only every:{s}/daily/
+            # hourly/minutely, no "monthly" (ADR-032 correction 3) — so
+            # this uses the cron dialect already load-bearing for
+            # morning_plan's own wall-clock trigger, at the timezone
+            # kang.toml already provides. 03:00 on the 1st, after that
+            # day's 02:30 daily snapshot has already run.
+            schedule="cron:0 3 1 * *",
+            catch_up="run_once_latest",
+            created_at=clock.now(),
+            # 07 Part XII's own restore-test target is "< 5 min"; 120s
+            # matches backup_snapshot's own margin, not a fresh number.
             timeout_s=120,
         )
     )

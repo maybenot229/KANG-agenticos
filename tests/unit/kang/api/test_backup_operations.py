@@ -1,8 +1,13 @@
-"""backup.snapshot handler (ADR-031).
+"""backup.snapshot / backup.verify handlers (ADR-031, ADR-032).
 
-The claim: the handler is thin (12 §2) — it resolves the clock, calls the
-BackupService once, returns the manifest fields, and maps the port's typed
+The claim: each handler is thin (12 §2) — it resolves the clock, calls the
+BackupService once, returns the port's own fields, and maps a typed
 refusal to a loud API-006 code. No policy lives here.
+
+Verify's own claim, distinct from snapshot's: a FAILED check is a normal
+returned response (`integrity_ok=False`), never an `ApiError` — only "no
+snapshot to verify" raises. Collapsing a failed check into an exception
+would hide the one finding this operation exists to surface.
 """
 
 from __future__ import annotations
@@ -13,7 +18,8 @@ from kang.adapters.fakes.backup_service import FakeBackupService
 from kang.adapters.fakes.clock import FakeClock
 from kang.api.dispatch import HandlerContext
 from kang.api.errors import ApiError
-from kang.api.operations import make_backup_snapshot_handler
+from kang.api.operations import make_backup_snapshot_handler, make_backup_verify_handler
+from kang.domain.ports.backup import VerifyRecord
 
 CONTEXT = HandlerContext(
     principal="kernel:scheduler",
@@ -70,3 +76,63 @@ def test_a_refusal_records_no_snapshot():
     with pytest.raises(ApiError):
         _handler(service, clock)(CONTEXT, {})
     assert service.taken == []
+
+
+# ---- ADR-032: backup.verify ---------------------------------------------
+
+
+def _verify_handler(service, clock):
+    return make_backup_verify_handler(service, clock)
+
+
+def test_verify_returns_the_record_fields():
+    service, clock = FakeBackupService(), FakeClock()
+    result = _verify_handler(service, clock)(CONTEXT, {})
+    assert set(result) == {
+        "snapshot",
+        "integrity_ok",
+        "read_shapes_checked",
+        "read_shapes_not_built",
+        "read_shape_errors",
+        "live_row_counts",
+        "snapshot_row_counts",
+        "schema_version",
+    }
+
+
+def test_a_failed_check_is_a_normal_response_not_a_raise():
+    """The central claim of ADR-032 D4, at the handler seam: a failed
+    integrity check must reach the caller as data, not disappear inside
+    an exception nobody without try/except would see."""
+    service, clock = FakeBackupService(), FakeClock()
+    service.verify_result = VerifyRecord(
+        verified_at=clock.now().isoformat(),
+        snapshot="backups/daily/kang-20260101.db",
+        integrity_ok=False,
+        read_shapes_checked=("v_active_deadlines", "v_today_tasks"),
+        read_shapes_not_built=("v_project_memory", "v_contested_records"),
+        read_shape_errors=("v_today_tasks: database disk image is malformed",),
+        live_row_counts={},
+        snapshot_row_counts={},
+        schema_version=17,
+    )
+    result = _verify_handler(service, clock)(CONTEXT, {})  # does NOT raise
+    assert result["integrity_ok"] is False
+    assert result["read_shape_errors"] != []
+
+
+def test_no_snapshot_to_verify_is_a_loud_internal_error():
+    """The ONLY case that raises — a structurally different condition
+    from a failed check (nothing exists to open at all)."""
+    service, clock = FakeBackupService(), FakeClock()
+    service.verify_fail_with = "no daily snapshot exists to verify"
+    with pytest.raises(ApiError) as exc:
+        _verify_handler(service, clock)(CONTEXT, {})
+    assert exc.value.code == "internal"
+    assert "refused" in exc.value.message
+
+
+def test_the_verify_handler_also_uses_the_injected_clock():
+    service, clock = FakeBackupService(), FakeClock()
+    _verify_handler(service, clock)(CONTEXT, {})
+    assert service.verified[0].verified_at == clock.now().isoformat()

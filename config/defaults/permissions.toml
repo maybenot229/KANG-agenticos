@@ -60,7 +60,8 @@
 # domain principals. tasks.write (morning_plan -> plan.generate),
 # deadlines.mark_alerted (deadline_sweep -> deadline.sweep, ADR-020),
 # held_actions.expire (held_action_expire -> held_action.expire, ADR-022),
-# backups.write (backup_snapshot -> backup.snapshot, ADR-031).
+# backups.write (backup_snapshot -> backup.snapshot, ADR-031;
+# backup_verify -> backup.verify, ADR-032 — same scope, same directory).
 "kernel:scheduler" = [
   "tasks.write",
   "deadlines.mark_alerted",

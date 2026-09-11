@@ -1,9 +1,16 @@
-"""SqliteBackupService against real databases (ADR-031).
+"""SqliteBackupService against real databases (ADR-031, ADR-032).
 
 The claim: the daily snapshot takes BOTH databases, copies the current
 audit file, records one manifest line, promotes the first snapshot of a
 month, and prunes to 07 Part XII's retention — and refuses, loudly,
 rather than archiving suspect state.
+
+Verify's claim (ADR-032): it opens the LATEST snapshot genuinely
+read-only, runs the two named-query-suite shapes that actually exist
+against it via the real production store classes, reports row counts
+against live without gating on them, and returns a record — never an
+exception — for a failed check; it raises only when there is nothing to
+verify at all.
 """
 
 from __future__ import annotations
@@ -31,7 +38,7 @@ def home(tmp_path):
     events = open_connection(tmp_path / "events.db")
     events.execute("CREATE TABLE event (id TEXT PRIMARY KEY)")
     events.commit()
-    yield tmp_path, SqliteBackupService(conn, events, tmp_path)
+    yield tmp_path, SqliteBackupService(conn, events, tmp_path, FakeClock())
     conn.close()
     events.close()
 
@@ -163,7 +170,7 @@ def test_a_corrupt_database_is_refused_never_archived(tmp_path):
 
     conn = open_connection(db)
     events = open_connection(tmp_path / "events.db")
-    service = SqliteBackupService(conn, events, tmp_path)
+    service = SqliteBackupService(conn, events, tmp_path, FakeClock())
     try:
         with pytest.raises(BackupError):
             service.take_snapshot(NOW)
@@ -171,3 +178,120 @@ def test_a_corrupt_database_is_refused_never_archived(tmp_path):
         conn.close()
         events.close()
     assert not (tmp_path / "backups" / "daily" / "kang-20260817.db").exists()
+
+
+# ---- ADR-032: backup.verify -------------------------------------------
+
+
+def test_verify_raises_when_there_is_nothing_to_verify(home):
+    """Distinct from a failed check (D4): no snapshot at all is a
+    structurally different condition — there is nothing to open."""
+    root, service = home
+    with pytest.raises(BackupError):
+        service.verify_latest(NOW)
+
+
+def test_verify_checks_the_latest_snapshot(home):
+    root, service = home
+    service.take_snapshot("2026-08-15T02:30:00+00:00")
+    service.take_snapshot("2026-08-17T02:30:00+00:00")
+    record = service.verify_latest("2026-08-17T03:00:00+00:00")
+    assert record.snapshot.endswith("kang-20260817.db")
+    assert record.integrity_ok is True
+
+
+def test_verify_runs_the_real_read_shapes_against_the_snapshot(home):
+    """ADR-032 D1: the two shapes that exist, exercised via the REAL
+    production store classes against the restored connection — proving
+    the actual read path, not a hand-duplicated query of it."""
+    root, service = home
+    conn = open_connection(root / "kang.db")
+    try:
+        conn.execute(
+            "INSERT INTO deadline (id, kind, title, at, status, created_at, "
+            "updated_at, device_id, revision) VALUES "
+            "('d-1', 'custom', 'ship', '2026-09-01T00:00:00+00:00', 'tracked', "
+            "'2026-08-17T00:00:00+00:00', '2026-08-17T00:00:00+00:00', "
+            "'dev', 1)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    service.take_snapshot(NOW)
+    record = service.verify_latest("2026-08-17T03:00:00+00:00")
+
+    assert set(record.read_shapes_checked) == {"v_active_deadlines", "v_today_tasks"}
+    assert record.read_shape_errors == ()
+    assert record.read_shapes_not_built == ("v_project_memory", "v_contested_records")
+
+
+def test_verify_reports_row_counts_without_gating_on_them(home):
+    """ADR-032 D2: reported as data, never a pass/fail threshold — no
+    number for "±expected churn" exists anywhere in the constitution."""
+    root, service = home
+    service.take_snapshot(NOW)
+    conn = open_connection(root / "kang.db")
+    try:
+        conn.execute(
+            "INSERT INTO task (id, title, status, priority, created_at, "
+            "updated_at, device_id, revision) VALUES "
+            "('t-1', 'new after snapshot', 'open', 3, 'c', 'u', 'dev', 1)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Live now has a row the snapshot does not — verify reports the
+    # mismatch as data and still succeeds; nothing about the run fails.
+    record = service.verify_latest("2026-08-17T03:00:00+00:00")
+    assert record.live_row_counts["task"] == 1
+    assert record.snapshot_row_counts["task"] == 0
+    assert record.integrity_ok is True
+
+
+def test_verify_of_a_corrupt_snapshot_returns_a_failed_record_not_an_exception(
+    tmp_path,
+):
+    """D4, the central claim: a bad restore-test result is the SUCCESSFUL
+    response of this operation, not a raise — collapsing it into an
+    exception would hide the one finding this job exists to surface."""
+    conn = open_connection(tmp_path / "kang.db")
+    apply_migrations(conn, MIGRATIONS_DIR, FakeClock())
+    events = open_connection(tmp_path / "events.db")
+    events.execute("CREATE TABLE event (id TEXT PRIMARY KEY)")
+    events.commit()
+    service = SqliteBackupService(conn, events, tmp_path, FakeClock())
+    service.take_snapshot(NOW)
+    conn.close()
+    events.close()
+
+    snapshot = tmp_path / "backups" / "daily" / "kang-20260817.db"
+    raw = bytearray(snapshot.read_bytes())
+    page_size = int.from_bytes(raw[16:18], "big") or 4096
+    raw[page_size * 2 : page_size * 3] = bytes(page_size)
+    snapshot.write_bytes(bytes(raw))
+
+    conn = open_connection(tmp_path / "kang.db")
+    events = open_connection(tmp_path / "events.db")
+    service = SqliteBackupService(conn, events, tmp_path, FakeClock())
+    try:
+        record = service.verify_latest("2026-08-17T03:00:00+00:00")  # does NOT raise
+    finally:
+        conn.close()
+        events.close()
+    assert record.integrity_ok is False
+
+
+def test_a_verify_manifest_line_is_distinguishable_from_a_snapshot_one(home):
+    root, service = home
+    service.take_snapshot(NOW)
+    service.verify_latest("2026-08-17T03:00:00+00:00")
+    lines = [
+        json.loads(line)
+        for line in (root / "backups" / "manifest.jsonl")
+        .read_text(encoding="utf-8")
+        .strip()
+        .splitlines()
+    ]
+    assert [entry["kind"] for entry in lines] == ["snapshot", "verify"]

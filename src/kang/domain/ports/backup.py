@@ -13,12 +13,15 @@ is the implementation's duty, not the caller's: a failed integrity check
 raises rather than returning a record, so a caller cannot mistake a
 refusal for a success (07 Part XV F1).
 
-HONEST LIMIT (07 Part XII.3, restated because it bounds what this port
-can claim): "A backup that hasn't been restore-tested is treated as
-nonexistent." This port produces snapshots that are taken, recorded and
-pruned. The monthly verification job that would make them *backups* is
-deferred (ADR-031 D3) — until it exists, nothing may report that KANG
-has backups on the strength of this port alone.
+HONEST LIMIT (07 Part XII.3), now half-closed by `verify_latest`
+(ADR-032): "A backup that hasn't been restore-tested is treated as
+nonexistent." `verify_latest` opens the latest daily snapshot read-only,
+integrity-checks it, and exercises the two named read shapes that
+actually exist in code (`v_active_deadlines`/`v_today_tasks` —
+`v_project_memory`/`v_contested_records` have no implementation; Memory
+is Phase 2). Row counts vs. live are reported, never gated — 07 Part
+XII.3's own "±expected churn" has no number anywhere in the constitution,
+and this port does not invent one (ADR-032 D2).
 """
 
 from __future__ import annotations
@@ -26,7 +29,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-__all__ = ["BackupError", "BackupService", "SnapshotRecord"]
+__all__ = [
+    "BackupError",
+    "BackupService",
+    "SnapshotRecord",
+    "VerifyRecord",
+]
 
 
 class BackupError(Exception):
@@ -57,8 +65,36 @@ class SnapshotRecord:
     pruned: tuple[str, ...]  # paths retention removed in this pass
 
 
+@dataclass(frozen=True)
+class VerifyRecord:
+    """One verify manifest entry (ADR-032). Unlike `SnapshotRecord`, a
+    failed check is a normal, returned result — not an exception. A
+    corrupted snapshot or a broken read shape IS the finding this exists
+    to surface (05_AGENTS Appendix A: "alert on any failure — no silent
+    skip, ever"), so it must reach the caller, not be swallowed as a
+    raise. `BackupError` is reserved for "nothing to verify" — a
+    structurally different condition from "checked and failed"."""
+
+    verified_at: str  # ISO-8601, from the injected clock
+    snapshot: str  # which daily snapshot was opened
+    integrity_ok: bool
+    read_shapes_checked: tuple[str, ...]  # names of the shapes actually run
+    read_shapes_not_built: tuple[str, ...]  # named views with no
+    #   implementation yet (v_project_memory/v_contested_records — Memory
+    #   is Phase 2), reported so "2/4" never reads as "passed"
+    read_shape_errors: tuple[str, ...]  # empty when every checked shape
+    #   returned without raising
+    live_row_counts: dict[str, int]
+    snapshot_row_counts: dict[str, int]
+    schema_version: int
+
+    @property
+    def read_shapes_ok(self) -> bool:
+        return not self.read_shape_errors
+
+
 class BackupService(Protocol):
-    """Takes and records snapshots per 07_DATABASE Part XII."""
+    """Takes, records, and verifies snapshots per 07_DATABASE Part XII."""
 
     def take_snapshot(self, now: str) -> SnapshotRecord:
         """Snapshot the database and its event log, copy the current-month
@@ -67,4 +103,14 @@ class BackupService(Protocol):
         Raises `BackupError` if the integrity gate fails or a target
         already exists — never returns a partial record.
         """
+        ...
+
+    def verify_latest(self, now: str) -> VerifyRecord:
+        """Restore-test the most recent daily snapshot (ADR-032): open it
+        read-only, integrity-check it, exercise the read shapes that
+        exist today, and report row counts against the live database.
+
+        Raises `BackupError` only when there is no daily snapshot to
+        verify at all — a failed check is a returned `VerifyRecord`, not
+        an exception (see that dataclass's own docstring)."""
         ...

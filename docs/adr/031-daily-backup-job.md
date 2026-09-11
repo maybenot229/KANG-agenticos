@@ -68,7 +68,7 @@ Following ADR-020/ADR-022's established pattern exactly: an operation, a `Job` r
 
 ### D3 — Deferred, each with a trigger
 
-- **`backup.verify` — the monthly restore test (D016).** Deferred to its own ADR: it is a second job with materially different mechanics (open a snapshot read-only, run the named-query suite against it, row-count sanity vs. live). **Trigger: immediately after D1 lands** — see the honesty note below, because this one is not a comfortable deferral.
+- **`backup.verify` — the monthly restore test (D016).** Deferred to its own ADR: it is a second job with materially different mechanics (open a snapshot read-only, run the named-query suite against it, row-count sanity vs. live). **Trigger: immediately after D1 lands** — see the honesty note below, because this one is not a comfortable deferral. **Closed: [[032-backup-verify-job.md]] (2026-09-11).**
 - **`restore.run` / `backup.snapshot_now`** — both consequential (12_API `:201`), so both need the ADR-021 held-action gate. Trigger: a UI surface that offers them, or a real restore need.
 - **Single-record restore** (Memory §7.2) — Phase 2, with the memory browser.
 - **Off-machine backup warning** (Part XII.5) — trigger: `system.health` gains the backup-age field it currently and honestly omits.
@@ -81,7 +81,7 @@ Following ADR-020/ADR-022's established pattern exactly: an operation, a `Job` r
 
 > "**A backup that hasn't been restore-tested is treated as nonexistent.**"
 
-By the constitution's own standard, **D1 alone does not give KANG backups.** It gives KANG snapshots that are taken, recorded, and pruned. That is strictly better than the current state of nothing, and it is a prerequisite for the verification job — but until `backup.verify` lands, no document, health panel, or session summary may claim KANG "has backups." Stated here so the next reader inherits the caveat with the capability, and so D3's first item is understood as a debt with a date, not a nice-to-have.
+By the constitution's own standard, **D1 alone does not give KANG backups.** It gives KANG snapshots that are taken, recorded, and pruned. That is strictly better than the current state of nothing, and it is a prerequisite for the verification job — but until `backup.verify` lands, no document, health panel, or session summary may claim KANG "has backups." **`backup.verify` landed 2026-09-11 ([[032-backup-verify-job.md]]) — this caveat is now historical, kept for the record of why D1 alone was insufficient.** Stated here so the next reader inherits the caveat with the capability, and so D3's first item is understood as a debt with a date, not a nice-to-have.
 
 ---
 

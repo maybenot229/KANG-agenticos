@@ -23,7 +23,12 @@ from pydantic import BaseModel
 
 from kang.api.errors import ERROR_CODES
 from kang.api.schemas.audit import AuditListRequest, AuditListResponse
-from kang.api.schemas.backup import BackupSnapshotRequest, BackupSnapshotResponse
+from kang.api.schemas.backup import (
+    BackupSnapshotRequest,
+    BackupSnapshotResponse,
+    BackupVerifyRequest,
+    BackupVerifyResponse,
+)
 from kang.api.schemas.competition import (
     CompetitionCreateRequest,
     CompetitionCreateResponse,
@@ -457,6 +462,20 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         "Snapshot the database and event log, record the manifest, prune.",
         schemas=OperationSchemas(
             request=BackupSnapshotRequest, response=BackupSnapshotResponse
+        ),
+    ),
+    # backup.verify (ADR-032): the monthly restore test 07 Part XII.3
+    # requires — "a backup that hasn't been restore-tested is treated as
+    # nonexistent." Same scope as backup.snapshot: both act on the
+    # backups/ directory, and this one also appends to the same manifest.
+    _op(
+        "backup.verify",
+        "command",
+        "backups.write",
+        True,
+        "Restore-test the latest daily snapshot; report, never gate.",
+        schemas=OperationSchemas(
+            request=BackupVerifyRequest, response=BackupVerifyResponse
         ),
     ),
     # audit.list / system.health: added 2026-08-05 for the System domain's

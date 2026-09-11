@@ -19,7 +19,10 @@ change.
 
 from __future__ import annotations
 
-from kang.api.operations.backup_ops import make_backup_snapshot_handler
+from kang.api.operations.backup_ops import (
+    make_backup_snapshot_handler,
+    make_backup_verify_handler,
+)
 from kang.api.operations.competition_ops import (
     COMPETITIONS_PRINCIPAL,
     make_competition_create_handler,
@@ -94,6 +97,7 @@ from kang.api.operations.task_ops import (
 
 __all__ = [
     "make_backup_snapshot_handler",
+    "make_backup_verify_handler",
     "COMPETITIONS_PRINCIPAL",
     "ConfirmationDeps",
     "ConfirmationRequest",

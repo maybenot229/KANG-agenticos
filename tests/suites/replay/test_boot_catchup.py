@@ -19,12 +19,15 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from kang.adapters.fakes.clock import FakeClock
+from kang.adapters.sqlite.backup_service import SqliteBackupService
 from kang.adapters.sqlite.connection import open_connection
 from kang.adapters.sqlite.held_action_store import SqliteHeldActionStore
 from kang.domain.ports.held_action import HeldAction
 from kang.kernel.runtime.composition import build_core
 from kang.kernel.runtime.scheduler_wiring import (
     BACKUP_SNAPSHOT_JOB,
+    BACKUP_VERIFY_JOB,
     DEADLINE_SWEEP_JOB,
     HELD_ACTION_EXPIRE_JOB,
     MORNING_PLAN_JOB,
@@ -301,3 +304,59 @@ def test_backup_snapshot_is_registered_and_a_real_boot_takes_a_real_snapshot(tmp
     finally:
         restored.close()
     assert {"task", "job", "schema_version"} <= tables
+
+
+def test_backup_verify_is_registered_and_a_real_boot_restore_tests_a_real_snapshot(
+    tmp_path,
+):
+    """ADR-032: backup_verify is a real fifth job, closing 07 Part XII.3's
+    "a backup that hasn't been restore-tested is treated as nonexistent" —
+    the gap D1 (backup_snapshot, ADR-031) alone left open.
+
+    Uses `cron:` (Appendix E says "monthly", which the interval dialect
+    does not support — ADR-032 correction 3), so this is also the first
+    proof that a non-morning_plan job catches up correctly on the cron
+    dialect, not just the interval one every other job here uses.
+
+    A real snapshot is seeded first, via the real production adapter —
+    verify_latest raises on "nothing to verify", so without one this
+    would prove only that the job runs, not that it restore-tests
+    anything real.
+    """
+    _seed_config(tmp_path)
+    built = build_core(tmp_path)
+    kang_conn, events_conn = built._connections  # [kang, events] (Core's own order)
+    SqliteBackupService(kang_conn, events_conn, tmp_path, FakeClock()).take_snapshot(
+        "2026-07-15T02:30:00+00:00"
+    )
+    built.close()
+
+    _register_job_then_backdate_it(tmp_path, days=40, job_id=BACKUP_VERIFY_JOB)
+    assert _job_run_count(tmp_path, BACKUP_VERIFY_JOB) == 0
+
+    server = _Server(tmp_path)
+    try:
+        server.wait_ready()
+        assert _job_run_count(tmp_path, BACKUP_VERIFY_JOB) == 1
+        assert _job_run_outcome(tmp_path, BACKUP_VERIFY_JOB) == "ok"
+        # The other four jobs are unaffected — five independently
+        # catching-up jobs, not one replacing the others.
+        assert _job_run_count(tmp_path, BACKUP_SNAPSHOT_JOB) == 0
+        assert _job_run_count(tmp_path, MORNING_PLAN_JOB) == 0
+    finally:
+        server.stop()
+
+    lines = [
+        line
+        for line in (tmp_path / "backups" / "manifest.jsonl")
+        .read_text(encoding="utf-8")
+        .strip()
+        .splitlines()
+    ]
+    kinds = [line for line in lines if '"kind": "verify"' in line]
+    assert len(kinds) == 1, lines
+    assert '"integrity_ok": true' in kinds[0]
+    # The real read shapes actually ran against the real snapshot — not
+    # merely that a job_run row exists.
+    assert '"v_active_deadlines"' in kinds[0]
+    assert '"v_today_tasks"' in kinds[0]
