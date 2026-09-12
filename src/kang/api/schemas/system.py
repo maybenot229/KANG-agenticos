@@ -8,12 +8,17 @@ verification result, index parity, integrity-incident counter").
 Added 2026-08-05: scoped to job statuses + the automation kill-switch
 only — `JobStore.list_jobs()`/`.consecutive_failures()` and
 `KillSwitch.is_engaged()` already existed. Backup age, restore-
-verification, index parity, and the integrity-incident counter are NOT
-in this response — no port/store exposes them yet, and inventing that
-tracking now (rather than exposing something that already exists, the
+verification, index parity, and the integrity-incident counter were NOT
+in this response — no port/store exposed them yet, and inventing that
+tracking then (rather than exposing something that already exists, the
 `deadline.list`/`audit.list` pattern this session has followed
-throughout) would be new domain surface, not API-layer exposure. Named
-as a real, open gap, not silently completed.
+throughout) would have been new domain surface, not API-layer exposure.
+
+Backup age + last restore-verification result joined 2026-09-12
+(ADR-033), once `BackupService.latest_status()` existed to read
+(`backups/manifest.jsonl`, ADR-031/032) — the same pure-exposure pattern
+the rest of this response already followed. Index parity and the
+integrity-incident counter remain the open, honestly-named gap.
 """
 
 from __future__ import annotations
@@ -53,7 +58,23 @@ class SystemHealthResponse(BaseModel):
     is_engaged()`). `jobs` is empty whenever the scheduler never wired
     (07 F8: missing/invalid `kang.toml` fails closed to no automation) —
     an honest empty list, not an error, since job_store itself always
-    constructs regardless of scheduler wiring (2026-08-05)."""
+    constructs regardless of scheduler wiring (2026-08-05).
+
+    `last_snapshot_at`/`last_verify_at` (ADR-033) are raw ISO-8601
+    timestamps, not precomputed ages — matching every other timestamp
+    this API serves; the client ages them, same as it already must for
+    `task.created_at`/`deadline.at`. All three backup fields are `None`
+    together when no snapshot has ever run, and `last_verify_at`/
+    `last_verify_ok` alone are `None` when a snapshot exists but no
+    verify has run yet — two genuinely different "nothing yet" states,
+    not collapsed into one. `last_verify_ok` is the check's `integrity_ok`
+    AND `read_shapes_ok` together (ADR-032) — a clean integrity check
+    with a broken read shape is still a failed restore-test by 07 Part
+    XII.3's own standard, and reporting integrity alone would drop that
+    half of the finding."""
 
     jobs: list[JobStatus]
     automation_engaged: bool
+    last_snapshot_at: str | None
+    last_verify_at: str | None
+    last_verify_ok: bool | None

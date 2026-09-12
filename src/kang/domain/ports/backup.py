@@ -22,6 +22,11 @@ actually exist in code (`v_active_deadlines`/`v_today_tasks` —
 is Phase 2). Row counts vs. live are reported, never gated — 07 Part
 XII.3's own "±expected churn" has no number anywhere in the constitution,
 and this port does not invent one (ADR-032 D2).
+
+`latest_status` (ADR-033) is the read half `system.health` (09_UI §12)
+needs — "backup age + last restore-verification result" — and is
+deliberately the only method here with no clock parameter: it reads what
+already happened, it does not stamp anything new.
 """
 
 from __future__ import annotations
@@ -32,6 +37,7 @@ from typing import Protocol
 __all__ = [
     "BackupError",
     "BackupService",
+    "BackupStatus",
     "SnapshotRecord",
     "VerifyRecord",
 ]
@@ -93,6 +99,26 @@ class VerifyRecord:
         return not self.read_shape_errors
 
 
+@dataclass(frozen=True)
+class BackupStatus:
+    """The read half of the port (ADR-033) — what `system.health` (09_UI
+    §12) needs: "backup age + last restore-verification result". Both
+    halves are `None` when that kind of run has never happened; not an
+    error, since a fresh Core genuinely has no backup history yet."""
+
+    last_snapshot_at: str | None  # most recent "kind": "snapshot" line's
+    #   taken_at — raw timestamp, not a precomputed age (matching every
+    #   other timestamp this API serves; the client ages it, same as it
+    #   already must for task.created_at/deadline.at/etc.)
+    last_verify_at: str | None  # most recent "kind": "verify" line's
+    #   verified_at
+    last_verify_ok: bool | None  # that line's integrity_ok AND (not
+    #   read_shape_errors) — a clean integrity check with a broken read
+    #   shape is still a failed restore-test by 07 Part XII.3's own
+    #   standard ("every view returns"); integrity_ok alone would drop
+    #   that half of the finding
+
+
 class BackupService(Protocol):
     """Takes, records, and verifies snapshots per 07_DATABASE Part XII."""
 
@@ -113,4 +139,11 @@ class BackupService(Protocol):
         Raises `BackupError` only when there is no daily snapshot to
         verify at all — a failed check is a returned `VerifyRecord`, not
         an exception (see that dataclass's own docstring)."""
+        ...
+
+    def latest_status(self) -> BackupStatus:
+        """The most recent snapshot and verify entries (ADR-033) — pure
+        read, opens no `kang.db` connection, touches nothing, never
+        raises. No manifest at all is the same as an empty one: both
+        halves of the returned `BackupStatus` are `None`."""
         ...

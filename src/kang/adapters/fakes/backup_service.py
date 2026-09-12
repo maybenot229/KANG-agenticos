@@ -15,7 +15,12 @@ here.
 
 from __future__ import annotations
 
-from kang.domain.ports.backup import BackupError, SnapshotRecord, VerifyRecord
+from kang.domain.ports.backup import (
+    BackupError,
+    BackupStatus,
+    SnapshotRecord,
+    VerifyRecord,
+)
 
 __all__ = ["FakeBackupService"]
 
@@ -69,3 +74,20 @@ class FakeBackupService:
         )
         self.verified.append(record)
         return record
+
+    def latest_status(self) -> BackupStatus:
+        """ADR-033: mirrors the real adapter's "last line of each kind"
+        semantics using the two lists this fake already keeps, in the
+        order calls actually happened — not merely the last call to
+        EITHER method, since a snapshot and a verify are independent
+        histories."""
+        last_verify = self.verified[-1] if self.verified else None
+        return BackupStatus(
+            last_snapshot_at=self.taken[-1].taken_at if self.taken else None,
+            last_verify_at=last_verify.verified_at if last_verify else None,
+            last_verify_ok=(
+                last_verify.integrity_ok and last_verify.read_shapes_ok
+                if last_verify
+                else None
+            ),
+        )

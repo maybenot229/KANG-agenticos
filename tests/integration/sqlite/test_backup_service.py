@@ -295,3 +295,84 @@ def test_a_verify_manifest_line_is_distinguishable_from_a_snapshot_one(home):
         .splitlines()
     ]
     assert [entry["kind"] for entry in lines] == ["snapshot", "verify"]
+
+
+# ---- ADR-033: latest_status ---------------------------------------------
+
+
+def test_latest_status_of_a_fresh_home_is_all_none(home):
+    """No manifest at all — a fresh Core — is the same as an empty one,
+    not an error."""
+    root, service = home
+    status = service.latest_status()
+    assert status.last_snapshot_at is None
+    assert status.last_verify_at is None
+    assert status.last_verify_ok is None
+
+
+def test_latest_status_after_a_snapshot_with_no_verify_yet(home):
+    """Two genuinely different 'nothing yet' states, not collapsed into
+    one: a snapshot exists, but no verify has run yet."""
+    root, service = home
+    service.take_snapshot(NOW)
+    status = service.latest_status()
+    assert status.last_snapshot_at == NOW
+    assert status.last_verify_at is None
+    assert status.last_verify_ok is None
+
+
+def test_latest_status_reflects_the_most_recent_of_each_kind(home):
+    root, service = home
+    service.take_snapshot("2026-08-15T02:30:00+00:00")
+    service.verify_latest("2026-08-15T03:00:00+00:00")
+    service.take_snapshot("2026-08-17T02:30:00+00:00")
+    status = service.latest_status()
+    assert status.last_snapshot_at == "2026-08-17T02:30:00+00:00"  # the later one
+    assert status.last_verify_at == "2026-08-15T03:00:00+00:00"  # unaffected
+
+
+def test_latest_status_reports_a_clean_verify_as_ok(home):
+    root, service = home
+    service.take_snapshot(NOW)
+    service.verify_latest("2026-08-17T03:00:00+00:00")
+    assert service.latest_status().last_verify_ok is True
+
+
+def test_latest_status_reports_a_broken_read_shape_as_not_ok(tmp_path):
+    """The central claim: integrity_ok alone is not enough — a clean
+    integrity check with a broken read shape is still a failed
+    restore-test by 07 Part XII.3's own standard ("every view returns").
+
+    Renames one COLUMN (not the whole table) on the SNAPSHOT only, not
+    live: `DeadlineStore.active()`'s WHERE clause needs `status`, so its
+    read shape fails, while `_row_counts`'s bare `COUNT(*)` and
+    `integrity_check` both stay clean — isolating the one thing this
+    test means to break. (`DROP COLUMN` was tried first and refused by
+    SQLite itself: the partial index on `status` depends on it — a real
+    finding about the schema, not a test bug, left as this comment
+    rather than silently switched away from without a trace.)
+    """
+    conn = open_connection(tmp_path / "kang.db")
+    apply_migrations(conn, MIGRATIONS_DIR, FakeClock())
+    events = open_connection(tmp_path / "events.db")
+    events.execute("CREATE TABLE event (id TEXT PRIMARY KEY)")
+    events.commit()
+    service = SqliteBackupService(conn, events, tmp_path, FakeClock())
+    service.take_snapshot(NOW)
+
+    snap = open_connection(tmp_path / "backups" / "daily" / "kang-20260817.db")
+    snap.execute("ALTER TABLE deadline RENAME COLUMN status TO status_renamed")
+    snap.commit()
+    snap.close()
+
+    service.verify_latest("2026-08-17T03:00:00+00:00")
+    conn.close()
+    events.close()
+
+    conn = open_connection(tmp_path / "kang.db")
+    events = open_connection(tmp_path / "events.db")
+    service = SqliteBackupService(conn, events, tmp_path, FakeClock())
+    status = service.latest_status()
+    conn.close()
+    events.close()
+    assert status.last_verify_ok is False

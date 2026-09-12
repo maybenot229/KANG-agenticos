@@ -282,7 +282,9 @@ def _build_handlers(w: _HandlerWiring) -> dict:
         "explain.memory": make_explain_stub_handler("memory record"),
         "permission.list": make_permission_list_handler(w.permission_engine),
         "audit.list": make_audit_list_handler(w.audit, w.clock),
-        "system.health": make_system_health_handler(w.job_store, w.kill_switch),
+        "system.health": make_system_health_handler(
+            w.job_store, w.kill_switch, w.backups
+        ),
         "backup.snapshot": make_backup_snapshot_handler(w.backups, w.clock),
         "backup.verify": make_backup_verify_handler(w.backups, w.clock),
         "invocation.list": make_invocation_list_handler(w.invocations),

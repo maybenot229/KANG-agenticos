@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from kang.adapters.fakes.audit_log import FakeAuditLog
+from kang.adapters.fakes.backup_service import FakeBackupService
 from kang.adapters.fakes.clock import FakeClock
 from kang.adapters.fakes.job_store import FakeJobStore, FakeKillSwitch
 from kang.api.dispatch import HandlerContext
@@ -63,8 +64,16 @@ class TestAuditList:
 
 class TestSystemHealth:
     def test_empty_job_store_lists_nothing(self):
-        handler = make_system_health_handler(FakeJobStore(), FakeKillSwitch())
-        assert handler(CONTEXT, {}) == {"jobs": [], "automation_engaged": False}
+        handler = make_system_health_handler(
+            FakeJobStore(), FakeKillSwitch(), FakeBackupService()
+        )
+        assert handler(CONTEXT, {}) == {
+            "jobs": [],
+            "automation_engaged": False,
+            "last_snapshot_at": None,
+            "last_verify_at": None,
+            "last_verify_ok": None,
+        }
 
     def test_lists_a_registered_job_with_its_failure_count(self):
         job_store = FakeJobStore(clock=FakeClock())
@@ -77,7 +86,9 @@ class TestSystemHealth:
                 created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
             )
         )
-        handler = make_system_health_handler(job_store, FakeKillSwitch())
+        handler = make_system_health_handler(
+            job_store, FakeKillSwitch(), FakeBackupService()
+        )
         (job,) = handler(CONTEXT, {})["jobs"]
         assert job == {
             "id": "morning_plan",
@@ -92,5 +103,50 @@ class TestSystemHealth:
     def test_reflects_the_kill_switch_state(self):
         kill_switch = FakeKillSwitch()
         kill_switch.engage("manual pause for testing")
-        handler = make_system_health_handler(FakeJobStore(), kill_switch)
+        handler = make_system_health_handler(
+            FakeJobStore(), kill_switch, FakeBackupService()
+        )
         assert handler(CONTEXT, {})["automation_engaged"] is True
+
+    # ---- ADR-033: backup age + last restore-verification result --------
+
+    def test_reflects_a_snapshot_with_no_verify_yet(self):
+        backups = FakeBackupService()
+        backups.take_snapshot("2026-09-12T02:30:00+00:00")
+        handler = make_system_health_handler(FakeJobStore(), FakeKillSwitch(), backups)
+        result = handler(CONTEXT, {})
+        assert result["last_snapshot_at"] == "2026-09-12T02:30:00+00:00"
+        assert result["last_verify_at"] is None
+        assert result["last_verify_ok"] is None
+
+    def test_reflects_a_clean_verify(self):
+        backups = FakeBackupService()
+        backups.take_snapshot("2026-09-12T02:30:00+00:00")
+        backups.verify_latest("2026-09-12T03:00:00+00:00")
+        handler = make_system_health_handler(FakeJobStore(), FakeKillSwitch(), backups)
+        result = handler(CONTEXT, {})
+        assert result["last_verify_at"] == "2026-09-12T03:00:00+00:00"
+        assert result["last_verify_ok"] is True
+
+    def test_reflects_a_failed_verify_not_just_integrity(self):
+        """integrity_ok alone is not the claim — a broken read shape with
+        a clean integrity check must still report last_verify_ok=False
+        (ADR-032/033)."""
+        from kang.domain.ports.backup import VerifyRecord
+
+        backups = FakeBackupService()
+        backups.take_snapshot("2026-09-12T02:30:00+00:00")
+        backups.verify_result = VerifyRecord(
+            verified_at="2026-09-12T03:00:00+00:00",
+            snapshot="backups/daily/kang-20260912.db",
+            integrity_ok=True,  # clean integrity...
+            read_shapes_checked=("v_active_deadlines", "v_today_tasks"),
+            read_shapes_not_built=("v_project_memory", "v_contested_records"),
+            read_shape_errors=("v_today_tasks: broken",),  # ...but a broken shape
+            live_row_counts={},
+            snapshot_row_counts={},
+            schema_version=17,
+        )
+        backups.verify_latest("2026-09-12T03:00:00+00:00")
+        handler = make_system_health_handler(FakeJobStore(), FakeKillSwitch(), backups)
+        assert handler(CONTEXT, {})["last_verify_ok"] is False

@@ -29,7 +29,12 @@ from pathlib import Path
 from kang.adapters.sqlite.backup import SnapshotError, integrity_check, vacuum_into
 from kang.adapters.sqlite.deadline_store import SqliteDeadlineStore
 from kang.adapters.sqlite.task_store import SqliteTaskStore
-from kang.domain.ports.backup import BackupError, SnapshotRecord, VerifyRecord
+from kang.domain.ports.backup import (
+    BackupError,
+    BackupStatus,
+    SnapshotRecord,
+    VerifyRecord,
+)
 from kang.domain.ports.clock import Clock
 
 __all__ = ["DAILY_KEPT", "MONTHLY_KEPT", "ROW_COUNT_TABLES", "SqliteBackupService"]
@@ -179,6 +184,37 @@ class SqliteBackupService:
             },
         )
         return record
+
+    def latest_status(self) -> BackupStatus:
+        """ADR-033: linear scan, matching the "boring by construction"
+        standard already applied to a manifest this size (ADR-031's own
+        "at today's scale... effectively instantaneous" reasoning). No
+        manifest at all — a fresh Core — is the same as an empty one, not
+        an error: both fields stay `None`."""
+        manifest = self._root / "manifest.jsonl"
+        if not manifest.exists():
+            return BackupStatus(
+                last_snapshot_at=None, last_verify_at=None, last_verify_ok=None
+            )
+        last_snapshot: dict | None = None
+        last_verify: dict | None = None
+        for line in manifest.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            entry = json.loads(line)
+            if entry.get("kind") == "snapshot":
+                last_snapshot = entry
+            elif entry.get("kind") == "verify":
+                last_verify = entry
+        return BackupStatus(
+            last_snapshot_at=last_snapshot["taken_at"] if last_snapshot else None,
+            last_verify_at=last_verify["verified_at"] if last_verify else None,
+            last_verify_ok=(
+                last_verify["integrity_ok"] and not last_verify["read_shape_errors"]
+                if last_verify
+                else None
+            ),
+        )
 
     def _check_read_shapes(
         self, snapshot_conn: sqlite3.Connection

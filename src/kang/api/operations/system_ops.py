@@ -12,6 +12,7 @@ from typing import Any
 
 from kang.api.dispatch import Handler, HandlerContext
 from kang.api.schemas.invocation import DEFAULT_LIMIT, MAX_LIMIT
+from kang.domain.ports.backup import BackupService
 from kang.domain.ports.clock import Clock
 from kang.domain.ports.invocation import InvocationStore
 from kang.domain.ports.scheduler import JobStore, KillSwitch
@@ -126,17 +127,22 @@ def make_audit_list_handler(audit: AuditService, clock: Clock) -> Handler:
     return handler
 
 
-def make_system_health_handler(job_store: JobStore, kill_switch: KillSwitch) -> Handler:
+def make_system_health_handler(
+    job_store: JobStore, kill_switch: KillSwitch, backups: BackupService
+) -> Handler:
     """`system.health` (added 2026-08-05, System-domain Health view, 09_UI
-    §12): job statuses + the automation kill-switch state.
-    `JobStore.list_jobs()`/`.consecutive_failures()` and `KillSwitch.
-    is_engaged()` already existed — pure API-layer exposure, no new
-    domain logic. Backup age, restore-verification, index parity, and the
-    integrity-incident counter are NOT covered (see this operation's
-    schema docstring for why) — a real, named gap, not silently folded
-    into "Health built."""
+    §12): job statuses + the automation kill-switch state + backup age
+    and last restore-verification result (ADR-033, added 2026-09-12 once
+    `backups/manifest.jsonl` existed to read — ADR-031/032). `JobStore.
+    list_jobs()`/`.consecutive_failures()`, `KillSwitch.is_engaged()`,
+    and `BackupService.latest_status()` all already existed — pure
+    API-layer exposure, no new domain logic. Index parity and the
+    integrity-incident counter are still NOT covered (see this
+    operation's schema docstring for why) — a real, named gap, not
+    silently folded into "Health built."""
 
     def handler(context: HandlerContext, params: dict[str, Any]) -> dict[str, Any]:
+        status = backups.latest_status()
         return {
             "jobs": [
                 {
@@ -151,6 +157,9 @@ def make_system_health_handler(job_store: JobStore, kill_switch: KillSwitch) -> 
                 for job in job_store.list_jobs()
             ],
             "automation_engaged": kill_switch.is_engaged(),
+            "last_snapshot_at": status.last_snapshot_at,
+            "last_verify_at": status.last_verify_at,
+            "last_verify_ok": status.last_verify_ok,
         }
 
     return handler
