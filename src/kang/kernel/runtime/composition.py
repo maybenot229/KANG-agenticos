@@ -24,6 +24,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from kang.adapters.config.backup_config import load_external_backup_marker
 from kang.adapters.config.permissions_loader import (
     KANG_ONLY_GRANTS,
     GrantLoadError,
@@ -58,6 +59,7 @@ from kang.api.operations import (
     ConfirmationDeps,
     PlannerDeps,
     make_audit_list_handler,
+    make_backup_offsite_check_handler,
     make_backup_snapshot_handler,
     make_backup_verify_handler,
     make_competition_create_handler,
@@ -98,6 +100,7 @@ from kang.api.operations import (
 )
 from kang.api.registry import OPERATIONS
 from kang.domain.notifications import (
+    make_backup_offsite_enqueue_handler,
     make_deadline_enqueue_handler,
     make_drain_handler,
     notification_requested_payload,
@@ -213,6 +216,14 @@ def _wire_notifier(bus, notification_store, clock, new_id, device_id: str) -> No
         )
     )
     bus.subscribe(
+        Subscriber(
+            "notifier.enqueue_backup_offsite",
+            make_backup_offsite_enqueue_handler(
+                notification_store, publisher, clock, new_id
+            ),
+        )
+    )
+    bus.subscribe(
         Subscriber("notifier.drain", make_drain_handler(notification_store, clock))
     )
 
@@ -283,10 +294,13 @@ def _build_handlers(w: _HandlerWiring) -> dict:
         "permission.list": make_permission_list_handler(w.permission_engine),
         "audit.list": make_audit_list_handler(w.audit, w.clock),
         "system.health": make_system_health_handler(
-            w.job_store, w.kill_switch, w.backups
+            w.job_store, w.kill_switch, w.backups, w.clock
         ),
         "backup.snapshot": make_backup_snapshot_handler(w.backups, w.clock),
         "backup.verify": make_backup_verify_handler(w.backups, w.clock),
+        "backup.offsite_check": make_backup_offsite_check_handler(
+            w.backups, w.bus, w.clock, w.new_id, w.device_id
+        ),
         "invocation.list": make_invocation_list_handler(w.invocations),
         **_build_project_cluster_handlers(w),
         **_build_consequential_handlers(w),
@@ -465,6 +479,29 @@ def build_core(kang_home: Path, device_id: str = "device-local") -> Core:
         raise
 
 
+def _build_backup_service(kang, events, kang_home: Path, clock) -> SqliteBackupService:
+    """ADR-031: both connections injected, never opened here — DB-001
+    keeps the write connection thread-confined, and a snapshot must not
+    smuggle in a second one. ADR-034: the marker path is resolved once
+    here, tolerant of an absent or malformed `[backup]` section (never
+    raises) — deliberately NOT gated behind `kang.toml` loading
+    successfully overall, since this key is independently optional
+    within an otherwise-valid file (see `backup_config.py`'s own
+    docstring for why this differs from `load_planner_triggers`).
+    Extracted from `_build_core_locked` purely to keep that function
+    under the size lint's line limit (11 §4) — not a domain concept of
+    its own."""
+    return SqliteBackupService(
+        kang,
+        events,
+        kang_home,
+        clock,
+        external_backup_marker=load_external_backup_marker(
+            kang_home / "config" / "kang.toml"
+        ),
+    )
+
+
 def _build_core_locked(
     kang_home: Path, device_id: str, startup_lock: FileStartupLock
 ) -> Core:
@@ -503,10 +540,7 @@ def _build_core_locked(
             competition_store=stores.competition_store,
             milestone_store=stores.milestone_store,
             goal_store=stores.goal_store,
-            # ADR-031: both connections injected, never opened here —
-            # DB-001 keeps the write connection thread-confined, and a
-            # snapshot must not smuggle in a second one.
-            backups=SqliteBackupService(kang, events, kang_home, clock),
+            backups=_build_backup_service(kang, events, kang_home, clock),
         )
     )
     dispatcher = Dispatcher(

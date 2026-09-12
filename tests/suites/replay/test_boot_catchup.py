@@ -26,6 +26,7 @@ from kang.adapters.sqlite.held_action_store import SqliteHeldActionStore
 from kang.domain.ports.held_action import HeldAction
 from kang.kernel.runtime.composition import build_core
 from kang.kernel.runtime.scheduler_wiring import (
+    BACKUP_OFFSITE_CHECK_JOB,
     BACKUP_SNAPSHOT_JOB,
     BACKUP_VERIFY_JOB,
     DEADLINE_SWEEP_JOB,
@@ -360,3 +361,48 @@ def test_backup_verify_is_registered_and_a_real_boot_restore_tests_a_real_snapsh
     # merely that a job_run row exists.
     assert '"v_active_deadlines"' in kinds[0]
     assert '"v_today_tasks"' in kinds[0]
+
+
+def test_backup_offsite_check_is_registered_and_a_real_boot_warns_when_stale(
+    tmp_path,
+):
+    """ADR-034: backup_offsite_check is a real sixth job, closing 07 Part
+    XII.5's off-machine warning — the fifth Health signal ADR-033's own
+    precedent didn't cover.
+
+    The seeded `kang.toml` (config/defaults, unmodified) has no
+    `[backup] external_marker_path` — the shipped default deliberately
+    ships unconfigured (ADR-034 D1) — so a real boot's catch-up run must
+    find the marker stale, publish `backup.offsite_stale`, and the real
+    notifier must turn that into a real `attention` notification row: the
+    write actually happened, not merely that a job_run row exists.
+    """
+    _seed_config(tmp_path)
+    _register_job_then_backdate_it(tmp_path, days=10, job_id=BACKUP_OFFSITE_CHECK_JOB)
+    assert _job_run_count(tmp_path, BACKUP_OFFSITE_CHECK_JOB) == 0
+
+    server = _Server(tmp_path)
+    try:
+        server.wait_ready()
+        assert _job_run_count(tmp_path, BACKUP_OFFSITE_CHECK_JOB) == 1
+        assert _job_run_outcome(tmp_path, BACKUP_OFFSITE_CHECK_JOB) == "ok"
+        # The other five jobs are unaffected — six independently
+        # catching-up jobs, not one replacing the others.
+        assert _job_run_count(tmp_path, BACKUP_SNAPSHOT_JOB) == 0
+        assert _job_run_count(tmp_path, MORNING_PLAN_JOB) == 0
+    finally:
+        server.stop()
+
+    conn = open_connection(tmp_path / "kang.db")
+    try:
+        rows = conn.execute(
+            "SELECT priority, state, payload FROM notification"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert len(rows) == 1, rows
+    priority, state, payload = rows[0]
+    assert priority == "attention"
+    # decide_state's ladder (Idle-assumed, 09_UI §9): attention delivers.
+    assert state == "delivered"
+    assert '"kind": "backup.offsite_stale"' in payload

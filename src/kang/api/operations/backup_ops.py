@@ -1,4 +1,5 @@
-"""backup.snapshot / backup.verify handlers (ADR-031, ADR-032).
+"""backup.snapshot / backup.verify / backup.offsite_check handlers
+(ADR-031, ADR-032, ADR-034).
 
 Layer: api.
 Constitutional home: 07_DATABASE Part XII, 05_AGENTS Appendix E
@@ -13,14 +14,28 @@ code. No filesystem or SQL reaches this layer.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 from kang.api.dispatch import Handler, HandlerContext
 from kang.api.errors import ApiError
 from kang.domain.ports.backup import BackupError, BackupService
 from kang.domain.ports.clock import Clock
+from kang.domain.ports.eventlog import EventEnvelope
+from kang.kernel.bus.bus import EventBus
 
-__all__ = ["make_backup_snapshot_handler", "make_backup_verify_handler"]
+__all__ = [
+    "BACKUPS_PRINCIPAL",
+    "make_backup_offsite_check_handler",
+    "make_backup_snapshot_handler",
+    "make_backup_verify_handler",
+]
+
+# The backup domain's own event-publishing principal (ADR-034), matching
+# kernel:tasks/kernel:deadlines/etc.'s one-line pattern (EB-010): the
+# operation that publishes a domain fact does so under that domain's
+# principal, not the requester's (kernel:scheduler, for every job-
+# triggered operation in this file).
+BACKUPS_PRINCIPAL = "kernel:backups"
 
 
 def make_backup_snapshot_handler(backups: BackupService, clock: Clock) -> Handler:
@@ -82,6 +97,60 @@ def make_backup_verify_handler(backups: BackupService, clock: Clock) -> Handler:
             "live_row_counts": record.live_row_counts,
             "snapshot_row_counts": record.snapshot_row_counts,
             "schema_version": record.schema_version,
+        }
+
+    return handler
+
+
+def make_backup_offsite_check_handler(
+    backups: BackupService,
+    bus: EventBus,
+    clock: Clock,
+    new_id: Callable[[], str],
+    device_id: str,
+) -> Handler:
+    """`backup.offsite_check` (ADR-034, 07 Part XII.5): read the
+    Kang-configured marker's mtime; announce `backup.offsite_stale` only
+    when it is stale.
+
+    Never raises `BackupError` — `external_backup_status` never raises at
+    all (an unconfigured marker is a normal, honest result, not a
+    refusal the way a failed integrity check is for `backup.snapshot`).
+    Publishes nothing when the marker is fresh: no event, no
+    notification, matching Part XII.5's own "warns... if no evidence"
+    framing — silence is the healthy state. `causation_id=None`: unlike
+    `deadline.approaching`, this fact has no accompanying mutation event
+    to be caused by; it is a genuine root cause.
+    """
+
+    def handler(context: HandlerContext, params: dict[str, Any]) -> dict[str, Any]:
+        now = clock.now()
+        status = backups.external_backup_status(now.isoformat())
+        if status.stale:
+            bus.publish(
+                EventEnvelope(
+                    event_id=new_id(),
+                    type="backup.offsite_stale",
+                    occurred_at=now.isoformat(),
+                    principal=BACKUPS_PRINCIPAL,
+                    correlation_id=context.correlation_id,
+                    causation_id=None,
+                    device_id=device_id,
+                    payload={
+                        "last_marker_at": status.last_marker_at,
+                        "checked_at": now.isoformat(),
+                    },
+                    recovery_grade=False,
+                    entity_refs=({"kind": "backup", "id": "offsite"},),
+                ),
+                # No state of its own: a pure fact's whole existence IS
+                # the event (EB-008 rule 2) — nothing was mutated to
+                # commit.
+                commit_state=lambda: None,
+            )
+        return {
+            "last_marker_at": status.last_marker_at,
+            "stale": status.stale,
         }
 
     return handler

@@ -327,6 +327,22 @@ _TYPES: tuple[EventType, ...] = (
         version_introduced="0.1",
         required_payload_fields=_PROJECT_PAYLOAD_FIELDS,
     ),
+    # ---- backup.offsite_stale, per ADR-034 -------------------------------
+    # 07 Part XII.5's off-machine warning: a pure fact, never recovery-
+    # grade, published only when `backup.offsite_check` finds the
+    # Kang-configured marker stale — no accompanying row mutation, so
+    # unlike deadline.approaching (which follows its own deadline.updated)
+    # this event's causation_id is None; it is a genuine root cause, not a
+    # derived one. category="system": this is about KANG's own operational
+    # health, not a domain entity Kang directly manages.
+    EventType(
+        name="backup.offsite_stale",
+        category="system",
+        recovery_grade=False,
+        plugin_visible=True,
+        version_introduced="0.1",
+        required_payload_fields=("last_marker_at", "checked_at"),
+    ),
 )
 
 EVENT_TYPES: dict[str, EventType] = {

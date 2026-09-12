@@ -34,6 +34,7 @@ from kang.kernel.scheduler.schedule import parse_schedule
 from kang.kernel.scheduler.scheduler import Scheduler, SchedulerDeps
 
 __all__ = [
+    "BACKUP_OFFSITE_CHECK_JOB",
     "BACKUP_SNAPSHOT_JOB",
     "BACKUP_VERIFY_JOB",
     "DEADLINE_SWEEP_JOB",
@@ -56,6 +57,9 @@ DEADLINE_SWEEP_JOB = "deadline_sweep"  # 05 Appendix E's ritual name (ADR-020)
 HELD_ACTION_EXPIRE_JOB = "held_action_expire"  # ADR-022
 BACKUP_SNAPSHOT_JOB = "backup_snapshot"  # 05 Appendix E name (ADR-031)
 BACKUP_VERIFY_JOB = "backup_verify"  # 05 Appendix E name (ADR-032)
+BACKUP_OFFSITE_CHECK_JOB = "backup_offsite_check"  # ADR-034 — Appendix E
+#   itemizes no job for this (ADR-034's own Context section); named to
+#   match the existing backup.* family, not invented from nothing.
 
 TICK_INTERVAL_S = 60  # ADR-019: how often the live tick re-runs catch-up.
 # A plain constant, not a kang.toml key — nothing has asked to tune this
@@ -74,6 +78,7 @@ JOB_OPERATIONS: dict[str, str] = {
     "held_action_expire": "held_action.expire",  # ADR-022
     "backup_snapshot": "backup.snapshot",  # ADR-031
     "backup_verify": "backup.verify",  # ADR-032
+    "backup_offsite_check": "backup.offsite_check",  # ADR-034
 }
 
 
@@ -262,7 +267,8 @@ def _register_planning_jobs(job_store, triggers, clock) -> None:
 
 
 def _register_backup_jobs(job_store, clock) -> None:
-    """backup_snapshot (ADR-031), backup_verify (ADR-032)."""
+    """backup_snapshot (ADR-031), backup_verify (ADR-032),
+    backup_offsite_check (ADR-034)."""
     job_store.register_job(
         Job(
             id=BACKUP_SNAPSHOT_JOB,
@@ -301,6 +307,23 @@ def _register_backup_jobs(job_store, clock) -> None:
             # 07 Part XII's own restore-test target is "< 5 min"; 120s
             # matches backup_snapshot's own margin, not a fresh number.
             timeout_s=120,
+        )
+    )
+    job_store.register_job(
+        Job(
+            id=BACKUP_OFFSITE_CHECK_JOB,
+            name=BACKUP_OFFSITE_CHECK_JOB,
+            # ADR-034 D5/D2: weekly, matching Part XII.5's own "(weekly)"
+            # word — read as both the check cadence AND the staleness
+            # threshold, one number, not two. Sunday 03:00: the same 3am
+            # maintenance slot backup_verify already uses monthly.
+            schedule="cron:0 3 * * 0",
+            catch_up="run_once_latest",  # multiple missed weeks catch up
+            #   to one check of current state, not N reads of an
+            #   unchanged marker (ADR-031's own reasoning for its sibling).
+            created_at=clock.now(),
+            # A single file stat — no timing target named anywhere in 07
+            # Part XII.5, so no figure invented; the default applies.
         )
     )
 

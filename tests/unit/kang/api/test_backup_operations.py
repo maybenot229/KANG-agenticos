@@ -1,4 +1,5 @@
-"""backup.snapshot / backup.verify handlers (ADR-031, ADR-032).
+"""backup.snapshot / backup.verify / backup.offsite_check handlers
+(ADR-031, ADR-032, ADR-034).
 
 The claim: each handler is thin (12 §2) — it resolves the clock, calls the
 BackupService once, returns the port's own fields, and maps a typed
@@ -8,18 +9,40 @@ Verify's own claim, distinct from snapshot's: a FAILED check is a normal
 returned response (`integrity_ok=False`), never an `ApiError` — only "no
 snapshot to verify" raises. Collapsing a failed check into an exception
 would hide the one finding this operation exists to surface.
+
+Offsite check's own claim: it publishes `backup.offsite_stale` only when
+stale, and never raises at all — an unconfigured marker is a normal,
+honest result, not a refusal.
 """
 
 from __future__ import annotations
 
+import itertools
+
 import pytest
 
+from kang.adapters.fakes.audit_log import FakeAuditLog
 from kang.adapters.fakes.backup_service import FakeBackupService
 from kang.adapters.fakes.clock import FakeClock
+from kang.adapters.fakes.delivery_store import FakeDeliveryStore
+from kang.adapters.fakes.event_log import FakeEventLog
+from kang.adapters.fakes.recovery import FakeRecoveryApplier
+from kang.adapters.fakes.sleeper import FakeSleeper
 from kang.api.dispatch import HandlerContext
 from kang.api.errors import ApiError
-from kang.api.operations import make_backup_snapshot_handler, make_backup_verify_handler
+from kang.api.operations import (
+    make_backup_offsite_check_handler,
+    make_backup_snapshot_handler,
+    make_backup_verify_handler,
+)
 from kang.domain.ports.backup import VerifyRecord
+from kang.kernel.audit.service import AuditService
+from kang.kernel.bus.bus import EventBus
+from kang.kernel.bus.delivery import Delivery
+from kang.kernel.bus.reconciliation import Reconciliation
+from kang.kernel.permissions.engine import PermissionEngine
+
+DEVICE = "device-test"
 
 CONTEXT = HandlerContext(
     principal="kernel:scheduler",
@@ -136,3 +159,78 @@ def test_the_verify_handler_also_uses_the_injected_clock():
     service, clock = FakeBackupService(), FakeClock()
     _verify_handler(service, clock)(CONTEXT, {})
     assert service.verified[0].verified_at == clock.now().isoformat()
+
+
+# ---- ADR-034: backup.offsite_check ---------------------------------------
+
+
+@pytest.fixture
+def offsite_wiring():
+    clock = FakeClock()
+    ids = (f"id-{n:04d}" for n in itertools.count())
+    event_log = FakeEventLog(clock)
+    audit = AuditService(FakeAuditLog(), clock)
+    bus = EventBus(
+        event_log,
+        Delivery(
+            event_log,
+            FakeDeliveryStore(clock),
+            audit,
+            dead_letter_id=lambda: "dl",
+            sleeper=FakeSleeper(),
+        ),
+        Reconciliation(event_log, FakeRecoveryApplier(), audit, clock),
+        PermissionEngine({"kernel:backups": ("events.publish:kang",)}),
+        audit,
+    )
+    return {
+        "bus": bus,
+        "backups": FakeBackupService(),
+        "clock": clock,
+        "new_id": lambda: next(ids),
+        "log": event_log,
+    }
+
+
+def _offsite_check(wiring):
+    handler = make_backup_offsite_check_handler(
+        wiring["backups"], wiring["bus"], wiring["clock"], wiring["new_id"], DEVICE
+    )
+    return handler(CONTEXT, {})
+
+
+def _published(wiring) -> list[str]:
+    return [s.envelope.type for s in wiring["log"].read_from(0)]
+
+
+def test_an_unconfigured_marker_is_reported_and_announced(offsite_wiring):
+    result = _offsite_check(offsite_wiring)
+    assert result == {"last_marker_at": None, "stale": True}
+    assert _published(offsite_wiring) == ["backup.offsite_stale"]
+
+
+def test_a_fresh_marker_is_reported_and_nothing_is_announced(offsite_wiring):
+    offsite_wiring["backups"].external_marker_at = (
+        offsite_wiring["clock"].now().isoformat()
+    )
+    result = _offsite_check(offsite_wiring)
+    assert result["stale"] is False
+    # Part XII.5's own framing: silence is the healthy state.
+    assert _published(offsite_wiring) == []
+
+
+def test_the_stale_event_carries_the_marker_and_no_causation(offsite_wiring):
+    _offsite_check(offsite_wiring)
+    (stored,) = offsite_wiring["log"].read_from(0)
+    assert stored.envelope.payload["last_marker_at"] is None
+    assert stored.envelope.causation_id is None  # a genuine root cause
+    assert stored.envelope.entity_refs == ({"kind": "backup", "id": "offsite"},)
+    assert stored.envelope.recovery_grade is False
+
+
+def test_the_offsite_handler_also_uses_the_injected_clock(offsite_wiring):
+    """11 §25 — the check compares against the Clock port, not wall time."""
+    offsite_wiring["backups"].external_marker_at = "2020-01-01T00:00:00+00:00"
+    result = _offsite_check(offsite_wiring)
+    # Far older than 7 days before FakeClock()'s 2026-01-01 default — stale.
+    assert result["stale"] is True

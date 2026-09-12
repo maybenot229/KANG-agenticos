@@ -63,6 +63,15 @@ _SCOPE_CONSEQUENCES: dict[str, str] = {
     "competitions.read": "Can read the list of tracked competitions.",
     "milestones.write": "Can create milestones on a project.",
     "milestones.read": "Can read a project's list of tracked milestones.",
+    "backups.write": (
+        "Can snapshot the database and event log, and restore-test the "
+        "latest snapshot (07_DATABASE Part XII)."
+    ),
+    "backups.read": (
+        "Can check for evidence of an off-machine backup and warn if "
+        "none exists (07_DATABASE Part XII.5) — reads only, writes "
+        "nothing to backups/."
+    ),
 }
 
 
@@ -128,21 +137,29 @@ def make_audit_list_handler(audit: AuditService, clock: Clock) -> Handler:
 
 
 def make_system_health_handler(
-    job_store: JobStore, kill_switch: KillSwitch, backups: BackupService
+    job_store: JobStore,
+    kill_switch: KillSwitch,
+    backups: BackupService,
+    clock: Clock,
 ) -> Handler:
     """`system.health` (added 2026-08-05, System-domain Health view, 09_UI
     §12): job statuses + the automation kill-switch state + backup age
     and last restore-verification result (ADR-033, added 2026-09-12 once
-    `backups/manifest.jsonl` existed to read — ADR-031/032). `JobStore.
+    `backups/manifest.jsonl` existed to read — ADR-031/032) + off-machine
+    backup evidence (ADR-034, added 2026-09-13, 07 Part XII.5). `JobStore.
     list_jobs()`/`.consecutive_failures()`, `KillSwitch.is_engaged()`,
-    and `BackupService.latest_status()` all already existed — pure
-    API-layer exposure, no new domain logic. Index parity and the
-    integrity-incident counter are still NOT covered (see this
-    operation's schema docstring for why) — a real, named gap, not
+    `BackupService.latest_status()`, and `BackupService.
+    external_backup_status()` all already existed — pure API-layer
+    exposure, no new domain logic. `clock` is new here (ADR-034): the
+    off-machine check is the first field on this response computed
+    relative to "now" rather than read verbatim from stored state. Index
+    parity and the integrity-incident counter are still NOT covered (see
+    this operation's schema docstring for why) — a real, named gap, not
     silently folded into "Health built."""
 
     def handler(context: HandlerContext, params: dict[str, Any]) -> dict[str, Any]:
         status = backups.latest_status()
+        offsite = backups.external_backup_status(clock.now().isoformat())
         return {
             "jobs": [
                 {
@@ -160,6 +177,8 @@ def make_system_health_handler(
             "last_snapshot_at": status.last_snapshot_at,
             "last_verify_at": status.last_verify_at,
             "last_verify_ok": status.last_verify_ok,
+            "external_backup_marker_at": offsite.last_marker_at,
+            "external_backup_stale": offsite.stale,
         }
 
     return handler

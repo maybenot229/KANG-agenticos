@@ -28,3 +28,13 @@ wed = "15:30"
 thu = "14:00"
 fri = "15:30"
 sat = "12:00"
+
+# [backup] external_marker_path (ADR-034, 07 Part XII.5): the file your
+# own off-machine backup process (an external drive copy, a cloud sync
+# job — anything outside KANG's control) is expected to touch each time
+# it completes. Left unset here on purpose — KANG cannot invent this
+# path for you (07 Part XII.5: "KANG cannot force this"), and an unset
+# marker reads as an honest, permanent "stale" until you configure one
+# and point your own backup process at it.
+# [backup]
+# external_marker_path = "D:\\Backups\\kang-external-marker"

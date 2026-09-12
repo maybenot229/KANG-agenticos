@@ -52,6 +52,11 @@
 # ADR-013/014/015 established, first applied here).
 "kernel:goals" = ["events.publish:kang"]
 
+# The backup domain service publishes backup.offsite_stale — the fact
+# that 07 Part XII.5's marker check found (EB-010). ADR-034: backup's
+# first event-publishing path (backup.snapshot/.verify publish nothing).
+"kernel:backups" = ["events.publish:kang"]
+
 # The scheduler dispatches jobs through the ordinary operation pipeline
 # (ADR-006), so it needs the scope of every operation it may trigger — and
 # nothing more. Default-deny means this line IS the answer to "what can
@@ -61,10 +66,13 @@
 # deadlines.mark_alerted (deadline_sweep -> deadline.sweep, ADR-020),
 # held_actions.expire (held_action_expire -> held_action.expire, ADR-022),
 # backups.write (backup_snapshot -> backup.snapshot, ADR-031;
-# backup_verify -> backup.verify, ADR-032 — same scope, same directory).
+# backup_verify -> backup.verify, ADR-032 — same scope, same directory),
+# backups.read (backup_offsite_check -> backup.offsite_check, ADR-034 —
+# a new scope, not backups.write: this job writes no file).
 "kernel:scheduler" = [
   "tasks.write",
   "deadlines.mark_alerted",
   "held_actions.expire",
   "backups.write",
+  "backups.read",
 ]

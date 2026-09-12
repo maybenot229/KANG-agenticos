@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 from kang.adapters.sqlite.backup import SnapshotError, integrity_check, vacuum_into
@@ -32,8 +33,10 @@ from kang.adapters.sqlite.task_store import SqliteTaskStore
 from kang.domain.ports.backup import (
     BackupError,
     BackupStatus,
+    ExternalBackupStatus,
     SnapshotRecord,
     VerifyRecord,
+    external_backup_is_stale,
 )
 from kang.domain.ports.clock import Clock
 
@@ -74,6 +77,7 @@ class SqliteBackupService:
         eventlog: sqlite3.Connection,
         kang_home: Path,
         clock: Clock,
+        external_backup_marker: Path | None = None,
     ) -> None:
         self._conn = connection
         self._eventlog = eventlog
@@ -87,6 +91,10 @@ class SqliteBackupService:
         # root already owns a real Clock and is the one place permitted
         # to hand it across.
         self._clock = clock
+        # ADR-034: bound here like `_root`, never passed per call — it
+        # never changes within a Core's lifetime. `None` means Kang has
+        # not configured `[backup] external_marker_path` in kang.toml.
+        self._marker = external_backup_marker
 
     @property
     def _root(self) -> Path:
@@ -214,6 +222,21 @@ class SqliteBackupService:
                 if last_verify
                 else None
             ),
+        )
+
+    def external_backup_status(self, now: str) -> ExternalBackupStatus:
+        """07 Part XII.5 (ADR-034): the marker's mtime, or `None` when
+        unconfigured or not yet written by Kang's own off-machine
+        process — never an error, both read the same honest "no
+        evidence" way."""
+        last_marker_at: str | None = None
+        if self._marker is not None and self._marker.exists():
+            last_marker_at = datetime.fromtimestamp(
+                self._marker.stat().st_mtime, tz=timezone.utc
+            ).isoformat()
+        return ExternalBackupStatus(
+            last_marker_at=last_marker_at,
+            stale=external_backup_is_stale(last_marker_at, now),
         )
 
     def _check_read_shapes(

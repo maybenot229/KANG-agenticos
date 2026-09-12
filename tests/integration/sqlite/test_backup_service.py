@@ -16,6 +16,8 @@ verify at all.
 from __future__ import annotations
 
 import json
+import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -376,3 +378,76 @@ def test_latest_status_reports_a_broken_read_shape_as_not_ok(tmp_path):
     conn.close()
     events.close()
     assert status.last_verify_ok is False
+
+
+# ---- ADR-034: external_backup_status -------------------------------------
+
+
+def _service_with_marker(tmp_path, marker: Path | None):
+    conn = open_connection(tmp_path / "kang.db")
+    apply_migrations(conn, MIGRATIONS_DIR, FakeClock())
+    events = open_connection(tmp_path / "events.db")
+    events.execute("CREATE TABLE event (id TEXT PRIMARY KEY)")
+    events.commit()
+    service = SqliteBackupService(
+        conn, events, tmp_path, FakeClock(), external_backup_marker=marker
+    )
+    return conn, events, service
+
+
+def test_no_marker_configured_reads_as_stale_with_no_timestamp(tmp_path):
+    conn, events, service = _service_with_marker(tmp_path, marker=None)
+    try:
+        status = service.external_backup_status(NOW)
+        assert status.last_marker_at is None
+        assert status.stale is True
+    finally:
+        conn.close()
+        events.close()
+
+
+def test_a_configured_but_never_written_marker_also_reads_as_stale(tmp_path):
+    """A path Kang configured but whose external process has never
+    actually run yet — the same honest "no evidence" outcome as never
+    configuring one at all (ADR-034's own D1)."""
+    conn, events, service = _service_with_marker(
+        tmp_path, marker=tmp_path / "external-drive" / "kang-marker"
+    )
+    try:
+        status = service.external_backup_status(NOW)
+        assert status.last_marker_at is None
+        assert status.stale is True
+    finally:
+        conn.close()
+        events.close()
+
+
+def test_a_marker_touched_moments_ago_is_fresh(tmp_path):
+    marker = tmp_path / "kang-marker"
+    marker.write_text("touched by an external backup process", encoding="utf-8")
+    conn, events, service = _service_with_marker(tmp_path, marker=marker)
+    try:
+        # The real filesystem mtime — genuinely just now, not a fixed
+        # fixture value, so this proves the real `Path.stat()` read, not
+        # a stubbed clock.
+        status = service.external_backup_status(datetime.now(timezone.utc).isoformat())
+        assert status.last_marker_at is not None
+        assert status.stale is False
+    finally:
+        conn.close()
+        events.close()
+
+
+def test_a_marker_older_than_seven_days_is_stale(tmp_path):
+    marker = tmp_path / "kang-marker"
+    marker.write_text("touched long ago", encoding="utf-8")
+    old = datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp()
+    os.utime(marker, (old, old))
+    conn, events, service = _service_with_marker(tmp_path, marker=marker)
+    try:
+        status = service.external_backup_status("2026-08-17T02:30:00+00:00")
+        assert status.last_marker_at is not None
+        assert status.stale is True
+    finally:
+        conn.close()
+        events.close()

@@ -14,13 +14,16 @@ from kang.domain.notifications.notification_service import (
     notification_requested_payload,
 )
 from kang.domain.notifications.notifier import (
+    BACKUP_OFFSITE_STALE_PRIORITY,
     DEADLINE_APPROACHING_PRIORITY,
     NotificationPublisher,
+    make_backup_offsite_enqueue_handler,
     make_deadline_enqueue_handler,
     make_drain_handler,
 )
 
 __all__ = [
+    "BACKUP_OFFSITE_STALE_PRIORITY",
     "DEADLINE_APPROACHING_PRIORITY",
     "DEDUP_WINDOW",
     "NotificationPublisher",
@@ -28,6 +31,7 @@ __all__ = [
     "decide_state",
     "dedup_window_start",
     "is_duplicate",
+    "make_backup_offsite_enqueue_handler",
     "make_deadline_enqueue_handler",
     "make_drain_handler",
     "notification_requested_payload",

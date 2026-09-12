@@ -18,8 +18,10 @@ from __future__ import annotations
 from kang.domain.ports.backup import (
     BackupError,
     BackupStatus,
+    ExternalBackupStatus,
     SnapshotRecord,
     VerifyRecord,
+    external_backup_is_stale,
 )
 
 __all__ = ["FakeBackupService"]
@@ -38,6 +40,9 @@ class FakeBackupService:
         self.verified: list[VerifyRecord] = []
         self.verify_result: VerifyRecord | None = None
         self.verify_fail_with: str | None = None
+        # ADR-034: set directly to simulate a marker's mtime — no real
+        # file, unlike the real adapter's `Path.stat()`.
+        self.external_marker_at: str | None = None
 
     def take_snapshot(self, now: str) -> SnapshotRecord:
         if self.fail_with is not None:
@@ -90,4 +95,13 @@ class FakeBackupService:
                 if last_verify
                 else None
             ),
+        )
+
+    def external_backup_status(self, now: str) -> ExternalBackupStatus:
+        """ADR-034: uses the shared pure function, so this fake cannot
+        silently disagree with the real adapter about what "stale"
+        means (13 §2.3)."""
+        return ExternalBackupStatus(
+            last_marker_at=self.external_marker_at,
+            stale=external_backup_is_stale(self.external_marker_at, now),
         )

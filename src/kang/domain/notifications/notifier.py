@@ -37,6 +37,7 @@ from kang.domain.ports.notification_store import Notification, NotificationStore
 
 __all__ = [
     "NotificationPublisher",
+    "make_backup_offsite_enqueue_handler",
     "make_deadline_enqueue_handler",
     "make_drain_handler",
 ]
@@ -46,6 +47,14 @@ __all__ = [
 # today" is also named there, but "in danger" is undefined — see the report
 # accompanying this increment; not guessed here.
 DEADLINE_APPROACHING_PRIORITY = "attention"
+
+# 05_AGENTS Appendix E's backup_monitor row caps notify at `attention`
+# ("notify≤attention"). Not `critical` — an off-machine backup lagging is
+# not the same emergency class as a deadline in danger today; not
+# `digest`/`silent` — Part XII.5's "refuse to let it be forgotten" asks
+# for something Kang actually sees, not a number in a weekly roll-up
+# (ADR-034).
+BACKUP_OFFSITE_STALE_PRIORITY = "attention"
 
 
 class NotificationPublisher(Protocol):
@@ -93,6 +102,49 @@ def make_deadline_enqueue_handler(
                 "kind": "deadline.approaching",
                 "title": envelope.payload.get("title"),
                 "at": envelope.payload.get("at"),
+            },
+            state="queued",
+            created_at=clock.now(),
+        )
+        store.create(notification)
+        publisher.publish_requested(notification, caused_by=envelope.event_id)
+
+    return handle
+
+
+def make_backup_offsite_enqueue_handler(
+    store: NotificationStore,
+    publisher: NotificationPublisher,
+    clock: Clock,
+    new_id: Callable[[], str],
+) -> Callable[[EventEnvelope], None]:
+    """`backup.offsite_stale` → a queued notification + the accelerant
+    event (ADR-034). A second, parallel function rather than a shared or
+    rewritten `make_deadline_enqueue_handler`: this module's own doctrine
+    is one `enqueue_*` per fact-event, "one seam" per concept, not a
+    single dispatcher for all of them.
+
+    `entity_refs` names a logical, non-DB-backed identity
+    (`{"kind": "backup", "id": "offsite"}`) rather than the empty tuple —
+    07 Part XII.5's warning is about one stable "thing" (the off-machine
+    backup channel), and giving it a real ref lets the 24h de-dup rule
+    (09_UI §9) and any future deep-link treat repeats of it consistently,
+    rather than colliding with whatever else might one day fire an
+    `attention` notification with no entity of its own.
+    """
+
+    def handle(envelope: EventEnvelope) -> None:
+        if envelope.type != "backup.offsite_stale":
+            return
+        notification = Notification(
+            id=new_id(),
+            priority=BACKUP_OFFSITE_STALE_PRIORITY,
+            principal=envelope.principal,
+            correlation_id=envelope.correlation_id,
+            entity_refs=({"kind": "backup", "id": "offsite"},),
+            payload={
+                "kind": "backup.offsite_stale",
+                "last_marker_at": envelope.payload.get("last_marker_at"),
             },
             state="queued",
             created_at=clock.now(),

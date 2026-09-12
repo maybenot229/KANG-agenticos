@@ -65,7 +65,7 @@ class TestAuditList:
 class TestSystemHealth:
     def test_empty_job_store_lists_nothing(self):
         handler = make_system_health_handler(
-            FakeJobStore(), FakeKillSwitch(), FakeBackupService()
+            FakeJobStore(), FakeKillSwitch(), FakeBackupService(), FakeClock()
         )
         assert handler(CONTEXT, {}) == {
             "jobs": [],
@@ -73,6 +73,8 @@ class TestSystemHealth:
             "last_snapshot_at": None,
             "last_verify_at": None,
             "last_verify_ok": None,
+            "external_backup_marker_at": None,
+            "external_backup_stale": True,
         }
 
     def test_lists_a_registered_job_with_its_failure_count(self):
@@ -87,7 +89,7 @@ class TestSystemHealth:
             )
         )
         handler = make_system_health_handler(
-            job_store, FakeKillSwitch(), FakeBackupService()
+            job_store, FakeKillSwitch(), FakeBackupService(), FakeClock()
         )
         (job,) = handler(CONTEXT, {})["jobs"]
         assert job == {
@@ -104,7 +106,7 @@ class TestSystemHealth:
         kill_switch = FakeKillSwitch()
         kill_switch.engage("manual pause for testing")
         handler = make_system_health_handler(
-            FakeJobStore(), kill_switch, FakeBackupService()
+            FakeJobStore(), kill_switch, FakeBackupService(), FakeClock()
         )
         assert handler(CONTEXT, {})["automation_engaged"] is True
 
@@ -113,7 +115,9 @@ class TestSystemHealth:
     def test_reflects_a_snapshot_with_no_verify_yet(self):
         backups = FakeBackupService()
         backups.take_snapshot("2026-09-12T02:30:00+00:00")
-        handler = make_system_health_handler(FakeJobStore(), FakeKillSwitch(), backups)
+        handler = make_system_health_handler(
+            FakeJobStore(), FakeKillSwitch(), backups, FakeClock()
+        )
         result = handler(CONTEXT, {})
         assert result["last_snapshot_at"] == "2026-09-12T02:30:00+00:00"
         assert result["last_verify_at"] is None
@@ -123,7 +127,9 @@ class TestSystemHealth:
         backups = FakeBackupService()
         backups.take_snapshot("2026-09-12T02:30:00+00:00")
         backups.verify_latest("2026-09-12T03:00:00+00:00")
-        handler = make_system_health_handler(FakeJobStore(), FakeKillSwitch(), backups)
+        handler = make_system_health_handler(
+            FakeJobStore(), FakeKillSwitch(), backups, FakeClock()
+        )
         result = handler(CONTEXT, {})
         assert result["last_verify_at"] == "2026-09-12T03:00:00+00:00"
         assert result["last_verify_ok"] is True
@@ -148,5 +154,38 @@ class TestSystemHealth:
             schema_version=17,
         )
         backups.verify_latest("2026-09-12T03:00:00+00:00")
-        handler = make_system_health_handler(FakeJobStore(), FakeKillSwitch(), backups)
+        handler = make_system_health_handler(
+            FakeJobStore(), FakeKillSwitch(), backups, FakeClock()
+        )
         assert handler(CONTEXT, {})["last_verify_ok"] is False
+
+    # ---- ADR-034: off-machine backup evidence ---------------------------
+
+    def test_reflects_an_unconfigured_marker_as_stale(self):
+        handler = make_system_health_handler(
+            FakeJobStore(), FakeKillSwitch(), FakeBackupService(), FakeClock()
+        )
+        result = handler(CONTEXT, {})
+        assert result["external_backup_marker_at"] is None
+        assert result["external_backup_stale"] is True
+
+    def test_reflects_a_fresh_marker_as_not_stale(self):
+        backups = FakeBackupService()
+        backups.external_marker_at = "2025-12-30T00:00:00+00:00"  # 2 days
+        #   before FakeClock()'s default now (2026-01-01) — well inside
+        #   the 7-day threshold.
+        handler = make_system_health_handler(
+            FakeJobStore(), FakeKillSwitch(), backups, FakeClock()
+        )
+        result = handler(CONTEXT, {})
+        assert result["external_backup_marker_at"] == "2025-12-30T00:00:00+00:00"
+        assert result["external_backup_stale"] is False
+
+    def test_reflects_an_old_marker_as_stale(self):
+        backups = FakeBackupService()
+        backups.external_marker_at = "2025-01-01T00:00:00+00:00"  # nearly
+        #   a year before FakeClock()'s default now — well past 7 days.
+        handler = make_system_health_handler(
+            FakeJobStore(), FakeKillSwitch(), backups, FakeClock()
+        )
+        assert handler(CONTEXT, {})["external_backup_stale"] is True

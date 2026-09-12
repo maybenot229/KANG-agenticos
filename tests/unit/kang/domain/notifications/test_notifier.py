@@ -22,6 +22,7 @@ from kang.domain.notifications import (
     NotificationValidationError,
     decide_state,
     is_duplicate,
+    make_backup_offsite_enqueue_handler,
     make_deadline_enqueue_handler,
     make_drain_handler,
 )
@@ -75,6 +76,40 @@ def wiring():
             store, publisher, clock, lambda: next(ids)
         ),
         "drain": make_drain_handler(store, clock),
+    }
+
+
+def _offsite_stale_envelope(last_marker_at: str | None = None) -> EventEnvelope:
+    return EventEnvelope(
+        event_id="ev-offsite-1",
+        type="backup.offsite_stale",
+        occurred_at="2026-01-01T00:00:00+00:00",
+        principal="kernel:backups",
+        correlation_id="corr-offsite-1",
+        causation_id=None,  # ADR-034: a genuine root cause
+        device_id="device-test",
+        payload={
+            "last_marker_at": last_marker_at,
+            "checked_at": "2026-01-01T00:00:00+00:00",
+        },
+        recovery_grade=False,
+        entity_refs=({"kind": "backup", "id": "offsite"},),
+    )
+
+
+@pytest.fixture
+def offsite_wiring():
+    clock = FakeClock()
+    ids = (f"ntf-offsite-{n:04d}" for n in itertools.count())
+    store = FakeNotificationStore()
+    publisher = _RecordingPublisher()
+    return {
+        "clock": clock,
+        "store": store,
+        "publisher": publisher,
+        "enqueue": make_backup_offsite_enqueue_handler(
+            store, publisher, clock, lambda: next(ids)
+        ),
     }
 
 
@@ -164,6 +199,37 @@ class TestEnqueueRole:
         # silently disable EB-011.2 for the notifier path.
         wiring["enqueue"](_approaching_envelope())
         assert wiring["publisher"].caused_by == ["ev-1"]
+
+
+class TestBackupOffsiteEnqueueRole:
+    """ADR-034: a second, parallel enqueue function — `make_deadline_
+    enqueue_handler`'s own doctrine is one `enqueue_*` per fact-event, so
+    this is a separate test class exercising a separate handler, not a
+    parametrization of `TestEnqueueRole`."""
+
+    def test_queues_a_row_and_publishes_the_accelerant(self, offsite_wiring):
+        offsite_wiring["enqueue"](_offsite_stale_envelope())
+        queued = offsite_wiring["store"].queued()
+        assert [n.state for n in queued] == ["queued"]
+        assert queued[0].priority == "attention"  # 05 Appendix E's cap
+        assert [n.id for n in offsite_wiring["publisher"].published] == [queued[0].id]
+
+    def test_carries_the_logical_backup_offsite_ref(self, offsite_wiring):
+        offsite_wiring["enqueue"](_offsite_stale_envelope())
+        assert offsite_wiring["store"].queued()[0].entity_refs == (
+            {"kind": "backup", "id": "offsite"},
+        )
+
+    def test_ignores_events_of_a_different_type(self, offsite_wiring):
+        offsite_wiring["enqueue"](_approaching_envelope())
+        assert offsite_wiring["store"].queued() == []
+
+    def test_a_stale_event_with_no_marker_at_all_still_enqueues(self, offsite_wiring):
+        # The unconfigured case (last_marker_at=None) is the most common
+        # one this will actually fire for — must not be mistaken for
+        # "nothing to report."
+        offsite_wiring["enqueue"](_offsite_stale_envelope(last_marker_at=None))
+        assert offsite_wiring["store"].queued()[0].payload["last_marker_at"] is None
 
 
 class TestDrainRole:

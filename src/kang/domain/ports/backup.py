@@ -27,20 +27,51 @@ and this port does not invent one (ADR-032 D2).
 needs — "backup age + last restore-verification result" — and is
 deliberately the only method here with no clock parameter: it reads what
 already happened, it does not stamp anything new.
+
+`external_backup_status` (ADR-034) answers a genuinely different
+question from every method above: not "did KANG's own on-machine
+snapshot succeed," but "has Kang ever moved a copy off this machine" (07
+Part XII.5 — "KANG's own duty ends at `backups/`"). The marker path is
+bound at construction, like the backups directory itself, not passed per
+call — it never changes within a Core's lifetime.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Protocol
 
 __all__ = [
     "BackupError",
     "BackupService",
     "BackupStatus",
+    "EXTERNAL_BACKUP_STALE_AFTER",
+    "ExternalBackupStatus",
     "SnapshotRecord",
     "VerifyRecord",
+    "external_backup_is_stale",
 ]
+
+# ADR-034 D2: Part XII.5 names "(weekly)" once, for the panel's warning
+# cadence — read directly as the staleness threshold too, rather than
+# inventing a second, undocumented number for "how old is too old."
+EXTERNAL_BACKUP_STALE_AFTER = timedelta(days=7)
+
+
+def external_backup_is_stale(last_marker_at: str | None, now: str) -> bool:
+    """Shared by every `BackupService` implementation (ADR-034 D3), so the
+    real adapter and the fake cannot silently disagree about what "stale"
+    means (13 §2.3). No marker ever configured or touched reads as stale
+    by the same honest reasoning a missing `backups/manifest.jsonl` reads
+    as "no backup yet" elsewhere on this port — not an error, and not
+    treated differently from a marker that once existed and aged out."""
+    if last_marker_at is None:
+        return True
+    return (
+        datetime.fromisoformat(now) - datetime.fromisoformat(last_marker_at)
+        > EXTERNAL_BACKUP_STALE_AFTER
+    )
 
 
 class BackupError(Exception):
@@ -119,6 +150,21 @@ class BackupStatus:
     #   that half of the finding
 
 
+@dataclass(frozen=True)
+class ExternalBackupStatus:
+    """07 Part XII.5's off-machine evidence (ADR-034) — read from a
+    Kang-configured marker file's mtime, NOT `backups/manifest.jsonl`
+    (which records KANG's own on-machine snapshots, not what happened to
+    them afterward). `last_marker_at` is `None` when Kang has never
+    configured a marker path, or the configured path does not exist yet
+    — the same honest "no evidence" outcome either way; KANG cannot
+    force an off-machine copy to exist (07 Part XII.5: "it can refuse to
+    let it be forgotten")."""
+
+    last_marker_at: str | None
+    stale: bool
+
+
 class BackupService(Protocol):
     """Takes, records, and verifies snapshots per 07_DATABASE Part XII."""
 
@@ -146,4 +192,12 @@ class BackupService(Protocol):
         read, opens no `kang.db` connection, touches nothing, never
         raises. No manifest at all is the same as an empty one: both
         halves of the returned `BackupStatus` are `None`."""
+        ...
+
+    def external_backup_status(self, now: str) -> ExternalBackupStatus:
+        """07 Part XII.5's off-machine evidence (ADR-034): the
+        Kang-configured marker's mtime, and whether it is older than
+        `EXTERNAL_BACKUP_STALE_AFTER`. Never raises — an unconfigured or
+        missing marker is a normal, honest `stale=True` result, not an
+        error."""
         ...

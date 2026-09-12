@@ -1,18 +1,21 @@
-"""Request/response schemas for `backup.snapshot`/`backup.verify`
-(ADR-010 Ruling 1).
+"""Request/response schemas for `backup.snapshot`/`backup.verify`/
+`backup.offsite_check` (ADR-010 Ruling 1).
 
 Layer: api.
 Constitutional home: 07_DATABASE Part XII (the manifest fields
 `BackupSnapshotResponse` mirrors: "size, duration, integrity result,
 schema_version"; Part XII.3, the restore-test `BackupVerifyResponse`
+mirrors; Part XII.5, the off-machine warning `BackupOffsiteCheckResponse`
 mirrors), 05_AGENTS Appendix E (`backup.snapshot`/`.verify`, daily/
-monthly), ADR-031, ADR-032.
+monthly), ADR-031, ADR-032, ADR-034.
 
 Added 2026-08-17 alongside the first caller `backup.py`'s mechanisms ever
 had — they shipped at M1 and were never wired to the daily job the
 module's own header promised "arrives with the scheduler at M3". Verify
 followed on 2026-09-11 (ADR-032), closing Part XII.3's own "a backup
-that hasn't been restore-tested is treated as nonexistent."
+that hasn't been restore-tested is treated as nonexistent." Offsite
+check followed on 2026-09-13 (ADR-034), closing Part XII.5's own
+off-machine warning — the fifth Health signal.
 """
 
 from __future__ import annotations
@@ -20,6 +23,8 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 __all__ = [
+    "BackupOffsiteCheckRequest",
+    "BackupOffsiteCheckResponse",
     "BackupSnapshotRequest",
     "BackupSnapshotResponse",
     "BackupVerifyRequest",
@@ -80,3 +85,28 @@ class BackupVerifyResponse(BaseModel):
     live_row_counts: dict[str, int]
     snapshot_row_counts: dict[str, int]
     schema_version: int
+
+
+class BackupOffsiteCheckRequest(BaseModel):
+    """`backup.offsite_check` params — no fields, same shape as
+    `BackupSnapshotRequest`."""
+
+
+class BackupOffsiteCheckResponse(BaseModel):
+    """07 Part XII.5's off-machine evidence (ADR-034), read live on every
+    call — not a cached result of the weekly job, which governs only how
+    often the `attention` notification fires, never how current this
+    reading is.
+
+    `last_marker_at` is a raw ISO-8601 timestamp (the marker file's
+    mtime), not a precomputed age — the same convention ADR-033
+    established for every other timestamp this API serves. `None` means
+    Kang has never configured `[backup] external_marker_path`, or the
+    configured path has not been written yet — the same honest "no
+    evidence" reading either way. `stale` is `True` when `last_marker_at`
+    is `None` or older than 7 days (ADR-034 D2 — the same "(weekly)"
+    Part XII.5's own text already names, read as the threshold rather
+    than inventing a second number)."""
+
+    last_marker_at: str | None
+    stale: bool
