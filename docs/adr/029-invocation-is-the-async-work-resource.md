@@ -1,6 +1,6 @@
 # ADR-029 — `invocation`, not `task`, is the async-work resource: resolving a live doc/code contradiction before M7
 
-**Status:** proposed
+**Status:** accepted (2026-09-13)
 **Date:** 2026-08-17
 **Supersedes:** none
 **Amends:** 12_API API-007 (`docs/12_API.md:99-103`) and §§9/10/13/16 usages, 15_EVENT_BUS §6.1 (`docs/15_EVENT_BUS.md:180`)
