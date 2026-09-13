@@ -4,11 +4,12 @@ Layer: kernel/runtime, but exempt from the import matrix: this module MAY
 import adapters and the api, because something must instantiate concretions
 and inject them (17 §4.3 composition-root exception). It contains wiring
 only — no branching beyond config, no domain logic. `kernel.runtime.
-scheduler_wiring` carries the same exemption (ADR-023 — split out when a
-third scheduled job pushed this file past the size lint's hard limits; the
-two files together are one conceptual composition root, not two). Both are
-registered by exact name in tools/importlinter.toml; the exemption MUST NOT
-spread beyond those two without its own justification.
+scheduler_wiring` (ADR-023) and `kernel.runtime.query_routing` (ADR-037)
+carry the same exemption — both split out when their own slice pushed this
+file past the size lint's hard limits; all three files together are one
+conceptual composition root, not three. Registered by exact name in
+tools/importlinter.toml; the exemption MUST NOT spread beyond those three
+without its own justification.
 
 Constitutional home: 11_CODING §11 (composition root, plain constructor
 calls, readable top to bottom), 17 §4.3, 12_API §5 (it assembles the
@@ -43,8 +44,8 @@ from kang.adapters.os_windows.startup_lock import FileStartupLock
 from kang.adapters.sqlite.backup_service import SqliteBackupService
 from kang.adapters.sqlite.calendar_store import SqliteCalendarStore
 from kang.adapters.sqlite.competition_store import SqliteCompetitionStore
-from kang.adapters.sqlite.connection import open_connection
-from kang.adapters.sqlite.connection_pool import WriteExecutor
+from kang.adapters.sqlite.connection import open_connection, open_read_only_connection
+from kang.adapters.sqlite.connection_pool import ReadPool, WriteExecutor
 from kang.adapters.sqlite.deadline_store import SqliteDeadlineStore
 from kang.adapters.sqlite.goal_store import SqliteGoalStore
 from kang.adapters.sqlite.held_action_store import SqliteHeldActionStore
@@ -63,45 +64,32 @@ from kang.api.http_binding import make_app
 from kang.api.operations import (
     ConfirmationDeps,
     PlannerDeps,
-    make_audit_list_handler,
     make_backup_offsite_check_handler,
     make_backup_snapshot_handler,
     make_backup_verify_handler,
     make_competition_create_handler,
-    make_competition_list_handler,
     make_deadline_create_handler,
-    make_deadline_list_handler,
     make_deadline_sweep_handler,
-    make_explain_invocation_handler,
-    make_explain_stub_handler,
     make_goal_achieve_handler,
     make_goal_create_handler,
-    make_goal_list_handler,
     make_goal_retire_handler,
     make_goal_revise_handler,
     make_held_action_approve_handler,
     make_held_action_cancel_handler,
     make_held_action_expire_handler,
-    make_held_action_list_handler,
-    make_invocation_list_handler,
     make_job_disable_handler,
     make_job_enable_handler,
     make_milestone_create_handler,
     make_milestone_drop_handler,
-    make_milestone_list_handler,
     make_milestone_miss_handler,
     make_milestone_reach_handler,
     make_notification_ack_handler,
-    make_permission_list_handler,
     make_plan_generate_handler,
     make_project_complete_handler,
     make_project_create_handler,
-    make_project_list_handler,
-    make_registry_get_handler,
     make_system_health_handler,
     make_task_complete_handler,
     make_task_create_handler,
-    make_task_get_handler,
 )
 from kang.api.registry import OPERATIONS
 from kang.domain.notifications import (
@@ -119,6 +107,7 @@ from kang.kernel.bus.delivery import Delivery
 from kang.kernel.bus.reconciliation import Reconciliation
 from kang.kernel.permissions.engine import build_checked_engine
 from kang.kernel.runtime.ids import uuid7
+from kang.kernel.runtime.query_routing import _build_query_handlers, _dispatch_query
 from kang.kernel.runtime.scheduler_wiring import (
     _SchedulerWiring,
     _tick_forever,
@@ -262,14 +251,16 @@ class _HandlerWiring:
 
 
 def _build_handlers(w: _HandlerWiring) -> dict:
-    """The operation name → handler table. Plain construction, one entry per
-    registered operation — the registry is the contract, this is its wiring."""
+    """The operation name → handler table for commands, plus `system.health`
+    (12 §16's one query exception — see `query_routing._build_query_handlers`'s own
+    docstring for why). Plain construction, one entry per operation this
+    module doesn't route to the read pool — the registry is the contract,
+    this is its wiring. Every *other* query operation's wiring lives in
+    `query_routing._build_query_handlers` instead (ADR-036 D4, resumed)."""
     return {
-        "registry.get": make_registry_get_handler(),
         "task.create": make_task_create_handler(
             w.bus, w.task_store, w.clock, w.new_id, w.device_id
         ),
-        "task.get": make_task_get_handler(w.task_store),
         "task.complete": make_task_complete_handler(
             w.bus, w.task_store, w.clock, w.new_id, w.device_id
         ),
@@ -279,7 +270,6 @@ def _build_handlers(w: _HandlerWiring) -> dict:
         "deadline.sweep": make_deadline_sweep_handler(
             w.bus, w.deadline_store, w.clock, w.new_id, w.device_id
         ),
-        "deadline.list": make_deadline_list_handler(w.deadline_store),
         "notification.ack": make_notification_ack_handler(
             w.notification_store, w.clock
         ),
@@ -294,13 +284,6 @@ def _build_handlers(w: _HandlerWiring) -> dict:
                 device_id=w.device_id,
             )
         ),
-        "explain.invocation": make_explain_invocation_handler(w.invocations, w.audit),
-        "explain.plan_item": make_explain_stub_handler("plan item"),
-        "explain.notification": make_explain_stub_handler("notification"),
-        "explain.suggestion": make_explain_stub_handler("suggestion"),
-        "explain.memory": make_explain_stub_handler("memory record"),
-        "permission.list": make_permission_list_handler(w.permission_engine),
-        "audit.list": make_audit_list_handler(w.audit, w.clock),
         "system.health": make_system_health_handler(
             w.job_store, w.kill_switch, w.backups, w.clock
         ),
@@ -309,7 +292,6 @@ def _build_handlers(w: _HandlerWiring) -> dict:
         "backup.offsite_check": make_backup_offsite_check_handler(
             w.backups, w.bus, w.clock, w.new_id, w.device_id
         ),
-        "invocation.list": make_invocation_list_handler(w.invocations),
         **_build_project_cluster_handlers(w),
         **_build_consequential_handlers(w),
     }
@@ -372,7 +354,8 @@ def _build_consequential_handlers(w: _HandlerWiring) -> dict:
             ha, w.clock, w.connection, transactional_effects
         ),
         "held_action.cancel": make_held_action_cancel_handler(ha, w.clock),
-        "held_action.list": make_held_action_list_handler(ha),
+        # held_action.list is a query — its wiring lives in
+        # query_routing._build_query_handlers (ADR-037), not here.
         "held_action.expire": make_held_action_expire_handler(ha, w.clock),
         "job.disable": make_job_disable_handler(js, confirmation),
         "job.enable": make_job_enable_handler(js, confirmation),
@@ -388,23 +371,23 @@ def _build_project_cluster_handlers(w: _HandlerWiring) -> dict:
     reasoning `_build_stores`/`_build_bus_wiring` were extracted for —
     these four entities already share `domain/projects/`'s own package
     grouping (this session's `goal_service.py`/`milestone_service.py`
-    docstrings), so the split mirrors a boundary that already exists."""
+    docstrings), so the split mirrors a boundary that already exists.
+    Each entity's `.list` is a query — that wiring lives in
+    `query_routing._build_query_project_cluster_handlers` instead
+    (ADR-037), not here."""
     return {
         "project.create": make_project_create_handler(
             w.bus, w.project_store, w.clock, w.new_id, w.device_id
         ),
-        "project.list": make_project_list_handler(w.project_store),
         "project.complete": make_project_complete_handler(
             w.bus, w.project_store, w.clock, w.new_id, w.device_id
         ),
         "competition.create": make_competition_create_handler(
             w.bus, w.competition_store, w.clock, w.new_id, w.device_id
         ),
-        "competition.list": make_competition_list_handler(w.competition_store),
         "milestone.create": make_milestone_create_handler(
             w.bus, w.milestone_store, w.clock, w.new_id, w.device_id
         ),
-        "milestone.list": make_milestone_list_handler(w.milestone_store),
         "milestone.reach": make_milestone_reach_handler(
             w.bus, w.milestone_store, w.clock, w.new_id, w.device_id
         ),
@@ -417,7 +400,6 @@ def _build_project_cluster_handlers(w: _HandlerWiring) -> dict:
         "goal.create": make_goal_create_handler(
             w.bus, w.goal_store, w.clock, w.new_id, w.device_id
         ),
-        "goal.list": make_goal_list_handler(w.goal_store),
         "goal.achieve": make_goal_achieve_handler(
             w.bus, w.goal_store, w.clock, w.new_id, w.device_id
         ),
@@ -528,29 +510,33 @@ def _build_core_locked(
 
     wiring = _build_bus_wiring(kang_home, kang, events, clock, new_id, device_id)
     stores = _build_stores(kang, clock)
-    handlers = _build_handlers(
-        _HandlerWiring(
-            connection=kang,
-            bus=wiring.bus,
-            clock=clock,
-            new_id=new_id,
-            device_id=device_id,
-            audit=wiring.audit,
-            task_store=stores.task_store,
-            deadline_store=stores.deadline_store,
-            notification_store=wiring.notification_store,
-            invocations=stores.invocations,
-            held_action_store=stores.held_action_store,
-            permission_engine=wiring.engine,
-            job_store=stores.job_store,
-            kill_switch=stores.kill_switch,
-            project_store=stores.project_store,
-            competition_store=stores.competition_store,
-            milestone_store=stores.milestone_store,
-            goal_store=stores.goal_store,
-            backups=_build_backup_service(kang, events, kang_home, clock),
-        )
+    handler_wiring = _HandlerWiring(
+        connection=kang,
+        bus=wiring.bus,
+        clock=clock,
+        new_id=new_id,
+        device_id=device_id,
+        audit=wiring.audit,
+        task_store=stores.task_store,
+        deadline_store=stores.deadline_store,
+        notification_store=wiring.notification_store,
+        invocations=stores.invocations,
+        held_action_store=stores.held_action_store,
+        permission_engine=wiring.engine,
+        job_store=stores.job_store,
+        kill_switch=stores.kill_switch,
+        project_store=stores.project_store,
+        competition_store=stores.competition_store,
+        milestone_store=stores.milestone_store,
+        goal_store=stores.goal_store,
+        backups=_build_backup_service(kang, events, kang_home, clock),
     )
+    # Same _HandlerWiring feeds both tables: _build_handlers uses
+    # w.connection to build command handlers once at boot;
+    # query_routing._build_query_handlers ignores it, building each
+    # query handler fresh per call instead (ADR-036 D4, resumed).
+    handlers = _build_handlers(handler_wiring)
+    query_handlers = _build_query_handlers(handler_wiring)
     dispatcher = Dispatcher(
         handlers,
         DispatcherDeps(
@@ -562,6 +548,7 @@ def _build_core_locked(
             clock=clock,
             new_id=new_id,
         ),
+        query_handlers=query_handlers,
     )
     sessions = SqliteSessionStore(kang)
     return Core(
@@ -638,45 +625,42 @@ async def serve(kang_home: Path, host: str = "127.0.0.1", port: int = 0) -> None
 
     ADR-036 D4: the Core is built by, and lives entirely on, one dedicated
     `WriteExecutor` worker thread — `build_core` itself is unchanged; it is
-    simply *called from* that thread (`write_executor.start()`) instead of
-    `serve`'s own, so every store's connection ends up opened on, and
-    forever used from, the thread that will actually touch it. Every
-    dispatch, the boot catch-up, session minting, and shutdown all route
-    through the same executor, never `core` directly — that discipline is
-    what keeps `check_same_thread=True` satisfied without weakening it.
+    simply *called from* that thread instead of `serve`'s own. `core` IS
+    captured below (D4, resumed): reading its pure, in-memory attributes
+    and closing over `core.dispatcher` inside a `submit()` callable is safe
+    from any thread — only calling a DB-touching method directly, outside a
+    submission, would violate `check_same_thread`, and nothing here does.
+    Read-pool-routed query operations go through `query_routing.
+    _dispatch_query` instead of `dispatch()`'s single write-executor
+    submission — see that module's own docstring for what, and why
+    `system.health` is excluded.
 
-    Runs the scheduler's boot catch-up (D014: "on startup after downtime,
-    each job's policy decides...") before accepting requests, then keeps it
-    live: `_tick_forever` (a supervised task, ADR-036 D2) re-runs
-    `Scheduler.tick()` every `TICK_INTERVAL_S` via the same executor, so
-    newly-due jobs are picked up while the process keeps running, not only
-    at the next fresh boot. `core.scheduler` is `None` when `kang.toml` is
-    missing/invalid (`_wire_scheduler`'s own fail-closed path); both the
-    boot catch-up and the live tick are skipped silently in that case, same
-    as every other scheduler operation already does.
+    Runs the scheduler's boot catch-up (D014) before accepting requests,
+    then keeps it live via `_tick_forever` (a supervised task, ADR-036 D2)
+    through the same executor. `core.scheduler` is `None` when `kang.toml`
+    is missing/invalid (`_wire_scheduler`'s fail-closed path); both catch-up
+    and the live tick are skipped silently then, same as every other
+    scheduler operation.
 
-    ADR-008 Part A2: `build_core` takes an exclusive startup lock under
-    `%KANG_HOME%` before touching anything else. A second live Core against
-    the same home "detects the lock and exits/reports" (the ADR's own
-    words) — a clear one-line stderr message and a non-zero exit, never a
-    raw traceback, and never a second scheduler/notifier racing the first
-    against the same `kang.db`."""
+    ADR-008 Part A2: a second live Core against the same `%KANG_HOME%`
+    "detects the lock and exits/reports" — a one-line stderr message and a
+    non-zero exit, never a raw traceback."""
     write_executor = WriteExecutor(lambda: build_core(kang_home))
+    read_pool = ReadPool(lambda: open_read_only_connection(kang_home / "kang.db"))
     try:
-        await write_executor.start()  # the Core itself; every use below
-        #   goes through write_executor.submit(lambda core: ...), never a
-        #   captured reference here, so nothing outside that one worker
-        #   thread ever touches it (check_same_thread=True, satisfied by
-        #   construction — ADR-036 D4).
+        core = await write_executor.start()
     except AlreadyRunningError as exc:
         sys.stderr.write(f"KANG Core: {exc}\n")
         await write_executor.stop()
+        await read_pool.stop()
         sys.exit(1)
 
     await write_executor.submit(_catch_up_if_scheduled)
     session = await write_executor.submit(lambda core: core.mint_first_party_session())
 
     async def dispatch(request: ApiRequest) -> dict:
+        if request.operation in core.dispatcher.query_handler_names:
+            return await _dispatch_query(core, request, write_executor, read_pool)
         return await write_executor.submit(
             lambda core: core.dispatcher.dispatch(request)
         )
@@ -702,6 +686,7 @@ async def serve(kang_home: Path, host: str = "127.0.0.1", port: int = 0) -> None
         with contextlib.suppress(asyncio.CancelledError):
             await tick_task
         await runner.cleanup()
+        await read_pool.stop()
         await write_executor.submit(lambda core: core.close())
         await write_executor.stop()
 

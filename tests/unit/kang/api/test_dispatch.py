@@ -27,7 +27,7 @@ VALID_TOKEN = "tok-kang"
 PLUGIN_TOKEN = "tok-plugin"
 
 
-def _build(grants=None):
+def _build(grants=None, query_handlers=None):
     clock = FakeClock()
     sessions = FakeSessionStore()
     sessions.create(
@@ -68,6 +68,7 @@ def _build(grants=None):
             clock=clock,
             new_id=lambda: next(ids),
         ),
+        query_handlers=query_handlers,
     )
     return dispatcher, invocations, audit_log, calls
 
@@ -239,3 +240,158 @@ def test_schema_less_operation_is_unaffected_by_ruling_4():
         ApiRequest("registry.get", {"anything": "goes"}, VALID_TOKEN)
     )
     assert response["ok"] is True
+
+
+# --- ADR-036 D4 (resumed): the read-pool-routed phase methods. `dispatch()`
+# itself is proven unchanged by every test above still passing verbatim;
+# these prove the new methods composition.py's query_routing._dispatch_query
+# calls instead, in isolation from any real executor/pool.
+
+
+def test_query_handler_names_reflects_the_query_handlers_table():
+    dispatcher, *_ = _build(query_handlers={"task.get": lambda conn: None})
+    assert dispatcher.query_handler_names == frozenset({"task.get"})
+
+
+def test_query_handler_names_is_empty_by_default():
+    dispatcher, *_ = _build()
+    assert dispatcher.query_handler_names == frozenset()
+
+
+def test_prepare_query_authenticates_validates_and_records_start():
+    dispatcher, invocations, audit_log, _ = _build(
+        query_handlers={"task.get": lambda conn: None}
+    )
+    entry, context = dispatcher.prepare_query(
+        ApiRequest("task.get", {"id": "t-1"}, VALID_TOKEN), "cid-1"
+    )
+    assert entry["name"] == "task.get"
+    assert context.principal == "kang"
+    assert context.correlation_id == "cid-1"
+    invocation = invocations.by_correlation("cid-1")
+    assert invocation.operation == "task.get" and invocation.outcome is None
+    actions = [
+        r.entry.action
+        for m in audit_log.months()
+        for r in audit_log.records(m)
+        if r.entry.correlation_id == "cid-1"
+    ]
+    assert "task.get.dispatched" in actions
+
+
+def test_prepare_query_refuses_a_bad_session_before_registry_lookup():
+    # Mirrors _run's own order: authenticate before registered, so a bad
+    # session never leaks whether an unrelated operation name is valid.
+    dispatcher, *_ = _build(query_handlers={"task.get": lambda conn: None})
+    try:
+        dispatcher.prepare_query(
+            ApiRequest("task.get", {}, "bogus-token"), "cid-2"
+        )
+        raise AssertionError("expected ApiError")
+    except ApiError as exc:
+        assert exc.code == "permission_denied"
+
+
+def test_run_query_handler_builds_fresh_against_the_given_connection():
+    seen_connections = []
+
+    def factory(conn):
+        seen_connections.append(conn)
+
+        def handler(context, params):
+            return {"echo": params.get("value"), "principal": context.principal}
+
+        return handler
+
+    dispatcher, *_ = _build(query_handlers={"task.get": factory})
+    context = dispatcher.prepare_query(
+        ApiRequest("task.get", {"id": "t-1", "value": 9}, VALID_TOKEN), "cid-3"
+    )[1]
+    sentinel_connection = object()
+    result = dispatcher.run_query_handler(
+        "task.get", sentinel_connection, context, {"value": 9}
+    )
+    assert seen_connections == [sentinel_connection]  # never the write conn
+    assert result == {"echo": 9, "principal": "kang"}
+
+
+def test_finish_query_marks_invocation_ok_and_builds_the_response_envelope():
+    dispatcher, invocations, audit_log, _ = _build(
+        query_handlers={"task.get": lambda conn: None}
+    )
+    _, context = dispatcher.prepare_query(
+        ApiRequest("task.get", {"id": "t-1"}, VALID_TOKEN), "cid-4"
+    )
+    response = dispatcher.finish_query(context, {"echo": 1})
+    assert response == {"ok": True, "result": {"echo": 1}, "correlation_id": "cid-4"}
+    assert invocations.by_correlation("cid-4").outcome == "ok"
+    actions = [
+        r.entry.action
+        for m in audit_log.months()
+        for r in audit_log.records(m)
+        if r.entry.correlation_id == "cid-4"
+    ]
+    assert "task.get.ok" in actions
+
+
+def test_fail_query_marks_invocation_failed():
+    dispatcher, invocations, audit_log, _ = _build(
+        query_handlers={"task.get": lambda conn: None}
+    )
+    dispatcher.prepare_query(
+        ApiRequest("task.get", {"id": "t-1"}, VALID_TOKEN), "cid-5"
+    )
+    dispatcher.fail_query("cid-5")
+    assert invocations.by_correlation("cid-5").outcome == "failed"
+    actions = [
+        r.entry.action
+        for m in audit_log.months()
+        for r in audit_log.records(m)
+        if r.entry.correlation_id == "cid-5"
+    ]
+    assert "task.get.failed" in actions
+
+
+def test_error_envelope_wraps_apierror_verbatim():
+    dispatcher, *_ = _build()
+    envelope = dispatcher.error_envelope(
+        ApiError("conflict", "revision mismatch"), "cid-6"
+    )
+    assert envelope == {
+        "ok": False,
+        "error": {
+            "code": "conflict",
+            "message": "revision mismatch",
+            "correlation_id": "cid-6",
+            "retryable": False,
+        },
+    }
+
+
+def test_error_envelope_wraps_an_unexpected_exception_as_internal():
+    dispatcher, *_ = _build()
+    envelope = dispatcher.error_envelope(RuntimeError("kaboom"), "cid-7")
+    assert envelope["error"]["code"] == "internal"
+    assert envelope["error"]["retryable"] is True
+
+
+def test_prepare_run_finish_query_together_match_dispatch_shape():
+    # Proves the phased path and dispatch()'s own single-call path produce
+    # the identical response shape for an equivalent successful query —
+    # the split changes threading, never the observable contract.
+    def factory(conn):
+        return lambda context, params: {"echo": params.get("value")}
+
+    dispatcher, invocations, _, _ = _build(query_handlers={"task.get": factory})
+    entry, context = dispatcher.prepare_query(
+        ApiRequest("task.get", {"id": "t-1", "value": 5}, VALID_TOKEN), "cid-8"
+    )
+    result = dispatcher.run_query_handler(
+        entry["name"], object(), context, {"value": 5}
+    )
+    response = dispatcher.finish_query(context, result)
+
+    baseline = dispatcher.dispatch(ApiRequest("registry.get", {}, VALID_TOKEN))
+    assert set(response) == set(baseline)  # {"ok", "result", "correlation_id"}
+    assert response["ok"] is True
+    assert invocations.by_correlation("cid-8").outcome == "ok"

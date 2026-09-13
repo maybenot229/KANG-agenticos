@@ -83,6 +83,14 @@ select = ["E", "F", "I", "T20", "BLE"]
 # failure to return the one error model — an unexpected exception becomes the
 # `internal` envelope, never a dropped connection or a synthesized success.
 "src/kang/api/dispatch.py" = ["BLE001"]
+# ADR-036 D4 (resumed)/ADR-037: query_routing.py's _dispatch_query is the
+# SAME API-006 ingress supervision point as dispatch.py's own dispatch() —
+# it exists only because a read-pool-routed query dispatch cannot be
+# dispatch()'s single atomic call (that would run the handler on the
+# write-executor, defeating the read pool's purpose). It converts every
+# failure across its three hops to the identical envelope dispatch() would
+# have, via Dispatcher's own error_envelope.
+"src/kang/kernel/runtime/query_routing.py" = ["BLE001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

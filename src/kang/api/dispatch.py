@@ -14,6 +14,16 @@ raw offending value, which could be private-tier content).
 Thinness (12 §2): this layer contains NO domain logic. Handlers are the glue
 to domain services; an `if` here about tasks or memory would be a defect.
 The dispatcher wires the constitutional pipeline once, for every operation.
+
+ADR-036 D4 (resumed, 2026-09-14): read-pool-routed query operations don't
+go through `dispatch()` at all. `composition.py`'s `_dispatch_query` calls
+`prepare_query`/`run_query_handler`/`finish_query`/`fail_query` instead,
+across the write-executor and read pool — the same pipeline steps
+`dispatch()` itself uses, in the same order, just not fused into one
+atomic call the way a command's `dispatch()` still is. `dispatch()`'s own
+behavior and signature are completely unchanged by this; every existing
+caller (including ~900 tests calling it directly, synchronously) is
+unaffected.
 """
 
 from __future__ import annotations
@@ -84,10 +94,28 @@ def _sanitized_field_errors(exc: ValidationError) -> list[dict[str, str]]:
 
 
 class Dispatcher:
-    """Runs the §5 pipeline for every operation."""
+    """Runs the §5 pipeline for every operation.
 
-    def __init__(self, handlers: dict[str, Handler], deps: DispatcherDeps) -> None:
+    `query_handlers` (ADR-036 D4, resumed) is a second, optional table:
+    `name -> Callable[[connection], Handler]`, a per-call factory rather
+    than a ready-made `Handler` — for query-kind operations composition.py
+    routes to the read pool instead of the write-executor. Defaults to
+    `{}` so every existing caller (~900 tests, and `dispatch()` itself)
+    is completely unaffected; nothing in `dispatch()`'s own body reads
+    it. Only `composition.py`'s `_dispatch_query` (a new, separate
+    caller) uses `query_handler_names`/`prepare_query`/`run_query_handler`/
+    `finish_query`/`fail_query` below — `dispatch()` remains the sole
+    entry point for commands and for `system.health` (the one query op
+    excluded from read-pool routing; see ADR-036 D4's own note on why)."""
+
+    def __init__(
+        self,
+        handlers: dict[str, Handler],
+        deps: DispatcherDeps,
+        query_handlers: dict[str, Callable[[Any], Handler]] | None = None,
+    ) -> None:
         self._handlers = handlers
+        self._query_handlers = query_handlers or {}
         self._sessions = deps.sessions
         self._permissions = deps.permissions
         self._idempotency = deps.idempotency
@@ -96,20 +124,102 @@ class Dispatcher:
         self._clock = deps.clock
         self._new_id = deps.new_id
 
+    @property
+    def query_handler_names(self) -> frozenset[str]:
+        """The operations `composition.py` should route to the read pool
+        instead of `dispatch()`'s own write-executor submission."""
+        return frozenset(self._query_handlers)
+
     def dispatch(self, request: ApiRequest) -> dict[str, Any]:
         """Execute one request; return a success or API-006 error envelope.
         A correlation_id is minted here and returned on every path."""
         correlation_id = self._new_id()
         try:
             return self._run(request, correlation_id)
-        except ApiError as error:
-            return {"ok": False, "error": error.to_envelope(correlation_id)}
-        except Exception as unexpected:  # API ingress: every failure → one model
+        except Exception as exc:  # API ingress: every failure → one model
             # API-006: an unexpected failure returns the `internal` envelope,
             # honestly (never a synthesized success, never a dropped
             # connection). The API boundary is a supervision point (11 §9).
-            error = ApiError("internal", f"internal error: {unexpected}")
-            return {"ok": False, "error": error.to_envelope(correlation_id)}
+            return self.error_envelope(exc, correlation_id)
+
+    def error_envelope(self, exc: Exception, correlation_id: str) -> dict[str, Any]:
+        """The API-006 envelope for any exception, by kind — shared by
+        `dispatch()`'s own top-level catch above and composition.py's
+        read-pool orchestration (`_dispatch_query`), which cannot reuse
+        `dispatch()` itself: `dispatch()` always runs a query's handler
+        on the write-executor, defeating the read pool's whole purpose."""
+        if isinstance(exc, ApiError):
+            return {"ok": False, "error": exc.to_envelope(correlation_id)}
+        error = ApiError("internal", f"internal error: {exc}")
+        return {"ok": False, "error": error.to_envelope(correlation_id)}
+
+    def prepare_query(
+        self, request: ApiRequest, correlation_id: str
+    ) -> tuple[dict[str, Any], HandlerContext]:
+        """Phase 1 of a read-pool-routed query dispatch (ADR-036 D4,
+        resumed): everything `_run` does up through `_record_start`,
+        unchanged in substance — registry lookup, session auth, schema
+        validation, scope + channel checks, the invocation/audit
+        'dispatched' bookkeeping. `composition.py` runs this on the
+        write-executor (every step here touches a write-connection-bound
+        store), then hands the handler call itself to the read pool
+        (`run_query_handler`) before returning here for
+        `finish_query`/`fail_query` — the three-phase split finding 1
+        agreed on. `correlation_id` is minted by the caller (`Core.new_id`
+        is pure — no DB touch — so composition.py mints it directly,
+        outside any executor submission, exactly once per request).
+        Authenticate-before-registered, matching `_run`'s own order
+        exactly (defensive: composition.py only ever calls this for a
+        name already in `query_handler_names`, so `_registered` cannot
+        actually fail here today — but the order still shouldn't drift
+        from `_run`'s)."""
+        principal, first_party = self._authenticate(request.session_token)
+        entry = self._registered(request.operation)
+        self._validate(entry, request)
+        self._authorize(entry, principal)
+        self._authorize_channel(entry, first_party)
+        context = HandlerContext(
+            principal=principal,
+            correlation_id=correlation_id,
+            trigger="cli" if first_party else principal,
+            first_party=first_party,
+        )
+        self._record_start(entry, context)
+        return entry, context
+
+    def run_query_handler(
+        self,
+        name: str,
+        connection: Any,
+        context: HandlerContext,
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Phase 2: build the query handler fresh against whichever
+        read-pool connection the caller checked out for this call, then
+        run it — never against a boot-time, write-connection-bound
+        instance (D4's per-call-construction finding: the whole point of
+        moving a query here is that a handler closed over one connection
+        forever would only ever use that one pool worker, not all four)."""
+        return self._query_handlers[name](connection)(context, params)
+
+    def finish_query(
+        self, context: HandlerContext, result: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Phase 3, success path — mirrors `_execute`'s own success
+        branch. No `_store_idempotent` call: query operations never carry
+        an idempotency key (`_validate`'s own gate is command-only), so
+        it would always be a no-op."""
+        self._finish(context.correlation_id, "ok")
+        return {
+            "ok": True,
+            "result": result,
+            "correlation_id": context.correlation_id,
+        }
+
+    def fail_query(self, correlation_id: str) -> None:
+        """Phase 3, failure path — mirrors `_execute`'s own
+        `except ApiError: self._finish(..., 'failed'); raise` branch."""
+        self._finish(correlation_id, "failed")
 
     def _run(self, request: ApiRequest, correlation_id: str) -> dict[str, Any]:
         principal, first_party = self._authenticate(request.session_token)
