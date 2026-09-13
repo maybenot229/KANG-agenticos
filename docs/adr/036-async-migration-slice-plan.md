@@ -50,9 +50,11 @@ This is the central call this ADR makes, and it is a real recommendation, not a 
 
 Landed as `kernel/runtime/supervised_task.py::create_supervised_task` — mandatory `name`, an optional `timeout_s` enforced via real `asyncio.wait_for` cancellation (not `Job.timeout_s`'s post-hoc reporting), and a done-callback that logs any unhandled exception loudly (DB-P7), excluding deliberate cancellation. Zero callers yet, as intended — D4 remains the first real one. `tools/lint_banned_patterns.py` gained the matching rule.
 
-### D3 — Slice 1: the write-executor and read-pool themselves
+### D3 — Slice 1: the write-executor and read-pool themselves. **DONE (2026-09-13).**
 
 Built and unit-tested in complete isolation inside `adapters/sqlite/`, with **zero existing callers** — nothing outside this slice changes, nothing outside this slice's own new tests can break. This is the lowest-risk possible first real slice: it can be reviewed, merged, and left dormant if D4 needs to slip.
+
+Landed as `adapters/sqlite/connection_pool.py::WriteExecutor`/`ReadPool`, plus a new `open_read_only_connection` alongside `connection.py`'s existing `open_connection` (the same PRAGMA discipline, `query_only = ON`, verified not just set). Both classes are built on `concurrent.futures.ThreadPoolExecutor` — the same underlying mechanism `asyncio.to_thread()` itself uses, but with a purpose-built, fixed-size pool (1 worker for writes, 4 for reads) instead of the ambient shared one, so a connection opened by a given worker is only ever touched by that same worker again, satisfying `check_same_thread=True` by construction rather than by discipline. `ReadPool` uses `ThreadPoolExecutor`'s `initializer` hook so each of its workers opens and permanently owns exactly one connection. Proven, not assumed: submissions to the write executor run in strict arrival order even when issued concurrently; concurrent read submissions genuinely land on more than one connection (four 50ms jobs complete in well under their serial sum); a write attempted through a pool connection raises loudly.
 
 ### D4 — Slice 2: `aiohttp` wiring (ADR-035) + routing "command"/"query" through Slice 1
 
