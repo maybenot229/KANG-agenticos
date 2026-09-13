@@ -1,6 +1,6 @@
 # ADR-036 — the async migration slice plan: an executor/pool inside `adapters/sqlite/`, not a rewrite
 
-**Status:** proposed
+**Status:** accepted (2026-09-13) — sequencing/destination only; each slice's own implementation (D2/D3/D4) is still unbuilt and gets its own review when written
 **Date:** 2026-09-13
 **Supersedes:** none
 **Affected documents:** none yet — this ADR sequences the work; each slice's own implementation is reviewed against it, not re-litigated
