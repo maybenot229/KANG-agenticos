@@ -44,9 +44,11 @@ This is the central call this ADR makes, and it is a real recommendation, not a 
 
 **Why not the full conversion.** It would touch all 18 stores, 19 fakes, 15 handlers, and a meaningful fraction of 903 tests, for a benefit fine-grained coloring cannot actually deliver on top of SQLite (see Context) — cost without the payoff. If a real need for finer-grained interleaving is ever found *outside* the agent-runtime case D5 already carves out, that is itself a new, specific finding deserving its own ADR at that time — not a reason to pre-pay for it now.
 
-### D2 — Slice 0: the kernel's supervised-task primitives (prerequisite, blocks D4)
+### D2 — Slice 0: the kernel's supervised-task primitives (prerequisite, blocks D4). **DONE (2026-09-13).**
 
 11_CODING §12: *"All concurrency passes through the kernel's supervised-task primitives (timeout, cancellation, naming) — bare `create_task` outside the kernel is lint-banned."* Neither the primitive nor the lint rule exists (`tools/lint_banned_patterns.py` has no `create_task` check today). Both land together, matching this project's own pairing discipline (a rule ships with its enforcement) — the scheduler's own tick task (D4) is the first real caller. Exact API design is that slice's own work, not this ADR's ("what, not how," matching ADR-030's own discipline).
+
+Landed as `kernel/runtime/supervised_task.py::create_supervised_task` — mandatory `name`, an optional `timeout_s` enforced via real `asyncio.wait_for` cancellation (not `Job.timeout_s`'s post-hoc reporting), and a done-callback that logs any unhandled exception loudly (DB-P7), excluding deliberate cancellation. Zero callers yet, as intended — D4 remains the first real one. `tools/lint_banned_patterns.py` gained the matching rule.
 
 ### D3 — Slice 1: the write-executor and read-pool themselves
 

@@ -8,6 +8,7 @@ Patterns caught (each a named rot vector):
 - bare `except:` (11 §9)
 - eval()/exec() outside the plugin host (SEC-005)
 - SQL outside adapters/sqlite + adapters/eventlog (DB-002)
+- bare asyncio.create_task() outside kernel/runtime (11 §12, ADR-036 Slice 0)
 
 Token-aware: code rules skip strings/comments (docstrings may *cite* the
 bans); the SQL rule scans string literals (SQL lives in strings), skipping
@@ -41,6 +42,11 @@ CODE_RULES: list[tuple[str, re.Pattern[str], tuple[str, ...]]] = [
         "eval/exec outside plugin host (SEC-005)",
         re.compile(r"(?<![\w.])(eval|exec)\($"),
         ("kang/kernel/plugin_host",),
+    ),
+    (
+        "bare asyncio.create_task outside the kernel (11 §12)",
+        re.compile(r"(?<![\w.])asyncio\.create_task\($"),
+        ("kang/kernel/runtime",),  # supervised_task.py's own sanctioned use
     ),
 ]
 
