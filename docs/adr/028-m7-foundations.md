@@ -1,6 +1,6 @@
 # ADR-028 — M7 foundations: the four constraints the code imposes, the `task` collision, and the one fork that needs Kang
 
-**Status:** proposed
+**Status:** accepted (2026-09-13) — C1-C4 and V1 settled; O1 remains deliberately open, pending ADR-030
 **Date:** 2026-08-17
 **Supersedes:** none
 **Affected documents:** none yet — this ADR settles constraints and sequences the work; each numbered slice below gets its own ADR before any code
@@ -49,7 +49,7 @@ Also settled by the same investigation, so M7 does not rediscover them: grants a
 
 ---
 
-### V1 — The `task` vocabulary collision must be resolved before `agent.invoke` is registered
+### V1 — The `task` vocabulary collision must be resolved before `agent.invoke` is registered. **DISCHARGED by ADR-029** (accepted 2026-09-13).
 
 **This is the finding most likely to cause silent damage, because both sides are already written down.**
 
@@ -87,8 +87,8 @@ The options, with the code fact that bears on each — presented for Kang's deci
 
 ## Sequencing
 
-1. **V1** — resolve the `task`/`invocation` collision (amends 12_API). Blocks every M7 registration.
-2. **O1** — decide the execution model with Kang. Blocks the orchestrator and agent runtime.
+1. **V1** — resolve the `task`/`invocation` collision (amends 12_API). Blocks every M7 registration. **Done — ADR-029, accepted 2026-09-13.**
+2. **O1** — decide the execution model with Kang. Blocks the orchestrator and agent runtime. **Still open.**
 3. Then, in any order: model router + `TaskSpec` mapping (D010) · budget ledger (C3) · agent registry + manifest assembly · the executor with AG-005's allowlist (C4) · degradation ladder + the missing `degraded_result` paragraph (C1) · chat as API-007's streaming case.
 
 ## Consequences
