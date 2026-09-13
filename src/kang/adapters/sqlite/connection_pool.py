@@ -7,10 +7,17 @@ owned by a single async write-executor task; all writes flow through it
 as queued, explicit transactions" + "a pool (default 4) of read-only
 connections serves all reads."
 
-Zero callers today, deliberately (ADR-036 D3: built and tested in
-complete isolation so this slice can land without touching or risking
-anything that exists). The scheduler's own tick task and the `aiohttp`
-routing seam (ADR-036 D4, not yet built) are the first real callers.
+First real caller: `kernel/runtime/composition.py::serve` (ADR-036 D4).
+`WriteExecutor` turned out to be the resolution to more than its own
+name suggests — `connect` is a plain `Callable[[], object]`, so `serve`
+reuses it to own not just a bare connection but the **whole `Core`**:
+`WriteExecutor(lambda: build_core(kang_home))`. `build_core()` itself
+needed no changes at all — it is simply *called from* the executor's one
+dedicated worker thread instead of `serve`'s own, so every store's
+connection ends up opened on, and forever used from, that same thread.
+Existing tests are unaffected: they call `build_core()` directly, from
+their own thread, exactly as before — a different, equally legitimate
+calling context, not a different `build_core()`.
 
 **Why `ThreadPoolExecutor`, not a hand-rolled thread + queue.** `sqlite3`
 connections default `check_same_thread=True` — a connection may only be
@@ -52,12 +59,16 @@ READ_POOL_SIZE = 4  # DB-001's own stated default
 
 
 class WriteExecutor:
-    """DB-001's single write connection, owned by one dedicated worker.
+    """DB-001's single write connection, owned by one dedicated worker —
+    or, more generally, any single resource that must be both created and
+    used from one consistent thread (see the module docstring's own note
+    on `serve()` reusing this for the whole `Core`).
 
-    `connect` is a factory, not a ready-made connection: the connection
+    `connect` is a factory, not a ready-made value: whatever it returns
     must be OPENED on the worker thread that will use it for its whole
     life, not opened elsewhere and handed over (that would violate
-    `check_same_thread=True` on its very first real use).
+    `check_same_thread=True` on its very first real use, for the
+    connection case specifically).
     """
 
     def __init__(self, connect: Callable[[], object]) -> None:
@@ -67,17 +78,20 @@ class WriteExecutor:
         )
         self._conn: object | None = None
 
-    async def start(self) -> None:
-        """Open the write connection, on the worker thread, before any
-        work is submitted. Must be awaited exactly once before `submit`."""
+    async def start(self) -> object:
+        """Open the owned value, on the worker thread, before any work is
+        submitted. Must be awaited exactly once before `submit`. Returns
+        the value `connect` produced, for callers (like `serve()`) that
+        need it directly rather than only through `submit`."""
         loop = asyncio.get_running_loop()
         self._conn = await loop.run_in_executor(self._executor, self._connect)
+        return self._conn
 
     async def submit(self, fn: Callable[[object], T]) -> T:
-        """Run `fn(connection)` on the write worker; queued behind
-        whatever was submitted before it (DB-001: "queued, explicit
-        transactions") — `ThreadPoolExecutor`'s own internal work queue
-        is FIFO for a single worker, so submission order is run order."""
+        """Run `fn(value)` on the worker; queued behind whatever was
+        submitted before it (DB-001: "queued, explicit transactions") —
+        `ThreadPoolExecutor`'s own internal work queue is FIFO for a
+        single worker, so submission order is run order."""
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._executor, fn, self._conn)
 

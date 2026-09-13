@@ -10,15 +10,15 @@ Split out of `composition.py` when the third scheduled job (ADR-022)
 pushed that file past the size lint's hard limits (both the file itself
 and `_wire_scheduler`'s own line count) — a mechanical reason, not a new
 concept. `composition.py` still owns `build_core`/`serve`/`Core` and
-calls into `_wire_scheduler`/`_make_ticking_server_class` here exactly as
-it called its own private functions before.
+calls into `_wire_scheduler`/`_tick_forever` here exactly as it called
+its own private functions before.
 """
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime
-from http.server import HTTPServer
 from zoneinfo import ZoneInfo
 
 from kang.adapters.config.planner_config import (
@@ -46,7 +46,7 @@ __all__ = [
     "_SchedulerWiring",
     "_make_job_runner",
     "_make_schedule_parser",
-    "_make_ticking_server_class",
+    "_tick_forever",
     "_wire_scheduler",
 ]
 
@@ -63,7 +63,10 @@ BACKUP_OFFSITE_CHECK_JOB = "backup_offsite_check"  # ADR-034 — Appendix E
 
 TICK_INTERVAL_S = 60  # ADR-019: how often the live tick re-runs catch-up.
 # A plain constant, not a kang.toml key — nothing has asked to tune this
-# yet, unlike [planner.triggers]'s lived trigger times.
+# yet, unlike [planner.triggers]'s lived trigger times. Read directly by
+# asyncio.sleep() since ADR-036 D4 — no clock-based gating needed anymore
+# (that existed only because http.server's service_actions() polled on
+# its own schedule; a native asyncio task just sleeps for the interval).
 
 # Which registry operation each job runs (ADR-006 Part B, ruling 4). The
 # `job` table has no `operation` column and job names are ritual names
@@ -328,37 +331,32 @@ def _register_backup_jobs(job_store, clock) -> None:
     )
 
 
-def _make_ticking_server_class(scheduler, clock) -> type[HTTPServer]:
-    """ADR-019: a plain `HTTPServer` subclass whose `service_actions()` —
-    called once per `serve_forever` poll cycle, on the same thread that
-    owns `kang.db` — re-runs the scheduler's catch-up on a tick.
+def _tick_once(core) -> None:
+    """One tick: re-run the scheduler's catch-up, if a scheduler is
+    wired. `core.scheduler` is `None` when `kang.toml` is missing/invalid
+    (`_wire_scheduler`'s own fail-closed path) — silently skipped, same
+    as every other scheduler operation already does. A plain function
+    (not a closure) so it can be handed to `WriteExecutor.submit`
+    directly and unit-tested against a bare stand-in with a `.scheduler`
+    attribute, no real `Core` required."""
+    if core.scheduler is not None:
+        core.scheduler.tick()
 
-    No new thread, no new connection: today's single, thread-confined
-    write connection stays exactly as it is, because this never leaves
-    the connection-owning thread. That confinement is `sqlite3.connect`'s
-    own `check_same_thread=True` default, not something DB-001 itself
-    requires (DB-001 asks for serialized writes through one connection,
-    not thread affinity — ADR-030 Correction 2, which found this same
-    mis-citation copied here from `http_binding.py`). Gated by
-    `TICK_INTERVAL_S` via `clock`, not wall time (11 §25 bans wall-clock
-    outside ports). `scheduler` is closed over rather than threaded
-    through `make_server` so `http_binding.py` stays fully
-    scheduler-ignorant — this is the composition root's own bridge
-    (ADR-006 ruling 4's precedent)."""
 
-    class _TickingHTTPServer(HTTPServer):
-        _last_tick = None
+async def _tick_forever(write_executor) -> None:
+    """The live tick (ADR-019), now a native `asyncio` loop (ADR-036 D4)
+    instead of an `HTTPServer.service_actions()` override: re-runs
+    `Scheduler.tick()` every `TICK_INTERVAL_S`, via the write-executor
+    `serve()` already uses for every dispatch — a scheduled job is a
+    command like any other, so it queues behind the same single worker,
+    never racing a concurrent request for the connection.
 
-        def service_actions(self) -> None:
-            if scheduler is None:
-                return
-            now = clock.now()
-            if (
-                self._last_tick is not None
-                and (now - self._last_tick).total_seconds() < TICK_INTERVAL_S
-            ):
-                return
-            self._last_tick = now
-            scheduler.tick()
-
-    return _TickingHTTPServer
+    No clock-based gating needed anymore (contrast the old
+    `service_actions()` shape, called on every server poll regardless of
+    interval): `asyncio.sleep()` IS the interval here, not a wall-clock
+    read to compare against one (11 §25's ban is on the latter). Runs
+    until cancelled — the caller wraps this in a supervised task (ADR-036
+    D2) and cancels it on shutdown."""
+    while True:
+        await asyncio.sleep(TICK_INTERVAL_S)
+        await write_executor.submit(_tick_once)

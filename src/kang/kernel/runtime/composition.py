@@ -18,11 +18,15 @@ is missing/invalid).
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from aiohttp import web
 
 from kang.adapters.config.backup_config import load_external_backup_marker
 from kang.adapters.config.permissions_loader import (
@@ -40,6 +44,7 @@ from kang.adapters.sqlite.backup_service import SqliteBackupService
 from kang.adapters.sqlite.calendar_store import SqliteCalendarStore
 from kang.adapters.sqlite.competition_store import SqliteCompetitionStore
 from kang.adapters.sqlite.connection import open_connection
+from kang.adapters.sqlite.connection_pool import WriteExecutor
 from kang.adapters.sqlite.deadline_store import SqliteDeadlineStore
 from kang.adapters.sqlite.goal_store import SqliteGoalStore
 from kang.adapters.sqlite.held_action_store import SqliteHeldActionStore
@@ -53,8 +58,8 @@ from kang.adapters.sqlite.project_store import SqliteProjectStore
 from kang.adapters.sqlite.recovery import SqliteRecoveryApplier
 from kang.adapters.sqlite.session_store import SqliteSessionStore
 from kang.adapters.sqlite.task_store import SqliteTaskStore
-from kang.api.dispatch import Dispatcher, DispatcherDeps
-from kang.api.http_binding import make_server
+from kang.api.dispatch import ApiRequest, Dispatcher, DispatcherDeps
+from kang.api.http_binding import make_app
 from kang.api.operations import (
     ConfirmationDeps,
     PlannerDeps,
@@ -115,11 +120,12 @@ from kang.kernel.bus.reconciliation import Reconciliation
 from kang.kernel.permissions.engine import build_checked_engine
 from kang.kernel.runtime.ids import uuid7
 from kang.kernel.runtime.scheduler_wiring import (
-    _make_ticking_server_class,
     _SchedulerWiring,
+    _tick_forever,
     _wire_scheduler,
 )
 from kang.kernel.runtime.sleeper import RealSleeper
+from kang.kernel.runtime.supervised_task import create_supervised_task
 
 __all__ = ["Core", "build_core", "serve"]
 
@@ -141,7 +147,9 @@ class Core:
     _connections: list
     scheduler: object = None
     startup_lock: object = None
-    clock: object = None  # ADR-019: times the tick loop's interval gate
+    clock: object = None  # exposed for introspection/tests; the tick
+    #   loop itself no longer needs it (ADR-036 D4: asyncio.sleep() IS
+    #   the interval now, not a wall-clock comparison against one)
 
     def mint_first_party_session(self) -> Session:
         token = self.new_id()  # type: ignore[operator]
@@ -618,60 +626,93 @@ def _build_stores(kang, clock) -> _Stores:
     )
 
 
-def serve(kang_home: Path, host: str = "127.0.0.1", port: int = 0) -> None:
+def _catch_up_if_scheduled(core: Core) -> None:
+    if core.scheduler is not None:
+        core.scheduler.catch_up()
+
+
+async def serve(kang_home: Path, host: str = "127.0.0.1", port: int = 0) -> None:
     """Wire the Core, mint a first-party session, write the session file the
     CLI reads (API-003: the Core's session file), and serve the operation
     channel until interrupted. port=0 binds an ephemeral port.
 
+    ADR-036 D4: the Core is built by, and lives entirely on, one dedicated
+    `WriteExecutor` worker thread — `build_core` itself is unchanged; it is
+    simply *called from* that thread (`write_executor.start()`) instead of
+    `serve`'s own, so every store's connection ends up opened on, and
+    forever used from, the thread that will actually touch it. Every
+    dispatch, the boot catch-up, session minting, and shutdown all route
+    through the same executor, never `core` directly — that discipline is
+    what keeps `check_same_thread=True` satisfied without weakening it.
+
     Runs the scheduler's boot catch-up (D014: "on startup after downtime,
-    each job's policy decides...") before accepting requests, then keeps
-    it live: `serve_forever`'s server is built with a `service_actions()`
-    override (ADR-019) that re-runs `Scheduler.tick()` every
-    `TICK_INTERVAL_S` — so newly-due jobs are picked up while the process
-    keeps running, not only at the next fresh boot. `core.scheduler` is
-    `None` when `kang.toml` is missing/invalid (`_wire_scheduler`'s own
-    fail-closed path); both the boot catch-up and the live tick are
-    skipped silently in that case, same as every other scheduler operation
-    already does. `dispatcher.dispatch` runs in-process (no HTTP
-    loopback), so the boot catch-up is safe to run before `serve_forever`.
+    each job's policy decides...") before accepting requests, then keeps it
+    live: `_tick_forever` (a supervised task, ADR-036 D2) re-runs
+    `Scheduler.tick()` every `TICK_INTERVAL_S` via the same executor, so
+    newly-due jobs are picked up while the process keeps running, not only
+    at the next fresh boot. `core.scheduler` is `None` when `kang.toml` is
+    missing/invalid (`_wire_scheduler`'s own fail-closed path); both the
+    boot catch-up and the live tick are skipped silently in that case, same
+    as every other scheduler operation already does.
 
     ADR-008 Part A2: `build_core` takes an exclusive startup lock under
-    `%KANG_HOME%` before touching anything else. A second live Core
-    against the same home "detects the lock and exits/reports" (the
-    ADR's own words) — a clear one-line stderr message and a non-zero
-    exit, never a raw traceback, and never a second scheduler/notifier
-    racing the first against the same `kang.db`."""
+    `%KANG_HOME%` before touching anything else. A second live Core against
+    the same home "detects the lock and exits/reports" (the ADR's own
+    words) — a clear one-line stderr message and a non-zero exit, never a
+    raw traceback, and never a second scheduler/notifier racing the first
+    against the same `kang.db`."""
+    write_executor = WriteExecutor(lambda: build_core(kang_home))
     try:
-        core = build_core(kang_home)
+        await write_executor.start()  # the Core itself; every use below
+        #   goes through write_executor.submit(lambda core: ...), never a
+        #   captured reference here, so nothing outside that one worker
+        #   thread ever touches it (check_same_thread=True, satisfied by
+        #   construction — ADR-036 D4).
     except AlreadyRunningError as exc:
         sys.stderr.write(f"KANG Core: {exc}\n")
+        await write_executor.stop()
         sys.exit(1)
-    if core.scheduler is not None:
-        core.scheduler.catch_up()
-    session = core.mint_first_party_session()
-    server = make_server(
-        core.dispatcher,
-        host,
-        port,
-        server_class=_make_ticking_server_class(core.scheduler, core.clock),
-    )
-    bound_host, bound_port = server.server_address[0], server.server_address[1]
+
+    await write_executor.submit(_catch_up_if_scheduled)
+    session = await write_executor.submit(lambda core: core.mint_first_party_session())
+
+    async def dispatch(request: ApiRequest) -> dict:
+        return await write_executor.submit(
+            lambda core: core.dispatcher.dispatch(request)
+        )
+
+    app = await make_app(dispatch, host)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, host, port)
+    await site.start()
+    bound_host, bound_port = runner.addresses[0]
     (kang_home / SESSION_FILE).write_text(
         json.dumps({"host": bound_host, "port": bound_port, "token": session.token}),
         encoding="utf-8",
     )
+
+    tick_task = create_supervised_task(
+        _tick_forever(write_executor), name="scheduler-tick"
+    )
     try:
-        server.serve_forever()
+        await asyncio.Event().wait()  # blocks until interrupted (Ctrl+C)
     finally:
-        server.server_close()
-        core.close()
+        tick_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await tick_task
+        await runner.cleanup()
+        await write_executor.submit(lambda core: core.close())
+        await write_executor.stop()
 
 
 if __name__ == "__main__":
     # python -m kang.kernel.runtime.composition <kang_home> [host] [port]
     home = Path(sys.argv[1])
-    serve(
-        home,
-        host=sys.argv[2] if len(sys.argv) > 2 else "127.0.0.1",
-        port=int(sys.argv[3]) if len(sys.argv) > 3 else 0,
+    asyncio.run(
+        serve(
+            home,
+            host=sys.argv[2] if len(sys.argv) > 2 else "127.0.0.1",
+            port=int(sys.argv[3]) if len(sys.argv) > 3 else 0,
+        )
     )

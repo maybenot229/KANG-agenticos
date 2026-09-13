@@ -1,20 +1,26 @@
-"""The local HTTP binding (API-002, 12_API §1.3) — zero coverage existed
-before this suite (found by grepping tests/ for http_binding/make_server,
-session 2026-08-04: no hits). The CORS gap this suite pins down was found
-the same way — a real browser client, not a code read — which is exactly
-the class of defect a binding with no test coverage at all lets through.
+"""The local HTTP binding (API-002, 12_API §1.3), against `aiohttp`
+(ADR-035) via its own in-process test client — no real socket, no thread.
+
+Each test wraps its own body in `asyncio.run()` rather than depending on
+`pytest-asyncio`/`pytest-aiohttp` — the same no-new-test-dependency
+pattern `test_supervised_task.py`/`test_connection_pool.py` already
+established (ADR-036 Slice 0/1).
+
+The CORS coverage here traces back to a real browser client failing a
+real `fetch()` against a real running Core (session 2026-08-04) — the
+exact class of defect a binding with no test coverage lets through.
 """
 
 from __future__ import annotations
 
+import asyncio
 import itertools
 import json
-import threading
-import urllib.error
-import urllib.request
-from http.server import HTTPServer
+from collections.abc import Awaitable, Callable
+from typing import TypeVar
 
 import pytest
+from aiohttp.test_utils import TestClient, TestServer
 
 from kang.adapters.fakes.api_stores import (
     FakeIdempotencyStore,
@@ -23,26 +29,26 @@ from kang.adapters.fakes.api_stores import (
 )
 from kang.adapters.fakes.audit_log import FakeAuditLog
 from kang.adapters.fakes.clock import FakeClock
-from kang.api.dispatch import Dispatcher, DispatcherDeps
-from kang.api.http_binding import make_server
+from kang.api.dispatch import ApiRequest, Dispatcher, DispatcherDeps
+from kang.api.http_binding import make_app
 from kang.domain.ports.session import Session
 from kang.kernel.audit.service import AuditService
 from kang.kernel.permissions.engine import PermissionEngine
 
 VALID_TOKEN = "tok-kang"
 
+T = TypeVar("T")
 
-@pytest.fixture
-def running_server():
+
+def _dispatcher() -> Dispatcher:
     clock = FakeClock()
     sessions = FakeSessionStore()
     sessions.create(
         Session(token=VALID_TOKEN, principal="kang", first_party=True, created_at="t")
     )
     ids = (f"id-{n}" for n in itertools.count())
-    handlers = {"registry.get": lambda ctx, params: {"echo": params}}
-    dispatcher = Dispatcher(
-        handlers,
+    return Dispatcher(
+        {"registry.get": lambda ctx, params: {"echo": params}},
         DispatcherDeps(
             sessions=sessions,
             permissions=PermissionEngine({"kang": ("*",)}),
@@ -53,98 +59,117 @@ def running_server():
             new_id=lambda: next(ids),
         ),
     )
-    server = make_server(dispatcher, "127.0.0.1", 0)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield server.server_address
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=5)
 
 
-def _url(address: tuple[str, int]) -> str:
-    host, port = address
-    return f"http://{host}:{port}/op"
+def _with_client(body: Callable[[TestClient], Awaitable[T]]) -> T:
+    """Build a fresh app (backed by a fresh Dispatcher+fakes) and run
+    `body` against it via aiohttp's own in-process test client."""
+
+    async def scenario() -> T:
+        dispatcher = _dispatcher()
+
+        async def dispatch(request: ApiRequest) -> dict:
+            # The real binding wraps this in write_executor.submit(...)
+            # (ADR-036 D4); a direct, synchronous call is equivalent here
+            # — this suite tests the HTTP mapping, not the executor.
+            return dispatcher.dispatch(request)
+
+        app = await make_app(dispatch, "127.0.0.1")
+        async with TestClient(TestServer(app)) as client:
+            return await body(client)
+
+    return asyncio.run(scenario())
 
 
-def test_options_preflight_returns_204_with_cors_headers(running_server):
+def test_options_preflight_returns_204_with_cors_headers():
     # Found by a real browser fetch() from a real running UI client
     # failing outright — a browser sends this preflight before any POST
     # carrying a custom header (X-Session-Token), and refuses the whole
     # exchange without a matching response to it.
-    request = urllib.request.Request(_url(running_server), method="OPTIONS")
-    with urllib.request.urlopen(request) as response:
+    async def body(client):
+        response = await client.options("/op")
         assert response.status == 204
         assert response.headers["Access-Control-Allow-Origin"] == "*"
         assert "POST" in response.headers["Access-Control-Allow-Methods"]
         assert "X-Session-Token" in response.headers["Access-Control-Allow-Headers"]
 
+    _with_client(body)
 
-def test_post_response_carries_cors_headers(running_server):
-    body = json.dumps({"operation": "registry.get", "params": {}}).encode()
-    request = urllib.request.Request(
-        _url(running_server),
-        data=body,
-        headers={"Content-Type": "application/json", "X-Session-Token": VALID_TOKEN},
-        method="POST",
-    )
-    with urllib.request.urlopen(request) as response:
+
+def test_post_response_carries_cors_headers():
+    async def body(client):
+        response = await client.post(
+            "/op",
+            data=json.dumps({"operation": "registry.get", "params": {}}),
+            headers={
+                "Content-Type": "application/json",
+                "X-Session-Token": VALID_TOKEN,
+            },
+        )
         assert response.headers["Access-Control-Allow-Origin"] == "*"
-        envelope = json.loads(response.read())
+        envelope = await response.json()
         assert envelope["ok"] is True
 
+    _with_client(body)
 
-def test_error_response_also_carries_cors_headers(running_server):
+
+def test_error_response_also_carries_cors_headers():
     # A denied/failed request is exactly the case a browser client most
     # needs the header on — an error response without it is invisible to
     # the page's own error handling (a generic "Failed to fetch", not the
     # real API-006 envelope), which is the actual bug this suite pins.
-    request = urllib.request.Request(
-        _url(running_server),
-        data=json.dumps({"operation": "task.teleport", "params": {}}).encode(),
-        headers={"Content-Type": "application/json", "X-Session-Token": VALID_TOKEN},
-        method="POST",
-    )
-    with urllib.request.urlopen(request) as response:
+    async def body(client):
+        response = await client.post(
+            "/op",
+            data=json.dumps({"operation": "task.teleport", "params": {}}),
+            headers={
+                "Content-Type": "application/json",
+                "X-Session-Token": VALID_TOKEN,
+            },
+        )
         assert response.headers["Access-Control-Allow-Origin"] == "*"
-        envelope = json.loads(response.read())
+        envelope = await response.json()
         assert envelope["error"]["code"] == "not_found"
 
-
-def test_make_server_honors_a_custom_server_class():
-    # ADR-019: the composition root passes a service_actions()-overriding
-    # HTTPServer subclass to drive the live tick loop. make_server stays
-    # scheduler-ignorant — it just has to build whatever class it's given.
-    class _MarkedServer(HTTPServer):
-        pass
-
-    dispatcher = Dispatcher(
-        {},
-        DispatcherDeps(
-            sessions=FakeSessionStore(),
-            permissions=PermissionEngine({}),
-            idempotency=FakeIdempotencyStore(),
-            invocations=FakeInvocationStore(),
-            audit=AuditService(FakeAuditLog(), FakeClock()),
-            clock=FakeClock(),
-            new_id=lambda: "id",
-        ),
-    )
-    server = make_server(dispatcher, "127.0.0.1", 0, server_class=_MarkedServer)
-    try:
-        assert isinstance(server, _MarkedServer)
-    finally:
-        server.server_close()
+    _with_client(body)
 
 
-def test_unknown_path_is_404_and_still_carries_cors_headers(running_server):
-    host, port = running_server
-    request = urllib.request.Request(f"http://{host}:{port}/nope", method="POST")
-    try:
-        urllib.request.urlopen(request)
-        pytest.fail("expected HTTPError")
-    except urllib.error.HTTPError as exc:
-        assert exc.code == 404
-        assert exc.headers["Access-Control-Allow-Origin"] == "*"
+def test_an_empty_body_is_invalid_request_not_a_crash():
+    async def body(client):
+        response = await client.post("/op")
+        assert response.status == 400
+        envelope = await response.json()
+        assert envelope["error"]["code"] == "invalid_request"
+
+    _with_client(body)
+
+
+def test_a_body_missing_operation_is_invalid_request():
+    async def body(client):
+        response = await client.post(
+            "/op",
+            data=json.dumps({"params": {}}),
+            headers={"Content-Type": "application/json"},
+        )
+        assert response.status == 400
+        envelope = await response.json()
+        assert envelope["error"]["code"] == "invalid_request"
+
+    _with_client(body)
+
+
+def test_unknown_path_is_404_and_still_carries_cors_headers():
+    async def body(client):
+        response = await client.post("/nope")
+        assert response.status == 404
+        assert response.headers["Access-Control-Allow-Origin"] == "*"
+
+    _with_client(body)
+
+
+def test_make_app_rejects_a_non_local_host():
+    async def scenario():
+        with pytest.raises(ValueError, match="127.0.0.1"):
+            await make_app(lambda request: None, "0.0.0.0")
+
+    asyncio.run(scenario())
