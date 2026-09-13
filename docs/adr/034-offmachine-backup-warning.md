@@ -1,6 +1,6 @@
 # ADR-034 — the off-machine backup warning (07 Part XII.5)
 
-**Status:** proposed
+**Status:** accepted (2026-09-13)
 **Date:** 2026-09-13
 **Supersedes:** none
 **Affected documents:** 07_DATABASE Part XII.5 (implements it; no change), 09_UI §12 (a doc gap surfaced, not fixed — see Context), 15_EVENT_BUS §6.1 (registers `backup.offsite_stale`), 05_AGENTS Appendix E (a job this table does not itemize — a second gap surfaced), 12_API §16, `config/defaults/{kang,permissions}.toml`

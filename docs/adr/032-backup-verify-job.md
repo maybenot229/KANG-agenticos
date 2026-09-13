@@ -1,6 +1,6 @@
 # ADR-032 — `backup.verify`: closing the "nonexistent until restore-tested" gap ADR-031 left open
 
-**Status:** proposed
+**Status:** accepted (2026-09-13)
 **Date:** 2026-09-11
 **Supersedes:** none
 **Affected documents:** 07_DATABASE Part XII.3 (two interpretive decisions on underspecified terms — see Decision), 12_API §16, `config/defaults/permissions.toml`, `src/kang/kernel/runtime/scheduler_wiring.py`

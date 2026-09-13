@@ -1,6 +1,6 @@
 # ADR-031 — KANG has never taken a backup: wiring `backup.snapshot` as a fourth automatic job
 
-**Status:** proposed
+**Status:** accepted (2026-09-13)
 **Date:** 2026-08-17
 **Supersedes:** none
 **Affected documents:** 05_AGENTS Appendix E (the scheduling table — a fourth row, with two corrections), 12_API §16 (a new operation), `config/defaults/permissions.toml`, `src/kang/kernel/runtime/scheduler_wiring.py`

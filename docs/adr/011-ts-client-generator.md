@@ -1,6 +1,6 @@
 # ADR-011 — Registry→TypeScript client generator: json-schema-to-typescript
 
-**Status:** proposed
+**Status:** accepted (2026-09-13 — already implemented and in active use since 2026-08-01; formal acceptance caught up to the code)
 **Date:** 2026-08-01
 **Decides:** the RESERVED item in `03_ROADMAP.md` §8 ("Registry→TypeScript API client generator... only the generator/pipeline itself remains RESERVED") — Ruling C, deferred by ADR-009 pending ADR-010's schemas actually existing in code.
 **Affected documents:** `03_ROADMAP.md` §8 (RESERVED row retired), `17_PROJECT_STRUCTURE.md` §2 (new `tools/generate_ts_client/` or equivalent, and `ui/src/generated/` as the client's home), `18_IMPLEMENTATION_MASTER_PLAN.md` §3 M6 ("UI on the generated client only")

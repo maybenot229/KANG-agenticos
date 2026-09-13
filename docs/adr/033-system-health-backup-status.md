@@ -1,6 +1,6 @@
 # ADR-033 — `system.health` exposes backup age + last restore-verification result
 
-**Status:** proposed
+**Status:** accepted (2026-09-13)
 **Date:** 2026-09-12
 **Supersedes:** none
 **Affected documents:** 09_UI §12 (no change — this ADR fulfills it), 12_API §16, `src/kang/api/operations/system_ops.py`
