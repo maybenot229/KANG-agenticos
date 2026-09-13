@@ -18,7 +18,15 @@ requires-python = ">=3.12"
 # pydantic: request/response schema authority for the Operation Registry
 # (ADR-009 Part B decided it; ADR-010 specifies layout/attachment/error
 # mapping). Approved by Kang 2026-07-31.
-dependencies = ["tzdata", "pydantic"]
+# aiohttp: the operation channel's transport once the Core moves to
+# 11_CODING §12's asyncio single-loop model (ADR-030's execution model +
+# ADR-036's slice plan forced the question; ADR-035 ruled it, replacing
+# stdlib http.server — a single, mature, single-purpose asyncio HTTP
+# library, not a framework, chosen over ASGI (two dependencies for what
+# this does with one) and over hand-rolling HTTP/1.1 parsing (reinvents a
+# solved, non-trivial spec, the same reasoning ADR-011 used to reject a
+# hand-rolled JSON-Schema parser). Approved by Kang 2026-09-13.
+dependencies = ["tzdata", "pydantic", "aiohttp"]
 
 [project.optional-dependencies]
 # Dev toolchain named by the constitution itself:

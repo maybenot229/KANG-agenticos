@@ -230,7 +230,7 @@ flowchart TB
 | **kernel** | ✅ | ✅ | ✅ (within) | ❌ (loads *definitions* as data, never imports agent code) | ❌ (receives instances via injection) | ❌ | ❌ | only what kernel machinery itself needs (asyncio et al.) |
 | **agents/runtime** | ✅ | ✅ (services) | SDK-visible surfaces only | ✅ (within) | ❌ | ❌ | ✅ | ❌ |
 | **adapters** | ✅ | ❌ (translate at the port boundary, don't reach into services) | ❌ | ❌ | ✅ (own tech folder only) | ❌ | ❌ | ✅ (their whole purpose; pinned per E10) |
-| **api** | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ (within) | ❌ | stdlib `http.server` (operation channel; per ADR-009) — the event channel's transport is a separate, later binding choice (ADR-009) |
+| **api** | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ (within) | ❌ | `aiohttp` (operation channel; per ADR-035, replacing stdlib `http.server`) — the event channel's transport is a separate, later binding choice, cheaper now that `aiohttp`'s own WebSocket support exists (ADR-009, ADR-035) |
 | **plugins_sdk** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
 | **plugins** | via SDK | via SDK | ❌ | ❌ | ❌ | ❌ | ✅ | blessed set only (PL-005) |
 | **ui / cli** | — (other language / process) | — | — | — | — | generated client | — | idiomatic |
@@ -238,6 +238,8 @@ flowchart TB
 | **tools** | ❌ src imports at runtime; MAY parse/inspect the tree as text (linters) |
 
 **Corrected by ADR-009** (2026-07-31): this table previously named FastAPI as the `api/` layer's third-party transport dependency. ADR-009 ratified stdlib `http.server` as the actual transport; this correction was omitted from ADR-009's original follow-through and is applied here as a standalone fix, not a new ADR (the underlying decision was already made — this is a document-consistency correction, matching 11_CODING_STANDARDS §8's "docs-and-code drift is a bug with an owner" principle, applied document-to-document rather than doc-to-code). Note: §4.1's dependency graph above never actually named FastAPI — only this table did — so §4.1 required no change.
+
+**Corrected by ADR-035** (2026-09-13): stdlib `http.server` is superseded by `aiohttp` — 11_CODING §12's "asyncio single-loop in the core" rules out `http.server`'s own blocking `serve_forever()` loop once the Core actually moves to that model (ADR-030's execution model, ADR-036's slice plan). This row (the destination) and the `aiohttp` dependency declaration are updated now, ahead of the code — ADR-036 D4, the slice that actually wires `aiohttp` in, was attempted 2026-09-13 and paused on a real, unresolved finding (see ADR-036 D4's own note); `http_binding.py` itself still runs on stdlib `http.server` until D4 resumes and lands. Same document-consistency-correction shape as ADR-009's own row fix above, applied here rather than re-litigated as a separate ADR.
 
 ### 4.3 Forbidden imports, named (the lint contract's deny-list)
 
