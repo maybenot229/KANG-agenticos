@@ -333,13 +333,18 @@ def _make_ticking_server_class(scheduler, clock) -> type[HTTPServer]:
     called once per `serve_forever` poll cycle, on the same thread that
     owns `kang.db` — re-runs the scheduler's catch-up on a tick.
 
-    No new thread, no new connection: DB-001's thread-confined single
-    writer stays exactly as it is, because this never leaves the
-    connection-owning thread. Gated by `TICK_INTERVAL_S` via `clock`, not
-    wall time (11 §25 bans wall-clock outside ports). `scheduler` is
-    closed over rather than threaded through `make_server` so
-    `http_binding.py` stays fully scheduler-ignorant — this is the
-    composition root's own bridge (ADR-006 ruling 4's precedent)."""
+    No new thread, no new connection: today's single, thread-confined
+    write connection stays exactly as it is, because this never leaves
+    the connection-owning thread. That confinement is `sqlite3.connect`'s
+    own `check_same_thread=True` default, not something DB-001 itself
+    requires (DB-001 asks for serialized writes through one connection,
+    not thread affinity — ADR-030 Correction 2, which found this same
+    mis-citation copied here from `http_binding.py`). Gated by
+    `TICK_INTERVAL_S` via `clock`, not wall time (11 §25 bans wall-clock
+    outside ports). `scheduler` is closed over rather than threaded
+    through `make_server` so `http_binding.py` stays fully
+    scheduler-ignorant — this is the composition root's own bridge
+    (ADR-006 ruling 4's precedent)."""
 
     class _TickingHTTPServer(HTTPServer):
         _last_tick = None

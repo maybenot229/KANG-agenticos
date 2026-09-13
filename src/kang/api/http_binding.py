@@ -68,17 +68,22 @@ def make_server(
 ) -> HTTPServer:
     """Build (do not start) a local HTTP server bound to host:port that
     routes POST /op through the dispatcher. Single-threaded by design: the
-    kang.db connection is single-writer (DB-001) and thread-confined, so all
-    requests are served in the connection-owning thread. Caller runs
-    serve_forever.
+    kang.db connection is single-writer (DB-001) and, today, thread-confined
+    — `sqlite3.connect`'s own `check_same_thread=True` default, not
+    something DB-001 itself requires (DB-001 asks for serialized writes
+    through one connection, not thread affinity — ADR-030 Correction 2) —
+    so all requests are served in the connection-owning thread. Caller
+    runs serve_forever.
 
     `server_class` defaults to plain `HTTPServer` and stays this module's
     only concession to the caller — this module still knows nothing about
     the scheduler. The composition root (ADR-019) passes a subclass that
     overrides `service_actions()` to re-run the scheduler's catch-up on a
     tick, reusing `serve_forever`'s existing per-poll-cycle hook rather
-    than a second thread (which DB-001's thread-confined connection
-    forbids)."""
+    than a second thread — sufficient today; ADR-030 (accepted) commits
+    to completing DB-001's own async write-executor + read pool as M7's
+    execution model, at which point this single-threaded shape is what
+    changes, not a constraint DB-001 imposes permanently."""
 
     class _Handler(BaseHTTPRequestHandler):
         def do_OPTIONS(self) -> None:  # noqa: N802 - stdlib callback name

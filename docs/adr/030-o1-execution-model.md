@@ -1,6 +1,6 @@
 # ADR-030 — O1: the async runtime is not a new decision; DB-001 already made it and M1 skipped it
 
-**Status:** proposed
+**Status:** accepted (2026-09-13) — direction only; scope/sequencing of the async migration and whether `http.server` (ADR-009) survives it are explicitly NOT decided here (see "What this ADR does not decide")
 **Date:** 2026-08-17
 **Supersedes:** none
 **Amends:** ADR-028's O1 option table (two of its four options are mis-framed — see Corrections), ADR-019's citation of DB-001 (see Corrections)
@@ -39,6 +39,8 @@ Two statements in the existing record are inaccurate and would misdirect whoever
 **1. ADR-028's O1 option "step agent runs on the existing ADR-019 tick" does not solve the stated problem.** `service_actions()` calls `scheduler.tick()` synchronously (`scheduler_wiring.py:264-278`), so a step that makes a model call holds the thread for that call's full duration exactly as a direct call would. Stepping is a *scheduling* mechanism — it answers "when do I resume", not "how do I avoid blocking". It composes with a solution; it is not one.
 
 **2. ADR-019's stated reason for avoiding a second thread cites DB-001 for something DB-001 does not say.** Its wording (`http_binding.py:79`): *"rather than a second thread (which DB-001's thread-confined connection forbids)."* DB-001 contains no thread-affinity requirement — it requires **serialized writes through one connection**, for ordering determinism that sync's change log depends on. The thread confinement is real but is an artifact of the current implementation: `sqlite3.connect` defaults `check_same_thread=True`, so Python enforces it. ADR-019's *conclusion* was right for the code as it stands; its *citation* attributes the constraint to the constitution rather than to a simplification of it. Worth correcting because the difference decides whether async is a deviation or a completion — and it is a completion.
+
+**Third instance found at acceptance review (2026-09-13), not caught when this was drafted:** the identical mis-citation ("DB-001's thread-confined single writer") also appears in `scheduler_wiring.py::_make_ticking_server_class`'s docstring (added by ADR-023, which split scheduler wiring out of `composition.py` after this ADR was already written). Same correction applies; the code comment is fixed in the same commit that accepts this ADR.
 
 ---
 

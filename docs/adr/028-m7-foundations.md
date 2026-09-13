@@ -1,6 +1,6 @@
 # ADR-028 — M7 foundations: the four constraints the code imposes, the `task` collision, and the one fork that needs Kang
 
-**Status:** accepted (2026-09-13) — C1-C4 and V1 settled; O1 remains deliberately open, pending ADR-030
+**Status:** accepted (2026-09-13) — C1-C4, V1, and O1 all now settled (O1 via ADR-030, accepted 2026-09-13)
 **Date:** 2026-08-17
 **Supersedes:** none
 **Affected documents:** none yet — this ADR settles constraints and sequences the work; each numbered slice below gets its own ADR before any code
@@ -65,7 +65,7 @@ This needs its own ADR because it amends 12_API's normative wording. **It must l
 
 ---
 
-### O1 — OPEN, and genuinely Kang's: how does long work run on a single thread?
+### O1 — OPEN, and genuinely Kang's: how does long work run on a single thread? **DECIDED by ADR-030** (accepted 2026-09-13).
 
 The one fork this ADR will not pre-empt. Two normative facts collide:
 
@@ -88,7 +88,7 @@ The options, with the code fact that bears on each — presented for Kang's deci
 ## Sequencing
 
 1. **V1** — resolve the `task`/`invocation` collision (amends 12_API). Blocks every M7 registration. **Done — ADR-029, accepted 2026-09-13.**
-2. **O1** — decide the execution model with Kang. Blocks the orchestrator and agent runtime. **Still open.**
+2. **O1** — decide the execution model with Kang. Blocks the orchestrator and agent runtime. **Done — ADR-030, accepted 2026-09-13: DB-001's async write-executor + read pool, as direction only (scope/sequencing still unscoped).**
 3. Then, in any order: model router + `TaskSpec` mapping (D010) · budget ledger (C3) · agent registry + manifest assembly · the executor with AG-005's allowlist (C4) · degradation ladder + the missing `degraded_result` paragraph (C1) · chat as API-007's streaming case.
 
 ## Consequences
