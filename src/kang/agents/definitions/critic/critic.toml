@@ -1,0 +1,19 @@
+# critic — Appendix A row (docs/05_AGENTS.md:422). Cognitive, and
+# deliberately the zero-world-touching-tools edge case: "ALL
+# world-touching tools" are forbidden by design — the critic reads and
+# writes nothing external, it only reasons over what a pipeline step
+# hands it. Chosen for this slice specifically to prove the registry
+# schema tolerates tools = [] correctly (ADR-040 D4).
+
+id = "critic"
+kind = "cognitive"
+mandate = "Adversarial review: strengths/weaknesses/risks/blind spots (A6)"
+triggers = ["chained", "kang"]
+tools = ["notify:digest"]
+scopes = ["memory.read:critic-view"]
+timeout_s = 600
+retry = 0
+degradation = "Unavailable — a degraded critique is worse than none. When this agent cannot run, the pipeline marks the step skipped, visibly, rather than emitting a weakened critique."
+recipe = "critic-view"
+pipelines = ["competition_prep", "deep_research"]
+prompt_file = "prompts/system.md"

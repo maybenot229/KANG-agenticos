@@ -1,0 +1,20 @@
+# planner — Appendix A row (docs/05_AGENTS.md:417). Cognitive, and the
+# most load-bearing agent in the catalog: its deterministic degradation
+# path is M5's already-built Planner (domain/planner/), so this
+# definition's own degradation text describes real, shipped behavior,
+# not an aspiration. A pipeline member (weekly_close) — chosen for this
+# slice to prove a non-trivial scope set plus pipeline membership
+# together (ADR-040 D4).
+
+id = "planner"
+kind = "cognitive"
+mandate = "Generate/adapt daily plan; evening & weekly reviews (FR-001..004)"
+triggers = ["sched:morning", "sched:evening", "sched:weekly", "kang"]
+tools = ["tasks.*", "deadlines.read", "calendar.read", "notify:attention"]
+scopes = ["memory.read:planner-view", "memory.propose:observation"]
+timeout_s = 600
+retry = 1
+degradation = "Deterministic plan from P0 data — the existing zero-model Planner (domain/planner/, M5) already produces this. A model outage degrades to that path, never a blank plan."
+recipe = "planner-view"
+pipelines = ["weekly_close"]
+prompt_file = "prompts/system.md"

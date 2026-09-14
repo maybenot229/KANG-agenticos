@@ -1,0 +1,18 @@
+# deadline_sweep — Appendix A row (docs/05_AGENTS.md:426). Mechanical,
+# zero model dependency, zero escalation. Its own domain logic
+# (deadline.sweep, ADR-020) is already built and wired as an automatic
+# job (kernel/runtime/scheduler_wiring.py) — this definition documents
+# the agent envelope AG-002 requires around it, it does not change how
+# deadline.sweep itself runs today (no executor exists yet to read this
+# — ADR-040 D1's own named scope boundary).
+
+id = "deadline_sweep"
+kind = "mechanical"
+mandate = "Lead-time alerts; missed-deadline detection (FR-031)"
+triggers = ["sched:hourly"]
+tools = ["deadlines.read", "deadlines.mark_alerted", "notify:critical"]
+scopes = []
+timeout_s = 120
+retry = 2
+degradation = "No degradation path needed — pure deterministic SQL, no model dependency. Its own failure is itself a critical-priority alert, never a silent skip."
+pipelines = []
