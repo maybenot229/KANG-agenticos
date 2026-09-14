@@ -35,7 +35,20 @@ requires-python = ">=3.12"
 # aiohttp) reinvents a solved problem the vendor already maintains for
 # free, the same reasoning that already justified aiohttp itself one
 # layer down. Approved by Kang 2026-09-14.
-dependencies = ["tzdata", "pydantic", "aiohttp", "anthropic"]
+# keyring: the credential subsystem's own access mechanism (ADR-039 D1,
+# SEC-011 — "exactly one vault (Windows Credential Manager)... adapters
+# request credentials by name"). get_password(service, username) IS the
+# CredentialStore port's get(name) verbatim, already correctly handling
+# the Windows Credential Manager's real binary credential-blob format —
+# hand-rolling that in ctypes for SECURITY-sensitive code is exactly the
+# "reinvents a solved problem" case aiohttp/anthropic already justified
+# rejecting elsewhere; rejected pywin32 too, as unnecessarily broad (a
+# whole Win32-API surface for a get/set-one-secret need) — keyring's own
+# Windows backend pulls in LESS than pywin32 directly would. Verified
+# empirically before adoption: resolves to the real WinVaultKeyring
+# backend on this machine; a real set/get/delete round-trip against the
+# actual Windows Credential Manager succeeded. Approved by Kang 2026-09-14.
+dependencies = ["tzdata", "pydantic", "aiohttp", "anthropic", "keyring"]
 
 [project.optional-dependencies]
 # Dev toolchain named by the constitution itself:
