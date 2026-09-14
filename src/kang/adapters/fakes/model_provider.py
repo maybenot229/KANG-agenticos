@@ -35,16 +35,16 @@ class FakeModelProvider:
         self._default_result = result
         self._default_error = error
         self._queue: list[ModelResult | Exception] = []
-        self.calls: list[tuple[TaskSpec, str, Any]] = []
+        self.calls: list[tuple[TaskSpec, str, str, Any]] = []
 
     def queue(self, outcome: ModelResult | Exception) -> None:
         """Schedule the next call's outcome — consumed in FIFO order."""
         self._queue.append(outcome)
 
     def call(
-        self, spec: TaskSpec, prompt: str, response_schema: Any = None
+        self, spec: TaskSpec, model: str, prompt: str, response_schema: Any = None
     ) -> ModelResult:
-        self.calls.append((spec, prompt, response_schema))
+        self.calls.append((spec, model, prompt, response_schema))
         if self._queue:
             outcome: ModelResult | Exception = self._queue.pop(0)
         elif self._default_error is not None:

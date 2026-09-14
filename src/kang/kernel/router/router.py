@@ -84,7 +84,7 @@ class Router:
                 self._providers.get(e.name) is not None for e in triable[index + 1 :]
             )
             try:
-                result = provider.call(spec, prompt, response_schema)
+                result = provider.call(spec, entry.model, prompt, response_schema)
             except ProviderUnavailable as exc:
                 last_error = exc
                 self._record_failure(entry.name)

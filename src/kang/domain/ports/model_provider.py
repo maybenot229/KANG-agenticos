@@ -112,17 +112,30 @@ class NoProviderAvailable(Exception):
 class ModelProvider(Protocol):
     """One provider's own implementation of the port — Anthropic,
     OpenAI, Ollama, or a fake (ADR-038 D1: only the fake ships this
-    slice). `Router` (`kernel/router/`) is the only caller; nothing
-    else in the codebase may reach a provider directly."""
+    slice; ADR-039 adds the real Anthropic one). `Router`
+    (`kernel/router/`) is the only caller; nothing else in the codebase
+    may reach a provider directly.
+
+    ADR-039 correction (2026-09-14): `call` takes `model` explicitly.
+    ADR-038's original signature omitted it — the Router had nowhere to
+    put `providers.toml`'s own per-entry `model` field, so a real
+    adapter would have had to re-derive or hardcode a task_class→model
+    mapping already declared in config, duplicating (and risking
+    diverging from) the one true source. Found while building the real
+    adapter, not while merely reading the ADR — fixed here rather than
+    left for that adapter to work around."""
 
     def call(
         self,
         spec: TaskSpec,
+        model: str,
         prompt: str,
         response_schema: type[BaseModel] | None,
     ) -> ModelResult:
-        """Run one call. Raises `ProviderUnavailable` / `ProviderRefused`
-        / `StructuredOutputInvalid` — never a bare `Exception` (D010's
-        typed-failure discipline applies at this boundary, not just the
-        API's)."""
+        """Run one call against the given concrete `model` id (from
+        `providers.toml`'s `ProviderEntry.model` — the Router's own
+        config, never re-derived here). Raises `ProviderUnavailable` /
+        `ProviderRefused` / `StructuredOutputInvalid` — never a bare
+        `Exception` (D010's typed-failure discipline applies at this
+        boundary, not just the API's)."""
         ...

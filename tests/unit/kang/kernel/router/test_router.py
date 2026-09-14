@@ -50,7 +50,7 @@ def test_routes_to_the_single_configured_provider():
     result = router.route(SPEC, "hello")
 
     assert result.text == "hi"
-    assert provider.calls == [(SPEC, "hello", None)]
+    assert provider.calls == [(SPEC, "claude-haiku-4", "hello", None)]
     assert len(calls.calls) == 1
     assert calls.calls[0].outcome == "ok"
     assert calls.calls[0].provider == "anthropic"

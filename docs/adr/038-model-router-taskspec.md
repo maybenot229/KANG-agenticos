@@ -57,8 +57,10 @@ TaskSpec:
 One method, matching D010's own "structured-output discipline: all machine-consumed outputs are schema-validated... invalid output → bounded retry → typed failure" verbatim:
 
 ```
-ModelProvider.call(spec: TaskSpec, prompt: ..., response_schema: type[BaseModel] | None) -> ModelResult
+ModelProvider.call(spec: TaskSpec, model: str, prompt: ..., response_schema: type[BaseModel] | None) -> ModelResult
 ```
+
+**Corrected by ADR-039** (2026-09-14, found while building the real Anthropic adapter, not while merely reading this ADR): the original signature omitted `model`. `providers.toml`'s `ProviderEntry` already carries a concrete `model` id per chain entry (D4), but nothing threaded it from the Router to the provider — a real adapter would have had to re-derive or hardcode its own task_class→model mapping, duplicating (and risking diverging from) the one config already declares. `Router.route()` now passes `entry.model` through; `FakeModelProvider` and every existing test updated to match — a signature fix, not a behavior change to anything already shipped (D1/D2/D4/D5 stand as written).
 
 - `response_schema=None` → the call is free-text (chat, a prose synthesis step); `ModelResult.text` carries the output.
 - `response_schema=SomeModel` → the adapter is responsible for the bounded-retry-then-typed-failure contract itself (an adapter concern, not the router's — the router doesn't know or care whether a given call asked for structured output, only whether it succeeded or raised).

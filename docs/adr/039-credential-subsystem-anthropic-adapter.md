@@ -1,0 +1,65 @@
+# ADR-039 — The credential subsystem and the real Anthropic `ModelProvider`
+
+**Status:** accepted (2026-09-14)
+**Date:** 2026-09-14
+**Supersedes:** none
+**Affected documents:** none — 10_SECURITY §7/SEC-011 already describes the destination (OS keychain, request-by-name, never cached) and needs no correction, only implementation; this ADR also corrects ADR-038 D3 (see below)
+**Cites:** 10_SECURITY SEC-011 (`docs/10_SECURITY.md:157-161`, "raw secrets exist in exactly one place... adapters request credentials by name... credentials live in memory only for the duration of the call"), 10_SECURITY §7 ("Ownership... Rotation... Access pattern... Logging: scrubber on all log/audit/export paths"), 17_PROJECT_STRUCTURE (`docs/17_PROJECT_STRUCTURE.md:113`, `os_windows/` already lists "credential manager (SEC-011)" as its own scope), docs/adr/038-model-router-taskspec.md D1 ("the real Anthropic adapter and the credential subsystem are their own next slice... unblocked at zero cost"), ADR-011/ADR-035/ADR-038 D6 (the "don't hand-roll a solved problem" precedent this ADR applies a third time)
+**Related:** [[038-model-router-taskspec.md]] — this is that ADR's own named next slice
+
+---
+
+## Context
+
+ADR-038 shipped the Model Router fully tested against a fake — genuinely correct, genuinely inert. Nothing in this codebase can reach a real model, because two real prerequisites are missing, both investigated for the first time here:
+
+**Zero credential access exists.** SEC-011 (already accepted) names the destination in detail — exactly one vault (OS keychain), adapters request by name at call time, in-memory only, never cached, Kang rotates via provider consoles + a keychain update, KANG never writes a fallback copy. None of it is implemented: `grep` for `keyring`/`win32cred`/`CredentialStore` across `src/` and `docs/` returns nothing. `17_PROJECT_STRUCTURE.md:113` already lists `os_windows/` as the intended home ("tray, notifications port, credential manager (SEC-011)") — a planned location with nothing in it yet.
+
+**No `ModelProvider` implementation reaches a real network.** `adapters/anthropic/__init__.py` has said `"""Anthropic ModelProvider implementation. Constitutional home: 04_ARCHITECTURE D010 (built at M7 — 18 §3)."""` with `__all__: list[str] = []` since scaffolding. ADR-038's port (`domain/ports/model_provider.py`) is exactly what it needs to implement against.
+
+**A real gap found in ADR-038 itself while grounding this one, corrected there rather than worked around here:** `ModelProvider.call()`'s original signature never carried which concrete model to call, even though `providers.toml`'s `ProviderEntry.model` already names one per chain entry. Fixed in ADR-038 D3 (dated correction, 2026-09-14) — `call()` now takes `model: str` explicitly, threaded from `Router.route()`'s own `entry.model`. Named here because it is the reason this ADR's adapter can be written correctly at all, not a footnote.
+
+## Decision
+
+### D1 — `keyring`, not raw `ctypes`/`win32cred`, not `pywin32` (E10 justification)
+
+**New dependency: `keyring`.** Verified empirically before committing (not assumed): installed, its Windows backend resolves to `keyring.backends.Windows.WinVaultKeyring` on this machine, and a real round-trip against the actual Windows Credential Manager — `set_password` → `get_password` → `delete_password` — was run and cleaned up before writing this ADR. `get_password` for a name that was never set returns `None` (confirmed, not documented-and-trusted) — the adapter's own `CredentialNotFound` is raised from that `None`, not from a caught exception.
+
+**Why `keyring` over the alternatives:**
+- **Raw `ctypes` against `advapi32.dll`'s `CredReadW`/`CredWriteW`** (the `msvcrt.locking()`-style "no new dependency" option `FileStartupLock` used): rejected. A startup lock's `ctypes` surface is one call with a trivial contract; correctly marshaling Windows' actual credential BLOB structure (UTF-16, structure packing, ownership/lifetime of the returned pointer) for **security-sensitive code** is exactly the "reinvents a solved, non-trivial problem" case ADR-011 (JSON-Schema parsing), ADR-035 (HTTP/1.1 parsing), and ADR-038 D6 (a vendor SDK) already declined, for the same reason: a subtle marshaling bug here doesn't just misbehave, it risks leaking or corrupting a secret.
+- **`pywin32`/`win32cred` directly:** rejected as unnecessarily broad. `win32cred` alone would work, but arrives as part of `pywin32`, a large, multi-purpose Win32-API surface (COM, GUI, services, the works) for a need that is exactly "get/set one named secret." `keyring` already resolves to a **narrower** dependency footprint on this machine than `pywin32` itself — its own Windows backend pulls in `pywin32-ctypes` (a small, credential-access-scoped shim), not the full package.
+- **`keyring` itself:** a mature, widely-trusted PyPI package (used by `pip`/`twine`/many other tools for exactly this "store/retrieve a secret by name" pattern), actively maintained, and its own API — `get_password(service, username)` / `set_password(...)` / `delete_password(...)` — maps onto this port almost verbatim. Cross-platform as a side effect (the same dependency would serve a future POSIX build without a second adapter's worth of new research), mirroring `FileStartupLock`'s own "a POSIX equivalent... not needed today" framing, just arriving pre-paid this time rather than deferred.
+- Kang sets up and rotates every credential using `keyring`'s **own** CLI, which ships with the dependency (`keyring set <name> kang`, prompts securely) — no new `kang` CLI command needed for this slice; KANG's own code only ever calls `get`.
+
+### D2 — `CredentialStore`: one method, a fixed username, no write path in KANG's own code
+
+```
+CredentialStore.get(name: str) -> str   # raises CredentialNotFound
+```
+
+Every credential keys on `(name, "kang")` — `keyring`'s own `(service, username)` shape needs both; SEC-011's own words ("every credential belongs to Kang") mean the username dimension carries no real information in a single-user system, so it is a fixed constant, not a second parameter this port invents meaning for. **No `set`/`delete` method exists on the port at all** — SEC-011: "KANG detects auth failures and prompts, it never stores fallback copies," and rotation is explicitly Kang's own action "in provider consoles + keychain update," never KANG's. A write path would be a capability this system is not supposed to have, not merely one this slice defers.
+
+### D3 — `AnthropicProvider`: the real `ModelProvider`, text-only this slice
+
+Implements ADR-038's (now-corrected) port against the official `anthropic` SDK (already a declared dependency, ADR-038 D6, unused until now):
+
+- The API key is fetched from `CredentialStore.get("kang.model_provider.anthropic")` **fresh on every call** — a new `anthropic.Anthropic(api_key=...)` client per call, never a client held on the instance across calls, so the key's in-memory lifetime matches SEC-011's "for the duration of the call" literally, not merely in spirit.
+- The SDK's own exception hierarchy maps onto the port's two fallback-relevant errors: `BadRequestError` / `AuthenticationError` / `PermissionDeniedError` / `NotFoundError` / `ConflictError` / `UnprocessableEntityError` / `RequestTooLargeError` → `ProviderRefused` (a request or credential problem, never retried, never advances the chain — an `AuthenticationError` on one provider isn't fixed by trying a different one either). Every other `anthropic.AnthropicError` → `ProviderUnavailable` (fallback-chain-eligible), **including SDK exception types this ADR hasn't named** — an unrecognized failure defaults to the fallback-eligible bucket, the safer default when this adapter genuinely doesn't know what went wrong.
+- **`response_schema` is NOT implemented this slice.** Structured output needs its own real design (constructing a tool schema from a Pydantic model, forcing `tool_choice`, parsing the tool-use block, the bounded-retry-then-typed-failure loop D010 itself names) — genuinely separate scrutiny from "can this adapter make a real text call and map its errors correctly," and **nothing calls this adapter with a schema yet** (the Router isn't wired into `Core` at all — ADR-038 D1). Passing one raises `NotImplementedError` loudly, never a silent ignore of the request.
+- **Cost.** `ModelResult.cost_usd` is computed from a small, adapter-owned `$/token` table keyed by model id — **explicitly a snapshot, not authoritative**: Anthropic's own pricing changes over time (D010's own "providers will change pricing... routing must be config, not surgery" already names this as expected drift, just for models not dollars yet). An unrecognized model id yields `cost_usd=0.0` with the fact logged as a genuine zero-because-unpriced case, not silently treated as free — the same "never invent a value silently" discipline `api/schemas/invocation.py`'s own cost-field comment already states, applied here to a real number this adapter could otherwise be tempted to guess at.
+
+### D4 — Scrubber: named, deliberately deferred, primary protection stays airtight without it
+
+SEC-011's "scrubber provides defense-in-depth on all log/audit/export paths" is **not built this slice.** The reasoning for deferring it safely: the scrubber is explicitly *defense-in-depth* — a second layer — over the PRIMARY protection, which this slice keeps intact by construction: the credential value is read once per call, used only to construct the SDK client, and never assigned to anything that reaches a log line, an exception message, a `model_call` row, or an audit record (`CredentialNotFound`'s own message carries the credential's *name*, never a value — there is no value to carry when one is missing, and the found-value path never formats it into a string at all). **RESERVED, trigger:** a second secret-adjacent path exists to justify a shared scrubbing utility rather than one path's own careful discipline (the same "don't pre-build against a hypothetical" reasoning ADR-036 D1 used for interleaving).
+
+## Consequences
+
+- **The Model Router stops being inert.** A `TaskSpec` can reach a real Anthropic response — still uncalled by anything (the executor/chat are separate, later ADR-028 items), but genuinely capable now, not merely typed.
+- **SEC-011 goes from fully-specified-but-unimplemented to real code**, at the one narrow surface this system actually needs (get, never set/delete).
+- **A real, named gap in ADR-038 is fixed in the same change that discovered it** (the `model` parameter), not carried forward as a workaround in the adapter that found it.
+- **Two things stay explicitly unbuilt, both named, both with a trigger:** structured output (its own adapter-level design, D010's bounded-retry contract) and the scrubber (RESERVED: a second secret-adjacent path).
+- **`keyring` is the fourth dependency added by ADR this session** (after `aiohttp`, `anthropic`), each with its own E10 paragraph — the "declare ahead of the code" and "don't hand-roll a solved problem" reasoning both recur rather than being re-derived from scratch each time.
+
+## Verification
+
+Deferred to the implementation slice this ADR authorizes (13_TESTING: a design ADR proves nothing by itself). Expected proof, named now: `KeyringCredentialStore` against the REAL Windows Credential Manager (a real round-trip: set via `keyring` directly in the test's own setup, read via the adapter, delete in teardown — never left behind); `CredentialNotFound`'s message contains the name and never a secret value, asserted directly; `FakeCredentialStore` covers the port for `AnthropicProvider`'s own tests, which mock the `anthropic` SDK client itself (13_TESTING §1: no network in the automated suite — this ADR does not claim a real network call was ever made against Anthropic's API, only that the adapter's own request-building and error-mapping logic is correct against the SDK's real exception types and a realistic mocked response shape); every `_REFUSAL_ERRORS` member and the fallback-default path each provably map to the correct port-level exception; `response_schema` given raises `NotImplementedError`; the cost table's unknown-model path is provably `0.0`, never a fabricated estimate.
