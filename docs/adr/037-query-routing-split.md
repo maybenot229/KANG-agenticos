@@ -1,6 +1,6 @@
 # ADR-037 — Splitting query routing out of `composition.py`, extending the composition-root import exemption to a third file
 
-**Status:** proposed
+**Status:** accepted (2026-09-14)
 **Date:** 2026-09-14
 **Affected documents:** `17_PROJECT_STRUCTURE.md` §4.3 (the composition-root exemption, previously scoped to two files — and corrected here to actually say so; ADR-023 never updated its prose, only `composition.py`'s own docstring and `tools/importlinter.toml`), `tools/importlinter.toml`
 **Cites:** ADR-023 (the identical split, one file earlier — "a third file would need its own line, its own justification, same as this one needed this ADR"), ADR-036 D4 resumed (the read-pool query-routing slice that triggered this), 11_CODING §25 (size lints, no negotiating)
@@ -40,4 +40,4 @@ A pre-existing gap surfaced while investigating this: `17_PROJECT_STRUCTURE.md` 
 
 ## Verification
 
-A pure code-organization change, same as ADR-023's own — no behavior to live-verify beyond what ADR-036 D4's own live verification already covers (this ADR carries no behavior change of its own; see ADR-036 D4's "resumed" note for the read-pool routing's own live-verification proof). Confirmed: `lint-imports --config tools/importlinter.toml` reports all 8 contracts kept, including the two new `query_routing` exemption lines; `ruff check .` passes with 0 errors (including the relocated `BLE001` exemption); `tools/lint_sizes.py` reports 0 hard violations (down from 3 before the split: the file itself, `_build_core_locked`, and `serve`); the full backend suite (920 tests) passes unchanged.
+A pure code-organization change, same as ADR-023's own — no behavior to live-verify beyond what ADR-036 D4's own live verification already covers (this ADR carries no behavior change of its own; see ADR-036 D4's "resumed" note for the read-pool routing's own live-verification proof). Confirmed: `lint-imports --config tools/importlinter.toml` reports all 8 contracts kept, including the two new `query_routing` exemption lines; `ruff check .` passes with 0 errors (including the relocated `BLE001` exemption); `tools/lint_sizes.py` reports 0 hard violations (down from 3 before the split: the file itself, `_build_core_locked`, and `serve`); the full backend suite (935 tests, including the 15 new tests ADR-036 D4's own read-pool-routing slice added) passes with this split in place.
