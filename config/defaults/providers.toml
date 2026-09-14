@@ -1,0 +1,63 @@
+# providers.toml — Model Router routing truth (D010, ADR-038). Shipped
+# default the installer copies to %KANG_HOME%/config/ (17 §8), same
+# two-tier pattern as kang.toml/permissions.toml (D003: diffable,
+# hand-editable in recovery).
+#
+# NO SECRETS HERE (SEC-011) — provider API keys live in the OS keychain
+# only, requested by name at call time. This file names WHICH provider
+# and model serve each task class, never a credential.
+#
+# Names the destination ahead of the code that uses it (ADR-038 D1/D6,
+# the same "declare ahead of the code" shape ADR-035 used for aiohttp):
+# the real "anthropic" adapter is not wired at the composition root this
+# slice — an entry naming it here is inert until it is (the Router
+# skips any chain entry with no matching provider actually wired,
+# ADR-038 D4), not a lie about what's live today.
+#
+# No chain for task_class = "private": no local_only provider exists
+# yet (Ollama's adapter is Phase 5, RESERVED — 03_ROADMAP §8). A
+# privacy_tier="private" call fails closed (NoProviderAvailable) by
+# construction until one is configured here — never routed to a cloud
+# provider by accident.
+
+[task_class.deep_reasoning]
+chain = [
+  { name = "anthropic", model = "claude-opus-4" },
+]
+
+[task_class.routine]
+chain = [
+  { name = "anthropic", model = "claude-haiku-4" },
+]
+
+[task_class.classification]
+chain = [
+  { name = "anthropic", model = "claude-haiku-4" },
+]
+
+[task_class.embedding]
+chain = []  # no embedding provider wired yet — RESERVED, its own trigger
+
+# task_class.private: deliberately absent — see header. Do not add an
+# entry here pointing at a cloud provider; that would defeat the tier.
+
+[circuit_breaker]
+# A provider that fails circuit_breaker_failure_threshold times
+# consecutively is skipped for circuit_breaker_cooldown_s before the
+# Router tries it again (D010: "fallback chain... never a silent hang").
+failure_threshold = 3
+cooldown_s = 60.0
+
+[budget]
+# AG-008's already-accepted hierarchy (05_AGENTS §12). Read into
+# ProvidersConfig's schema from this slice forward; NOT YET enforced —
+# ADR-038 D4 names this explicitly as its own deferred slice (RESERVED,
+# trigger: a real caller exists to generate real spend to threshold
+# against). Present now so the shape is right when enforcement lands.
+monthly_cap_usd = 50.0
+
+[budget.per_task_class_cap_usd]
+deep_reasoning = 30.0
+routine = 15.0
+classification = 10.0
+embedding = 5.0

@@ -26,7 +26,16 @@ requires-python = ">=3.12"
 # this does with one) and over hand-rolling HTTP/1.1 parsing (reinvents a
 # solved, non-trivial spec, the same reasoning ADR-011 used to reject a
 # hand-rolled JSON-Schema parser). Approved by Kang 2026-09-13.
-dependencies = ["tzdata", "pydantic", "aiohttp"]
+# anthropic: the official vendor SDK, declared ahead of its own first use
+# (ADR-038 D1/D6, the same "declare ahead of the code" shape aiohttp used
+# for ADR-035) — the real Anthropic ModelProvider adapter is its own next
+# slice (needs a credential subsystem this one doesn't build). Typed
+# request/response models match D010's structured-output discipline
+# directly; the alternative (hand-rolling Anthropic's REST API against
+# aiohttp) reinvents a solved problem the vendor already maintains for
+# free, the same reasoning that already justified aiohttp itself one
+# layer down. Approved by Kang 2026-09-14.
+dependencies = ["tzdata", "pydantic", "aiohttp", "anthropic"]
 
 [project.optional-dependencies]
 # Dev toolchain named by the constitution itself:

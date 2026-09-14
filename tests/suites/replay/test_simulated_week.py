@@ -110,25 +110,28 @@ class TestSimulatedWeek:
     def test_the_week_makes_zero_model_calls(self, core):
         """18 §7.6: M0-M6 contain no model call. Structural — no provider
         adapter is wired into the Core at all, so a model call is not
-        merely absent, it is unreachable."""
+        merely absent, it is unreachable.
+
+        The `model_call` ledger table itself now exists (migration 0018,
+        ADR-038 D1) — the Model Router's own schema, shipped ahead of any
+        caller reaching it. Its existence proves nothing either way about
+        this week's own model-call count, so the real check moved from
+        "the table is absent" to "the table is empty": `build_core()` and
+        `composition.py` are both unchanged by ADR-038 (D1's own scope
+        cut — the Router isn't wired into `Core` at all yet), so nothing
+        in this simulated week could write a row even though the table
+        is there to receive one."""
         built, home = core
         _call(built, "task.create", {"title": "Olympiad drill", "priority": 1}, "t1")
         for day in _week():
             _call(built, "plan.generate", {"plan_date": day.isoformat()}, f"p{day}")
 
-        # the cost ledger table does not even exist yet, and nothing wired
-        # can write one — assert the absence rather than assume it
         conn = open_connection(home / "kang.db")
         try:
-            tables = {
-                row[0]
-                for row in conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table'"
-                )
-            }
+            count = conn.execute("SELECT COUNT(*) FROM model_call").fetchone()[0]
         finally:
             conn.close()
-        assert "model_call" not in tables
+        assert count == 0
 
     def test_the_week_is_reproducible(self, tmp_path):
         """Two identical weeks produce identical plans (13 §2.6). Ids differ
