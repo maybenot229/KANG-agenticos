@@ -1,0 +1,17 @@
+# vault_organizer — Appendix A row (docs/05_AGENTS.md:425). Cognitive.
+# `tools` transcribes Appendix A's own illustrative prose (`vault.read`,
+# `vault.write:conventions`) — not resolved to real operations (the
+# vault domain is entirely unbuilt yet).
+
+id = "vault_organizer"
+kind = "cognitive"
+mandate = "File inbox captures into conventions; propose links (FR-062, FR-063)"
+triggers = ["sched:daily", "kang"]
+tools = ["vault.read", "vault.write:conventions", "notify:digest"]
+scopes = ["memory.read:vault-view", "memory.propose:observation"]
+timeout_s = 600
+retry = 1
+degradation = "Leaves items in the inbox and flags the backlog — never files something it isn't sure about."
+recipe = "vault-view"
+pipelines = []
+prompt_file = "prompts/system.md"

@@ -88,5 +88,10 @@ def test_a_single_violation_refuses_the_whole_registry_not_just_that_agent():
 def test_the_real_shipped_catalog_passes_the_pairing_lint():
     definitions = discover_agent_definitions(SHIPPED_DEFINITIONS_DIR)
     registry = build_checked_registry(definitions)
-    assert len(registry) == 3
+    assert len(registry) == 15  # Appendix A's own 15 (ADR-040 D4)
     assert registry.get("planner").kind == "cognitive"
+    assert registry.get("researcher").scopes == (
+        "memory.read:research-view",
+        "memory.propose:fact",
+        "memory.propose:observation",
+    )  # never memory.read:sensitive — Appendix A's own forbidden entry, honored

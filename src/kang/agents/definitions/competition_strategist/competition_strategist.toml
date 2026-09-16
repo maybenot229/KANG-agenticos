@@ -1,0 +1,22 @@
+# competition_strategist — Appendix A row (docs/05_AGENTS.md:418).
+# Cognitive. `tools` transcribes Appendix A's own illustrative prose
+# verbatim (`projects.*`, `deadlines.*`, `vault.write:Competitions`) —
+# NOT resolved to real registered operations (ADR-041's own discipline
+# applies only to agents an executor actually runs; no cognitive
+# executor exists yet, so this stays illustrative, same as `planner`'s
+# own `tasks.*`). Consumes `competition_scout`'s stored briefs rather
+# than fetching the web itself — `web` is Appendix A's own forbidden
+# entry for this agent, deliberately not granted here either.
+
+id = "competition_strategist"
+kind = "cognitive"
+mandate = "Evaluate competitions; timelines; prep support; judge sim (FR-033..037)"
+triggers = ["kang", "event:competition.found", "sched:weekly"]
+tools = ["projects.*", "deadlines.*", "notify:attention", "vault.write:Competitions"]
+scopes = ["memory.read:competition-view", "memory.propose:fact", "memory.propose:lesson", "memory.propose:observation"]
+timeout_s = 900
+retry = 1
+degradation = "Brief from cached research; timeline generation stays deterministic."
+recipe = "competition-view"
+pipelines = ["competition_intake", "competition_prep"]
+prompt_file = "prompts/system.md"

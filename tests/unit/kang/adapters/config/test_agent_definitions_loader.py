@@ -219,10 +219,25 @@ def test_discover_raises_when_a_folder_has_no_matching_toml(tmp_path):
         discover_agent_definitions(tmp_path)
 
 
+SHIPPED_AGENT_IDS = {
+    "backup_monitor", "competition_scout", "competition_strategist", "critic",
+    "deadline_sweep", "faith_companion", "health_monitor", "memory_steward",
+    "notifier", "planner", "researcher", "tutor", "vault_indexer",
+    "vault_organizer", "web_monitor",
+}  # Appendix A's own 15 — sync_agent (reserved, undefined in 16_SYNC) and
+# plugin_runner (a per-plugin template, not a static catalog entry) are
+# both deliberately excluded (ADR-040 D4).
+
+
 def test_the_shipped_real_definitions_load_cleanly():
     found = discover_agent_definitions(SHIPPED_DEFINITIONS_DIR)
-    assert {d.id for d in found} == {"deadline_sweep", "critic", "planner"}
+    assert {d.id for d in found} == SHIPPED_AGENT_IDS
     by_id = {d.id: d for d in found}
     assert by_id["deadline_sweep"].kind == "mechanical"
     assert by_id["critic"].tools == ("notify:digest",)  # the zero-world-tools case
     assert by_id["planner"].pipelines == ("weekly_close",)
+    assert by_id["backup_monitor"].tools == (
+        "backup.snapshot", "backup.verify", "backup.offsite_check",
+    )  # resolved to real operations, unlike most of the catalog
+    assert by_id["competition_scout"].escalation.task_class == "classification"
+    assert by_id["memory_steward"].escalation.task_class == "routine"

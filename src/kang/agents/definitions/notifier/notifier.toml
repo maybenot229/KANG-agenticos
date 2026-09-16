@@ -1,0 +1,23 @@
+# notifier — Appendix A row (docs/05_AGENTS.md:428). Purely mechanical,
+# zero escalation, zero prompt. Named here for AG-004's own registry
+# completeness — its real, ALREADY-BUILT mechanism (domain/
+# notifications/notifier.py's drain handler) is a bus SUBSCRIBER
+# (`notifier.drain`, reacting to `notification.requested` events), not
+# an invocable, admission-checked thing an executor calls per AG-001's
+# own lifecycle. `tools` is left as Appendix A's own illustrative "OS
+# notification port" prose — there is no real operation this maps to,
+# and forcing one would misrepresent how this agent's own domain logic
+# actually runs today. Whether/how the notifier ever moves under the
+# agent envelope (rather than staying a pure bus subscriber) is its own
+# future question, not decided here.
+
+id = "notifier"
+kind = "mechanical"
+mandate = "Deliver notifications per state ladder (§13, FR-074)"
+triggers = ["event:notification.requested"]
+tools = ["os.notify"]
+scopes = []
+timeout_s = 30
+retry = 2
+degradation = "Queue for the next allowed window — never a dropped notification."
+pipelines = []

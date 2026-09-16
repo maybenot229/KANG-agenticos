@@ -1,0 +1,21 @@
+# web_monitor — Appendix A row (docs/05_AGENTS.md:427). Mechanical with
+# a declared cognitive escalation (§1.2's `M→C` shape): fetching
+# configured sources is deterministic; relevance CLASSIFICATION is the
+# one step that may escalate to a cheap model call. `tools` transcribes
+# Appendix A's own illustrative prose — not resolved to real operations
+# (no executor runs this agent yet).
+
+id = "web_monitor"
+kind = "mechanical"
+mandate = "Configured monitors: news, GitHub trending, scholarships (FR-070/071)"
+triggers = ["sched:per_monitor"]
+tools = ["web.fetch:sources", "notify:digest"]
+scopes = []
+timeout_s = 300
+retry = 1
+degradation = "Skip the cycle — stale news is worthless, so catch-up is skip, never a stale digest."
+pipelines = []
+
+[escalation]
+task_class = "classification"
+prompt_file = "prompts/escalate.md"

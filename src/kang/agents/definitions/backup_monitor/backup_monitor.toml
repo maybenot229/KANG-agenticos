@@ -1,0 +1,21 @@
+# backup_monitor — Appendix A row (docs/05_AGENTS.md:429). Purely
+# mechanical, zero escalation, zero prompt. Unlike most of this
+# catalog's remaining rows, `tools` here IS resolved to real registered
+# operations (ADR-041's own "tool = operation dispatch" discipline) —
+# `backup.snapshot`/`backup.verify`/`backup.offsite_check` already
+# exist and already perform this agent's entire mandate internally
+# (ADR-031/ADR-032/ADR-034), each already wired as its own automatic
+# job (scheduler_wiring.py). Appendix A's own "fs (backup dirs), db
+# admin port" prose named the underlying MECHANISM those operations
+# already implement, not a second, separately-callable thing.
+
+id = "backup_monitor"
+kind = "mechanical"
+mandate = "Snapshot execution + verification (07_DATABASE Part 12)"
+triggers = ["sched:daily", "sched:monthly"]
+tools = ["backup.snapshot", "backup.verify", "backup.offsite_check"]
+scopes = []
+timeout_s = 1200
+retry = 1
+degradation = "Alert on any failure — no silent skip, ever."
+pipelines = []

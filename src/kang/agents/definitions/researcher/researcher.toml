@@ -1,0 +1,21 @@
+# researcher — Appendix A row (docs/05_AGENTS.md:420). Cognitive.
+# `tools` transcribes Appendix A's own illustrative prose (`web.fetch:
+# any`, `vault.write:Inbox`) — not resolved to real operations (no
+# executor runs this agent yet). Deliberately does NOT hold
+# `memory.read:sensitive` — Appendix A names it as this agent's own
+# forbidden entry, the read/act separation pairing rule (§8, 06_MEMORY
+# §12.2: no principal combines `web.fetch` with sensitive-memory reads)
+# applied at design time, not merely enforced at load time.
+
+id = "researcher"
+kind = "cognitive"
+mandate = "Multi-source research briefs (FR-050..052)"
+triggers = ["kang", "chained"]
+tools = ["web.fetch:any", "vault.write:Inbox", "notify:digest"]
+scopes = ["memory.read:research-view", "memory.propose:fact", "memory.propose:observation"]
+timeout_s = 900
+retry = 0
+degradation = "Partial brief with an explicit coverage statement — never a silently incomplete one."
+recipe = "research-view"
+pipelines = ["deep_research"]
+prompt_file = "prompts/system.md"

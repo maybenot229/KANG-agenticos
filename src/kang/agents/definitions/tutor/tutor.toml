@@ -1,0 +1,20 @@
+# tutor — Appendix A row (docs/05_AGENTS.md:421). Cognitive. Subjects
+# locked at build time to math + faith (CS/English deferred, not
+# dropped, per docs/guides/user-profile-intake-2026-07.md D8, Phase 3 —
+# no behavior change from that note yet). `tools` transcribes Appendix
+# A's own illustrative prose (`quiz.*`, `repetition.*`) — not resolved
+# to real operations (no executor runs this agent yet, and neither
+# family is a registered operation today).
+
+id = "tutor"
+kind = "cognitive"
+mandate = "Teaching, study plans, quizzes, repetition (FR-040..043)"
+triggers = ["kang", "sched:repetition_due"]
+tools = ["quiz.*", "repetition.*", "notify:attention"]
+scopes = ["memory.read:learning-view", "memory.propose:observation"]
+timeout_s = 600
+retry = 0
+degradation = "Repetition scheduling stays deterministic; teaching itself requires a model and reports unavailability rather than guessing."
+recipe = "learning-view"
+pipelines = []
+prompt_file = "prompts/system.md"

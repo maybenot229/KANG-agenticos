@@ -1,0 +1,20 @@
+# health_monitor — Appendix A row (docs/05_AGENTS.md:430). Purely
+# mechanical, zero escalation, zero prompt. `tools` resolves to the one
+# real registered operation this agent's read half needs —
+# `system.health` (09_UI §12) already exposes the metrics/alerts this
+# agent's mandate names. The alerting half ("threshold alerts") has no
+# separate callable tool yet — notifications aren't dispatched via an
+# operation at all (see `notifier`'s own definition) — so this
+# definition names the read side only, honestly, rather than inventing
+# an alert tool that doesn't exist.
+
+id = "health_monitor"
+kind = "mechanical"
+mandate = "Metrics collection; threshold alerts; `kang doctor` backend"
+triggers = ["sched:5m_tick"]
+tools = ["system.health"]
+scopes = []
+timeout_s = 60
+retry = 0
+degradation = "Its own absence is detected by a watchdog (dead-man switch), not by this agent reporting on itself."
+pipelines = []

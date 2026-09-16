@@ -1,0 +1,18 @@
+# vault_indexer — Appendix A row (docs/05_AGENTS.md:424). Purely
+# mechanical, zero escalation, zero prompt — chunk/embed/index the
+# vault, merge link_index, detect broken links. `tools` transcribes
+# Appendix A's own illustrative prose (`fs.read:vault`, `vault.read`) —
+# not resolved to real operations (the vault domain is entirely
+# unbuilt, Phase 2/Obsidian integration — no operation exists for this
+# yet at all, unlike `deadline_sweep`'s own corrected case).
+
+id = "vault_indexer"
+kind = "mechanical"
+mandate = "Chunk/embed/index vault; link_index merge; broken-link detection"
+triggers = ["sched:sweep", "event:vault.note_changed"]
+tools = ["fs.read:vault", "vault.read"]
+scopes = []
+timeout_s = 600
+retry = 1
+degradation = "FTS-only indexing if the embedder is down — never a stalled index."
+pipelines = []

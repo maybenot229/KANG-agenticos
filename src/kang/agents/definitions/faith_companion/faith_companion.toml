@@ -1,0 +1,26 @@
+# faith_companion — Appendix A row (docs/05_AGENTS.md:431). Cognitive.
+# `tools` transcribes Appendix A's own illustrative prose (`repetition.
+# *`, `vault.read/write:Faith`) — not resolved to real operations (no
+# executor runs this agent yet). Faith is load-bearing for Kang, not
+# decorative (docs/guides/user-profile-intake-2026-07.md) — this is the
+# SOLE holder of `private`-sensitivity faith records (06_MEMORY Part
+# XII), hard-isolated from every other agent's own view. Journal
+# contexts are local-model-only, fail-closed (D010's own privacy-tier
+# routing, ADR-038 D4) — never routed to a cloud provider even as a
+# fallback; this definition's own `scopes` cannot express that routing
+# constraint (it lives in the TaskSpec.privacy_tier the agent's own
+# calls declare per-invocation, not a static registry field), so it is
+# named here in prose rather than silently assumed enforced.
+
+id = "faith_companion"
+kind = "cognitive"
+mandate = "Reading plans, memorization scheduling, journal support (FR-090..092)"
+triggers = ["kang", "sched:daily_prompt", "sched:repetition_due"]
+tools = ["repetition.*", "vault.read:Faith", "vault.write:Faith", "notify:attention"]
+scopes = ["memory.read:faith-view"]
+timeout_s = 300
+retry = 0
+degradation = "Scheduling stays deterministic; journal features are offline-capable by construction."
+recipe = "faith-view"
+pipelines = []
+prompt_file = "prompts/system.md"

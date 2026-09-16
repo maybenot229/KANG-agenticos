@@ -1,0 +1,22 @@
+# memory_steward — Appendix A row (docs/05_AGENTS.md:423). Mechanical
+# with a declared cognitive escalation (§1.2's `M→C` shape): janitor,
+# dedup, and weekly consolidation are deterministic; pattern extraction
+# is the one step that may escalate to a model call, and skips cleanly
+# when one isn't available. `tools` transcribes Appendix A's own
+# illustrative prose (`gate.client` for "gate client") — not resolved
+# to real operations (no executor runs this agent yet).
+
+id = "memory_steward"
+kind = "mechanical"
+mandate = "Janitor, dedup, weekly consolidation, pattern extraction (06_MEMORY Part VI)"
+triggers = ["sched:nightly", "sched:weekly", "sched:monthly"]
+tools = ["gate.client", "notify:digest"]
+scopes = ["memory.propose:lesson", "memory.propose:preference", "memory.propose:observation"]
+timeout_s = 1800
+retry = 1
+degradation = "Mechanical passes (janitor, dedup) always run; cognitive extraction alone skips when unavailable."
+pipelines = []
+
+[escalation]
+task_class = "routine"
+prompt_file = "prompts/escalate.md"

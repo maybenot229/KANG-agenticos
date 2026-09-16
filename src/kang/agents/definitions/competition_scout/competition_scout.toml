@@ -1,0 +1,25 @@
+# competition_scout — Appendix A row (docs/05_AGENTS.md:419). Mechanical
+# with a declared cognitive escalation (§1.2's `M→C` shape): monitoring
+# and source-checking are deterministic; relevance CLASSIFICATION is
+# the one step that may escalate to a cheap model call. `tools`
+# transcribes Appendix A's own illustrative prose — not resolved to
+# real operations (no executor runs this agent yet). `vault.write` is
+# Appendix A's own forbidden entry for this agent (paired with
+# `web.fetch` — exactly the read/act separation the pairing lint
+# already enforces at the scope level; this agent holds no memory
+# scopes at all, so there's nothing here for that lint to check yet).
+
+id = "competition_scout"
+kind = "mechanical"
+mandate = "Monitor sources; classify relevance (FR-032)"
+triggers = ["sched:daily"]
+tools = ["web.fetch:sources", "notify:digest"]
+scopes = []
+timeout_s = 300
+retry = 1
+degradation = "Store raw finds unclassified, flagged for review — never silently dropped."
+pipelines = ["competition_intake"]
+
+[escalation]
+task_class = "classification"
+prompt_file = "prompts/escalate.md"
