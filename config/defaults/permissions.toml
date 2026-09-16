@@ -63,22 +63,17 @@
 # automation set off?", reviewable in one place. It holds no
 # events.publish grant: the operations it invokes publish under their own
 # domain principals. tasks.write (morning_plan -> plan.generate),
-# held_actions.expire (held_action_expire -> held_action.expire, ADR-022),
-# backups.write (backup_snapshot -> backup.snapshot, ADR-031;
-# backup_verify -> backup.verify, ADR-032 — same scope, same directory),
-# backups.read (backup_offsite_check -> backup.offsite_check, ADR-034 —
-# a new scope, not backups.write: this job writes no file).
+# held_actions.expire (held_action_expire -> held_action.expire, ADR-022).
 #
-# deadlines.mark_alerted moved OFF this principal (ADR-043, 2026-09-16):
-# deadline_sweep's own real trigger now runs through the mechanical-agent
-# envelope under principal agent:deadline_sweep below, not this one —
-# least privilege following the actual caller, not a second copy of the
-# same grant held by two principals for one operation.
+# deadlines.mark_alerted (ADR-043) and backups.write/backups.read
+# (ADR-045) both moved OFF this principal, 2026-09-16: deadline_sweep's
+# and backup_monitor's own real triggers now run through the
+# mechanical-agent envelope under their own agent:{id} principals below,
+# not this one — least privilege following the actual caller, not a
+# second copy of the same grant held by two principals for one operation.
 "kernel:scheduler" = [
   "tasks.write",
   "held_actions.expire",
-  "backups.write",
-  "backups.read",
 ]
 
 # ADR-043 (2026-09-16): deadline_sweep's real scheduled trigger now runs
@@ -88,3 +83,13 @@
 # (agents/definitions/deadline_sweep/deadline_sweep.toml) — the allowlist
 # check there is independent of, and prior to, this grant (ADR-028 C4).
 "agent:deadline_sweep" = ["deadlines.mark_alerted"]
+
+# ADR-045 (2026-09-16): backup_monitor's three jobs (backup_snapshot,
+# backup_verify, backup_offsite_check) now all run through the same
+# mechanical-agent envelope, under this one principal — one agent, three
+# jobs, matching its own AgentDefinition's `tools` (agents/definitions/
+# backup_monitor/backup_monitor.toml: backup.snapshot, backup.verify,
+# backup.offsite_check). backups.write covers the first two (same scope,
+# same directory, ADR-031/032); backups.read covers the third (ADR-034 D2
+# — it writes no file, a genuinely different scope, not a duplicate).
+"agent:backup_monitor" = ["backups.write", "backups.read"]

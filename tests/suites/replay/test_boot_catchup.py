@@ -292,6 +292,11 @@ def test_backup_snapshot_is_registered_and_a_real_boot_takes_a_real_snapshot(tmp
         server.wait_ready()
         assert _job_run_count(tmp_path, BACKUP_SNAPSHOT_JOB) == 1
         assert _job_run_outcome(tmp_path, BACKUP_SNAPSHOT_JOB) == "ok"
+        # ADR-045: the real trigger now runs through the mechanical-agent
+        # envelope, not a direct kernel:scheduler dispatch.
+        assert _invocation_principal(tmp_path, "backup.snapshot") == (
+            "agent:backup_monitor"
+        )
     finally:
         server.stop()
 
@@ -360,6 +365,10 @@ def test_backup_verify_is_registered_and_a_real_boot_restore_tests_a_real_snapsh
         server.wait_ready()
         assert _job_run_count(tmp_path, BACKUP_VERIFY_JOB) == 1
         assert _job_run_outcome(tmp_path, BACKUP_VERIFY_JOB) == "ok"
+        # ADR-045: same agent, same envelope as backup_snapshot.
+        assert _invocation_principal(tmp_path, "backup.verify") == (
+            "agent:backup_monitor"
+        )
         # The other four jobs are unaffected — five independently
         # catching-up jobs, not one replacing the others.
         assert _job_run_count(tmp_path, BACKUP_SNAPSHOT_JOB) == 0
@@ -406,6 +415,10 @@ def test_backup_offsite_check_is_registered_and_a_real_boot_warns_when_stale(
         server.wait_ready()
         assert _job_run_count(tmp_path, BACKUP_OFFSITE_CHECK_JOB) == 1
         assert _job_run_outcome(tmp_path, BACKUP_OFFSITE_CHECK_JOB) == "ok"
+        # ADR-045: same agent, same envelope as its two siblings.
+        assert _invocation_principal(tmp_path, "backup.offsite_check") == (
+            "agent:backup_monitor"
+        )
         # The other five jobs are unaffected — six independently
         # catching-up jobs, not one replacing the others.
         assert _job_run_count(tmp_path, BACKUP_SNAPSHOT_JOB) == 0

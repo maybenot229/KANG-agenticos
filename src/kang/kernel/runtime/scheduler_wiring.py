@@ -94,18 +94,26 @@ JOB_OPERATIONS: dict[str, str] = {
     "backup_offsite_check": "backup.offsite_check",  # ADR-034
 }
 
-# ADR-043: jobs whose real scheduled trigger runs through the mechanical-
-# agent envelope (agents/runtime/executor.py::run_mechanical_agent)
-# instead of a direct kernel:scheduler dispatch — a named, reviewable set,
-# never inferred from a job name happening to match a real agent id.
-# `morning_plan`'s real cognitive counterpart (`planner`) is out of scope
-# for the mechanical-only executor (03_ROADMAP Phase 1); `held_action_
-# expire` names no agent in Appendix A's catalog at all. `backup_snapshot`/
-# `backup_verify`/`backup_offsite_check` each name one of `backup_monitor`'s
-# own allowed tools — a real, same-shaped future candidate, deliberately
-# NOT added here: widening this set is its own future decision, same as
-# ADR-041 left this one open rather than defaulting it.
-AGENT_ROUTED_JOBS: frozenset[str] = frozenset({DEADLINE_SWEEP_JOB})
+# ADR-043/045: jobs whose real scheduled trigger runs through the
+# mechanical-agent envelope (agents/runtime/executor.py::
+# run_mechanical_agent) instead of a direct kernel:scheduler dispatch —
+# a named, reviewable job-name -> agent-id MAPPING, never inferred from
+# a job name happening to match a real agent id. `deadline_sweep`'s own
+# job name and agent id happen to be the same string (coincidence, not
+# a mechanism this map relies on) — `backup_monitor` runs three
+# differently-named jobs, which is why this is a dict, not a set
+# (ADR-045's own finding: ADR-043's frozenset couldn't express "which
+# agent" once job name and agent id stopped being the same string).
+# `morning_plan`'s real cognitive counterpart (`planner`) is out of
+# scope for the mechanical-only executor (03_ROADMAP Phase 1);
+# `held_action_expire` names no agent in Appendix A's catalog at all —
+# both stay off this map for the same reason ADR-043 gave.
+AGENT_ROUTED_JOBS: dict[str, str] = {
+    DEADLINE_SWEEP_JOB: "deadline_sweep",
+    BACKUP_SNAPSHOT_JOB: "backup_monitor",
+    BACKUP_VERIFY_JOB: "backup_monitor",
+    BACKUP_OFFSITE_CHECK_JOB: "backup_monitor",
+}
 
 
 def _make_schedule_parser(tz: ZoneInfo):
@@ -203,16 +211,20 @@ def _run_via_agent_envelope(
     agent_registry: AgentRegistry,
     executor_deps: ExecutorDeps,
 ) -> dict:
-    """ADR-043: a job in `AGENT_ROUTED_JOBS` runs through `run_mechanical_
-    agent` — split out of `_make_job_runner`'s own closure purely to keep
-    that function under the size lint's line limit (11 §4), not a
-    domain concept of its own."""
-    agent = agent_registry.get(job.name)
+    """ADR-043/045: a job in `AGENT_ROUTED_JOBS` runs through
+    `run_mechanical_agent`, looked up via that dict's own job-name ->
+    agent-id mapping (never the job name itself past ADR-045 — see
+    that map's own docstring) — split out of `_make_job_runner`'s own
+    closure purely to keep that function under the size lint's line
+    limit (11 §4), not a domain concept of its own."""
+    agent_id = AGENT_ROUTED_JOBS[job.name]
+    agent = agent_registry.get(agent_id)
     if agent is None:
         raise KeyError(
-            f"job {job.name!r} is in AGENT_ROUTED_JOBS but no agent "
-            f"{job.name!r} exists in the AgentRegistry — a wiring "
-            "defect, not a runtime condition to degrade past"
+            f"job {job.name!r} maps to agent {agent_id!r} in "
+            "AGENT_ROUTED_JOBS, but no such agent exists in the "
+            "AgentRegistry — a wiring defect, not a runtime condition "
+            "to degrade past"
         )
     return run_mechanical_agent(
         agent, operation, {}, executor_deps, idempotency_key=idempotency_key
