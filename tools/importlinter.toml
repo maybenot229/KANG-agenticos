@@ -51,6 +51,15 @@ ignore_imports = [
     "kang.kernel.runtime.composition -> kang.api.**",
     "kang.kernel.runtime.scheduler_wiring -> kang.adapters.**",
     "kang.kernel.runtime.scheduler_wiring -> kang.api.**",
+    # ADR-043 (2026-09-16): the composition root wires deadline_sweep's
+    # real scheduled trigger through agents/runtime/executor.py's
+    # run_mechanical_agent for the first time — 17_PROJECT_STRUCTURE
+    # §4.3's own prose already says the composition root "MAY import
+    # adapters and everything else"; this entry brings this file's
+    # ignore list in line with that for the one module that needed it,
+    # same as the adapters/api rows above it (17 §4.4: a new legitimate
+    # import earns a contract entry in the same PR, not a workaround).
+    "kang.kernel.runtime.scheduler_wiring -> kang.agents.**",
     "kang.kernel.runtime.query_routing -> kang.adapters.**",
     "kang.kernel.runtime.query_routing -> kang.api.**",
 ]

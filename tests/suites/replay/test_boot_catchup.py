@@ -160,12 +160,30 @@ def test_a_real_boot_with_no_missed_slots_does_not_crash_or_double_run(tmp_path)
         server.stop()
 
 
+def _invocation_principal(kang_home: Path, operation: str) -> str | None:
+    conn = open_connection(kang_home / "kang.db")
+    try:
+        row = conn.execute(
+            "SELECT principal FROM invocation WHERE operation = ?", (operation,)
+        ).fetchone()
+        return row[0] if row else None
+    finally:
+        conn.close()
+
+
 def test_deadline_sweep_is_registered_and_boot_catches_up_a_missed_hour(tmp_path):
     """ADR-020: deadline_sweep is a real second job, wired identically to
     morning_plan — backdated by an hour, a real boot must catch it up
     exactly once (run_once_latest), and it must actually succeed
     (outcome='ok'), proving the deadlines.mark_alerted grant this ADR
-    added is really there, not just that a job_run row exists."""
+    added is really there, not just that a job_run row exists.
+
+    ADR-043 (2026-09-16): the real trigger now runs through the
+    mechanical-agent envelope, so the recorded invocation principal is
+    `agent:deadline_sweep`, not `kernel:scheduler` — proving the grant
+    move in config/defaults/permissions.toml actually landed on the
+    principal that now really calls the operation, not left stranded
+    on the one that stopped calling it."""
     _seed_config(tmp_path)
     _register_job_then_backdate_it(tmp_path, hours=3, job_id=DEADLINE_SWEEP_JOB)
     assert _job_run_count(tmp_path, DEADLINE_SWEEP_JOB) == 0
@@ -175,6 +193,7 @@ def test_deadline_sweep_is_registered_and_boot_catches_up_a_missed_hour(tmp_path
         server.wait_ready()
         assert _job_run_count(tmp_path, DEADLINE_SWEEP_JOB) == 1
         assert _job_run_outcome(tmp_path, DEADLINE_SWEEP_JOB) == "ok"
+        assert _invocation_principal(tmp_path, "deadline.sweep") == "agent:deadline_sweep"
         # morning_plan is unaffected — two independently catching-up jobs,
         # not one replacing the other.
         assert _job_run_count(tmp_path, MORNING_PLAN_JOB) == 0

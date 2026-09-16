@@ -12,6 +12,13 @@ and `_wire_scheduler`'s own line count) — a mechanical reason, not a new
 concept. `composition.py` still owns `build_core`/`serve`/`Core` and
 calls into `_wire_scheduler`/`_tick_forever` here exactly as it called
 its own private functions before.
+
+Also imports `kang.agents.runtime.executor` as of ADR-043 (2026-09-16) —
+`AGENT_ROUTED_JOBS`' own dispatch through `run_mechanical_agent`. Legal
+only here, under the same composition-root exemption already covering
+`kang.adapters`/`kang.api`, extended to `kang.agents` by a matching
+`tools/importlinter.toml` entry added in that ADR's own PR (17 §4.4: a
+new legitimate import earns a contract entry, not a workaround).
 """
 
 from __future__ import annotations
@@ -26,14 +33,17 @@ from kang.adapters.config.planner_config import (
     load_planner_triggers,
 )
 from kang.adapters.scheduler import CRON_PREFIX, parse_cron
+from kang.agents.runtime.executor import ExecutorDeps, run_mechanical_agent
 from kang.api.dispatch import ApiRequest, Dispatcher
 from kang.domain.ports.scheduler import Job
 from kang.domain.ports.session import Session
 from kang.kernel.audit.service import AuditService
+from kang.kernel.orchestrator.registry import AgentRegistry
 from kang.kernel.scheduler.schedule import parse_schedule
 from kang.kernel.scheduler.scheduler import Scheduler, SchedulerDeps
 
 __all__ = [
+    "AGENT_ROUTED_JOBS",
     "BACKUP_OFFSITE_CHECK_JOB",
     "BACKUP_SNAPSHOT_JOB",
     "BACKUP_VERIFY_JOB",
@@ -84,6 +94,19 @@ JOB_OPERATIONS: dict[str, str] = {
     "backup_offsite_check": "backup.offsite_check",  # ADR-034
 }
 
+# ADR-043: jobs whose real scheduled trigger runs through the mechanical-
+# agent envelope (agents/runtime/executor.py::run_mechanical_agent)
+# instead of a direct kernel:scheduler dispatch — a named, reviewable set,
+# never inferred from a job name happening to match a real agent id.
+# `morning_plan`'s real cognitive counterpart (`planner`) is out of scope
+# for the mechanical-only executor (03_ROADMAP Phase 1); `held_action_
+# expire` names no agent in Appendix A's catalog at all. `backup_snapshot`/
+# `backup_verify`/`backup_offsite_check` each name one of `backup_monitor`'s
+# own allowed tools — a real, same-shaped future candidate, deliberately
+# NOT added here: widening this set is its own future decision, same as
+# ADR-041 left this one open rather than defaulting it.
+AGENT_ROUTED_JOBS: frozenset[str] = frozenset({DEADLINE_SWEEP_JOB})
+
 
 def _make_schedule_parser(tz: ZoneInfo):
     """Parse any registered dialect: wall-clock `cron:` from the adapter,
@@ -99,7 +122,9 @@ def _make_schedule_parser(tz: ZoneInfo):
     return parse
 
 
-def _make_job_runner(dispatcher: Dispatcher, sessions, new_id):
+def _make_job_runner(
+    dispatcher: Dispatcher, sessions, new_id, clock, agent_registry: AgentRegistry
+):
     """The job→operation seam (ADR-006 Part B).
 
     Jobs dispatch through the SAME pipeline a UI command takes, so scheduled
@@ -108,14 +133,35 @@ def _make_job_runner(dispatcher: Dispatcher, sessions, new_id):
     `explain.invocation` reconstruct why a job acted — which matters most
     for the actions Kang did not watch happen (12 §12).
 
-    The session is minted for principal `kernel:scheduler` with
-    **first_party=False**. That is a feature, not a limitation: per ADR-002
-    first-party means "arrived out-of-band through Kang's own UI", so a job
-    is structurally incapable of approving a held action — SEC-003 enforced
-    by construction rather than by remembering. Do NOT "fix" this by minting
+    A job in `AGENT_ROUTED_JOBS` (ADR-043) runs through `run_mechanical_
+    agent` instead of dispatching directly — the session is then minted
+    for principal `agent:{id}`, not `kernel:scheduler`, by the executor
+    itself. Every other job keeps the original direct-dispatch shape
+    below, session minted here for principal `kernel:scheduler` with
+    **first_party=False**. That is a feature, not a limitation either
+    way: per ADR-002 first-party means "arrived out-of-band through
+    Kang's own UI", so a job (or an agent acting for one) is structurally
+    incapable of approving a held action — SEC-003 enforced by
+    construction rather than by remembering. Do NOT "fix" this by minting
     first-party sessions for jobs; that hands automation the power to
     approve its own consequences.
     """
+
+    def dispatch(
+        operation: str, params: dict, session_token: str, idempotency_key: str | None
+    ) -> dict:
+        return dispatcher.dispatch(
+            ApiRequest(
+                operation=operation,
+                params=params,
+                session_token=session_token,
+                idempotency_key=idempotency_key,
+            )
+        )
+
+    executor_deps = ExecutorDeps(
+        dispatch=dispatch, sessions=sessions, new_id=new_id, clock=clock
+    )
 
     def run(job: Job, slot: datetime) -> None:
         operation = JOB_OPERATIONS.get(job.name)
@@ -124,25 +170,21 @@ def _make_job_runner(dispatcher: Dispatcher, sessions, new_id):
                 f"job {job.name!r} has no registered operation — a scheduled "
                 "job that runs nothing is a wiring defect, not a no-op"
             )
-        session = Session(
-            token=new_id(),
-            principal=SCHEDULER_PRINCIPAL,
-            first_party=False,  # a job is not Kang's hand (ADR-002)
-            created_at=slot.isoformat(),
-        )
-        sessions.create(session)
-        response = dispatcher.dispatch(
-            ApiRequest(
-                operation=operation,
-                params={},
-                session_token=session.token,
-                # Deterministic per (job, slot): a replayed slot returns the
-                # cached outcome instead of re-executing (API-004). Defence
-                # in depth — the durable guard is the job_run baseline,
-                # since API-004 keys are retained only 7 days.
-                idempotency_key=f"job:{job.id}:{slot.isoformat()}",
+        # Deterministic per (job, slot): a replayed slot returns the
+        # cached outcome instead of re-executing (API-004). Defence in
+        # depth — the durable guard is the job_run baseline, since
+        # API-004 keys are retained only 7 days.
+        idempotency_key = f"job:{job.id}:{slot.isoformat()}"
+
+        if job.name in AGENT_ROUTED_JOBS:
+            response = _run_via_agent_envelope(
+                job, operation, idempotency_key, agent_registry, executor_deps
             )
-        )
+        else:
+            response = _run_via_direct_dispatch(
+                slot, operation, idempotency_key, dispatch, sessions, new_id
+            )
+
         if not response.get("ok"):
             # Raising is what the Scheduler counts as a failed slot, which is
             # what drives retry/quarantine (05 §11). Swallowing it here would
@@ -152,6 +194,52 @@ def _make_job_runner(dispatcher: Dispatcher, sessions, new_id):
             )
 
     return run
+
+
+def _run_via_agent_envelope(
+    job: Job,
+    operation: str,
+    idempotency_key: str,
+    agent_registry: AgentRegistry,
+    executor_deps: ExecutorDeps,
+) -> dict:
+    """ADR-043: a job in `AGENT_ROUTED_JOBS` runs through `run_mechanical_
+    agent` — split out of `_make_job_runner`'s own closure purely to keep
+    that function under the size lint's line limit (11 §4), not a
+    domain concept of its own."""
+    agent = agent_registry.get(job.name)
+    if agent is None:
+        raise KeyError(
+            f"job {job.name!r} is in AGENT_ROUTED_JOBS but no agent "
+            f"{job.name!r} exists in the AgentRegistry — a wiring "
+            "defect, not a runtime condition to degrade past"
+        )
+    return run_mechanical_agent(
+        agent, operation, {}, executor_deps, idempotency_key=idempotency_key
+    ).response
+
+
+def _run_via_direct_dispatch(
+    slot: datetime,
+    operation: str,
+    idempotency_key: str,
+    dispatch,
+    sessions,
+    new_id,
+) -> dict:
+    """The original, pre-ADR-043 shape: every job outside
+    `AGENT_ROUTED_JOBS` still mints its own session for principal
+    `kernel:scheduler` and dispatches directly — split out of
+    `_make_job_runner`'s own closure for the same size-lint reason as
+    its sibling above."""
+    session = Session(
+        token=new_id(),
+        principal=SCHEDULER_PRINCIPAL,
+        first_party=False,  # a job is not Kang's hand (ADR-002)
+        created_at=slot.isoformat(),
+    )
+    sessions.create(session)
+    return dispatch(operation, {}, session.token, idempotency_key)
 
 
 @dataclass(frozen=True)
@@ -167,6 +255,7 @@ class _SchedulerWiring:
     new_id: object
     job_store: object
     kill_switch: object
+    agent_registry: AgentRegistry  # ADR-043: AGENT_ROUTED_JOBS' own lookup
 
 
 def _wire_scheduler(wiring: _SchedulerWiring):
@@ -206,7 +295,13 @@ def _wire_scheduler(wiring: _SchedulerWiring):
             clock=wiring.clock,
             job_store=job_store,
             kill_switch=wiring.kill_switch,
-            runner=_make_job_runner(wiring.dispatcher, wiring.sessions, wiring.new_id),
+            runner=_make_job_runner(
+                wiring.dispatcher,
+                wiring.sessions,
+                wiring.new_id,
+                wiring.clock,
+                wiring.agent_registry,
+            ),
             audit=wiring.audit,
             correlation_id=wiring.new_id,
             parse=_make_schedule_parser(ZoneInfo(triggers.timezone)),

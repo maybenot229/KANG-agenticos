@@ -29,6 +29,7 @@ from pathlib import Path
 
 from aiohttp import web
 
+from kang.adapters.config.agent_definitions_loader import discover_agent_definitions
 from kang.adapters.config.backup_config import load_external_backup_marker
 from kang.adapters.config.permissions_loader import (
     KANG_ONLY_GRANTS,
@@ -105,6 +106,7 @@ from kang.kernel.audit.service import AuditService
 from kang.kernel.bus.bus import EventBus, Subscriber
 from kang.kernel.bus.delivery import Delivery
 from kang.kernel.bus.reconciliation import Reconciliation
+from kang.kernel.orchestrator.registry import AgentRegistry, build_checked_registry
 from kang.kernel.permissions.engine import build_checked_engine
 from kang.kernel.runtime.ids import uuid7
 from kang.kernel.runtime.query_routing import _build_query_handlers, _dispatch_query
@@ -123,6 +125,12 @@ SESSION_FILE = "session.json"
 NOTIFIER_PRINCIPAL = "kernel:notifier"  # publishes notification.requested
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[4] / "migrations"
+# ADR-043: package-relative, mirroring MIGRATIONS_DIR's own precedent —
+# parents[2] from kernel/runtime/composition.py is src/kang, since
+# agents/definitions/ ships inside the package, never %KANG_HOME%
+# (AG-004: Kang never hand-edits agent definitions the way he edits
+# permissions.toml).
+AGENT_DEFINITIONS_DIR = Path(__file__).resolve().parents[2] / "agents" / "definitions"
 
 
 @dataclass
@@ -139,6 +147,9 @@ class Core:
     clock: object = None  # exposed for introspection/tests; the tick
     #   loop itself no longer needs it (ADR-036 D4: asyncio.sleep() IS
     #   the interval now, not a wall-clock comparison against one)
+    agent_registry: AgentRegistry | None = None  # exposed for introspection/
+    #   tests, same as clock — ADR-043's first real wiring of AG-004's
+    #   registry into a running Core
 
     def mint_first_party_session(self) -> Session:
         token = self.new_id()  # type: ignore[operator]
@@ -507,7 +518,7 @@ def _build_core_locked(
     kang = open_connection(kang_home / "kang.db")
     apply_migrations(kang, MIGRATIONS_DIR, clock)
     events = open_eventlog(kang_home / "events" / "eventlog.db")
-
+    agent_registry = _build_agent_registry()
     wiring = _build_bus_wiring(kang_home, kang, events, clock, new_id, device_id)
     stores = _build_stores(kang, clock)
     handler_wiring = _HandlerWiring(
@@ -531,10 +542,8 @@ def _build_core_locked(
         goal_store=stores.goal_store,
         backups=_build_backup_service(kang, events, kang_home, clock),
     )
-    # Same _HandlerWiring feeds both tables: _build_handlers uses
-    # w.connection to build command handlers once at boot;
-    # query_routing._build_query_handlers ignores it, building each
-    # query handler fresh per call instead (ADR-036 D4, resumed).
+    # Same _HandlerWiring feeds both tables (command handlers built once
+    # here; query_routing builds each query handler fresh per call, ADR-036 D4).
     handlers = _build_handlers(handler_wiring)
     query_handlers = _build_query_handlers(handler_wiring)
     dispatcher = Dispatcher(
@@ -556,6 +565,7 @@ def _build_core_locked(
         sessions=sessions,
         new_id=new_id,
         _connections=[kang, events],
+        agent_registry=agent_registry,
         scheduler=_wire_scheduler(
             _SchedulerWiring(
                 kang_home=kang_home,
@@ -567,11 +577,25 @@ def _build_core_locked(
                 new_id=new_id,
                 job_store=stores.job_store,
                 kill_switch=stores.kill_switch,
+                agent_registry=agent_registry,
             )
         ),
         startup_lock=startup_lock,
         clock=clock,
     )
+
+
+def _build_agent_registry() -> AgentRegistry:
+    """ADR-043: the first real wiring of AG-004's `AgentRegistry` into a
+    running `Core`. Deliberately not caught — `agents/definitions/`
+    ships inside the package, never hand-edited (unlike
+    `permissions.toml`), so a bad definition here means the shipped
+    code itself is broken; refusing to boot is the honest signal, not a
+    degraded, dormant registry hiding a real defect (ADR-043 D1's own
+    argument). Split out of `_build_core_locked` purely to keep that
+    function under the size lint's line limit (11 §4), not a domain
+    concept of its own."""
+    return build_checked_registry(discover_agent_definitions(AGENT_DEFINITIONS_DIR))
 
 
 @dataclass(frozen=True)

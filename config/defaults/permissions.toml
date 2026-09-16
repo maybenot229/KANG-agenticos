@@ -63,16 +63,28 @@
 # automation set off?", reviewable in one place. It holds no
 # events.publish grant: the operations it invokes publish under their own
 # domain principals. tasks.write (morning_plan -> plan.generate),
-# deadlines.mark_alerted (deadline_sweep -> deadline.sweep, ADR-020),
 # held_actions.expire (held_action_expire -> held_action.expire, ADR-022),
 # backups.write (backup_snapshot -> backup.snapshot, ADR-031;
 # backup_verify -> backup.verify, ADR-032 — same scope, same directory),
 # backups.read (backup_offsite_check -> backup.offsite_check, ADR-034 —
 # a new scope, not backups.write: this job writes no file).
+#
+# deadlines.mark_alerted moved OFF this principal (ADR-043, 2026-09-16):
+# deadline_sweep's own real trigger now runs through the mechanical-agent
+# envelope under principal agent:deadline_sweep below, not this one —
+# least privilege following the actual caller, not a second copy of the
+# same grant held by two principals for one operation.
 "kernel:scheduler" = [
   "tasks.write",
-  "deadlines.mark_alerted",
   "held_actions.expire",
   "backups.write",
   "backups.read",
 ]
+
+# ADR-043 (2026-09-16): deadline_sweep's real scheduled trigger now runs
+# through the mechanical-agent envelope (ADR-041's run_mechanical_agent),
+# so its session is minted for this principal, not kernel:scheduler.
+# Exactly the one operation its own AgentDefinition names in `tools`
+# (agents/definitions/deadline_sweep/deadline_sweep.toml) — the allowlist
+# check there is independent of, and prior to, this grant (ADR-028 C4).
+"agent:deadline_sweep" = ["deadlines.mark_alerted"]
