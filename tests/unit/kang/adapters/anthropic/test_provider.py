@@ -29,7 +29,9 @@ from kang.domain.ports.model_provider import (
 )
 
 SPEC = TaskSpec(
-    task_class="routine", privacy_tier="normal", context_size=10,
+    task_class="routine",
+    privacy_tier="normal",
+    context_size=10,
     latency_tolerance="interactive",
 )
 _REQUEST = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")

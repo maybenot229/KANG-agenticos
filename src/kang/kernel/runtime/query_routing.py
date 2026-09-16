@@ -80,9 +80,7 @@ def _build_query_handlers(w: "_HandlerWiring") -> dict:
         "permission.list": lambda conn: make_permission_list_handler(
             w.permission_engine
         ),
-        "task.get": lambda conn: make_task_get_handler(
-            SqliteTaskStore(conn, w.clock)
-        ),
+        "task.get": lambda conn: make_task_get_handler(SqliteTaskStore(conn, w.clock)),
         "deadline.list": lambda conn: make_deadline_list_handler(
             SqliteDeadlineStore(conn, w.clock)
         ),
@@ -90,9 +88,7 @@ def _build_query_handlers(w: "_HandlerWiring") -> dict:
             SqliteInvocationStore(conn), w.audit
         ),
         "explain.plan_item": lambda conn: make_explain_stub_handler("plan item"),
-        "explain.notification": lambda conn: make_explain_stub_handler(
-            "notification"
-        ),
+        "explain.notification": lambda conn: make_explain_stub_handler("notification"),
         "explain.suggestion": lambda conn: make_explain_stub_handler("suggestion"),
         "explain.memory": lambda conn: make_explain_stub_handler("memory record"),
         "audit.list": lambda conn: make_audit_list_handler(w.audit, w.clock),

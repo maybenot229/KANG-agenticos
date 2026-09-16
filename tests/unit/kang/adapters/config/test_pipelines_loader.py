@@ -141,23 +141,31 @@ def test_the_shipped_real_pipelines_load_cleanly():
     by_id = {d.id: d for d in found}
 
     assert [s.agent_id for s in by_id["competition_intake"].steps] == [
-        "competition_scout", "competition_strategist", "notifier",
+        "competition_scout",
+        "competition_strategist",
+        "notifier",
     ]
     assert by_id["competition_intake"].steps[1].mode == "evaluate"
 
     assert [s.agent_id for s in by_id["competition_prep"].steps] == [
-        "competition_strategist", "critic", "competition_strategist",
+        "competition_strategist",
+        "critic",
+        "competition_strategist",
     ]
     assert by_id["competition_prep"].steps[0].mode == "ideas"
     assert by_id["competition_prep"].steps[2].mode == "revise"
 
     assert [s.agent_id for s in by_id["deep_research"].steps] == [
-        "researcher", "critic", "researcher",
+        "researcher",
+        "critic",
+        "researcher",
     ]
     assert by_id["deep_research"].steps[2].mode == "revise"
 
     assert [s.agent_id for s in by_id["weekly_close"].steps] == [
-        "planner", "memory_steward", "notifier",
+        "planner",
+        "memory_steward",
+        "notifier",
     ]
     assert by_id["weekly_close"].steps[0].mode == "review"
     assert by_id["weekly_close"].steps[1].mode == "weekly"

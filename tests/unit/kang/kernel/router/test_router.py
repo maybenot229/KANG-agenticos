@@ -39,8 +39,12 @@ def _config(**chains: list[ProviderEntry]) -> ProvidersConfig:
 def test_routes_to_the_single_configured_provider():
     provider = FakeModelProvider(
         result=ModelResult(
-            text="hi", structured=None, tokens_in=5, tokens_out=2,
-            cost_usd=0.01, latency_ms=42,
+            text="hi",
+            structured=None,
+            tokens_in=5,
+            tokens_out=2,
+            cost_usd=0.01,
+            latency_ms=42,
         )
     )
     config = _config(routine=[ProviderEntry(name="anthropic", model="claude-haiku-4")])
@@ -62,8 +66,12 @@ def test_falls_over_to_the_next_provider_on_provider_unavailable():
     first = FakeModelProvider(error=ProviderUnavailable("down"))
     second = FakeModelProvider(
         result=ModelResult(
-            text="ok", structured=None, tokens_in=1, tokens_out=1,
-            cost_usd=0.0, latency_ms=1,
+            text="ok",
+            structured=None,
+            tokens_in=1,
+            tokens_out=1,
+            cost_usd=0.0,
+            latency_ms=1,
         )
     )
     config = _config(
@@ -148,8 +156,12 @@ def test_private_tier_fails_closed_when_no_local_only_provider_is_configured():
 def test_private_tier_routes_to_a_local_only_provider_when_one_exists():
     local = FakeModelProvider(
         result=ModelResult(
-            text="local", structured=None, tokens_in=1, tokens_out=1,
-            cost_usd=0.0, latency_ms=5,
+            text="local",
+            structured=None,
+            tokens_in=1,
+            tokens_out=1,
+            cost_usd=0.0,
+            latency_ms=5,
         )
     )
     config = _config(
@@ -192,8 +204,12 @@ def test_circuit_breaker_opens_after_the_configured_failure_threshold():
     provider = FakeModelProvider(error=ProviderUnavailable("down"))
     backup = FakeModelProvider(
         result=ModelResult(
-            text="ok", structured=None, tokens_in=1, tokens_out=1,
-            cost_usd=0.0, latency_ms=1,
+            text="ok",
+            structured=None,
+            tokens_in=1,
+            tokens_out=1,
+            cost_usd=0.0,
+            latency_ms=1,
         )
     )
     config = ProvidersConfig(
@@ -223,8 +239,12 @@ def test_circuit_breaker_closes_again_after_the_cooldown_elapses():
     provider = FakeModelProvider(error=ProviderUnavailable("down"))
     backup = FakeModelProvider(
         result=ModelResult(
-            text="ok", structured=None, tokens_in=1, tokens_out=1,
-            cost_usd=0.0, latency_ms=1,
+            text="ok",
+            structured=None,
+            tokens_in=1,
+            tokens_out=1,
+            cost_usd=0.0,
+            latency_ms=1,
         )
     )
     config = ProvidersConfig(
@@ -257,8 +277,12 @@ def test_a_success_resets_the_consecutive_failure_count():
     provider = FakeModelProvider()
     backup = FakeModelProvider(
         result=ModelResult(
-            text="backup-ok", structured=None, tokens_in=1, tokens_out=1,
-            cost_usd=0.0, latency_ms=1,
+            text="backup-ok",
+            structured=None,
+            tokens_in=1,
+            tokens_out=1,
+            cost_usd=0.0,
+            latency_ms=1,
         )
     )
     config = ProvidersConfig(
@@ -279,8 +303,12 @@ def test_a_success_resets_the_consecutive_failure_count():
 
     provider.queue(
         ModelResult(
-            text="ok", structured=None, tokens_in=1, tokens_out=1,
-            cost_usd=0.0, latency_ms=1,
+            text="ok",
+            structured=None,
+            tokens_in=1,
+            tokens_out=1,
+            cost_usd=0.0,
+            latency_ms=1,
         )
     )
     router.route(SPEC, "hello")  # success — resets the count to 0
@@ -290,8 +318,12 @@ def test_a_success_resets_the_consecutive_failure_count():
 
     provider.queue(
         ModelResult(
-            text="still reachable", structured=None, tokens_in=1, tokens_out=1,
-            cost_usd=0.0, latency_ms=1,
+            text="still reachable",
+            structured=None,
+            tokens_in=1,
+            tokens_out=1,
+            cost_usd=0.0,
+            latency_ms=1,
         )
     )
     result = router.route(SPEC, "hello")

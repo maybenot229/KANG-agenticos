@@ -170,8 +170,11 @@ def parse_agent_definition(toml_text: str, *, folder: Path) -> AgentDefinition:
         )
     escalation = _parse_escalation(data.get("escalation"), context)
     _check_prompt_and_escalation_shape(
-        kind=kind, prompt_file=prompt_file, escalation=escalation,
-        folder=folder, context=context,
+        kind=kind,
+        prompt_file=prompt_file,
+        escalation=escalation,
+        folder=folder,
+        context=context,
     )
 
     return AgentDefinition(

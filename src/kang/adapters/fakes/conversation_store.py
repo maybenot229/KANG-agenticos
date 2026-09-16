@@ -30,8 +30,12 @@ class FakeConversationStore:
 
     def start(self, conversation_id: str, started_at: str) -> Conversation:
         conversation = Conversation(
-            id=conversation_id, started=started_at, last_message=started_at,
-            title=None, message_count=0, purged=False,
+            id=conversation_id,
+            started=started_at,
+            last_message=started_at,
+            title=None,
+            message_count=0,
+            purged=False,
         )
         self._conversations[conversation_id] = conversation
         self._messages[conversation_id] = []
@@ -49,12 +53,17 @@ class FakeConversationStore:
                 f"no conversation {conversation_id!r} to append a message to"
             )
         message = Message(
-            id=message_id, conversation_id=conversation_id, role=role,
-            content=content, at=at,
+            id=message_id,
+            conversation_id=conversation_id,
+            role=role,
+            content=content,
+            at=at,
         )
         self._messages[conversation_id].append(message)
         self._conversations[conversation_id] = replace(
-            conversation, last_message=at, message_count=conversation.message_count + 1,
+            conversation,
+            last_message=at,
+            message_count=conversation.message_count + 1,
         )
         return message
 

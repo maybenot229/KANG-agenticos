@@ -21,8 +21,12 @@ class ConversationStoreContract:
     def test_start_creates_an_empty_conversation(self, store):
         conversation = store.start("conv-1", _T0)
         assert conversation == Conversation(
-            id="conv-1", started=_T0, last_message=_T0, title=None,
-            message_count=0, purged=False,
+            id="conv-1",
+            started=_T0,
+            last_message=_T0,
+            title=None,
+            message_count=0,
+            purged=False,
         )
 
     def test_get_returns_the_started_conversation(self, store):

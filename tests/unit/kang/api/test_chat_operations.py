@@ -34,7 +34,9 @@ def test_handler_passes_message_chips_and_conversation_id_through_verbatim():
 
     assert calls == [("hi", ["a", "b"], "conv-1")]
     assert response == {
-        "reply": "a reply", "degraded": False, "conversation_id": "conv-1",
+        "reply": "a reply",
+        "degraded": False,
+        "conversation_id": "conv-1",
     }
 
 
@@ -59,7 +61,9 @@ def test_handler_returns_the_chat_run_response_exactly_including_degraded():
     response = handler(CONTEXT, {"message": "hi", "context_chips": []})
 
     assert response == {
-        "reply": "unavailable", "degraded": True, "conversation_id": "conv-1",
+        "reply": "unavailable",
+        "degraded": True,
+        "conversation_id": "conv-1",
     }
 
 

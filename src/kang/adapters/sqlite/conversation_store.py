@@ -38,7 +38,11 @@ def _row_to_conversation(row: sqlite3.Row | tuple) -> Conversation:
 
 def _row_to_message(row: sqlite3.Row | tuple) -> Message:
     return Message(
-        id=row[0], conversation_id=row[1], role=row[2], content=row[3], at=row[4],
+        id=row[0],
+        conversation_id=row[1],
+        role=row[2],
+        content=row[3],
+        at=row[4],
     )
 
 
@@ -62,8 +66,12 @@ class SqliteConversationStore:
                 self._conn.execute("ROLLBACK")
             raise
         return Conversation(
-            id=conversation_id, started=started_at, last_message=started_at,
-            title=None, message_count=0, purged=False,
+            id=conversation_id,
+            started=started_at,
+            last_message=started_at,
+            title=None,
+            message_count=0,
+            purged=False,
         )
 
     def get(self, conversation_id: str) -> Conversation | None:
@@ -98,8 +106,11 @@ class SqliteConversationStore:
                 self._conn.execute("ROLLBACK")
             raise
         return Message(
-            id=message_id, conversation_id=conversation_id, role=role,
-            content=content, at=at,
+            id=message_id,
+            conversation_id=conversation_id,
+            role=role,
+            content=content,
+            at=at,
         )
 
     def recent_messages(self, conversation_id: str, limit: int) -> tuple[Message, ...]:

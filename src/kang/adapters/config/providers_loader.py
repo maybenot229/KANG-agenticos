@@ -30,9 +30,7 @@ class ProvidersLoadError(Exception):
 
 def _parse_chain(task_class: str, spec: Any) -> tuple[ProviderEntry, ...]:
     if not isinstance(spec, dict) or not isinstance(spec.get("chain"), list):
-        raise ProvidersLoadError(
-            f"[task_class.{task_class}] must have a 'chain' list"
-        )
+        raise ProvidersLoadError(f"[task_class.{task_class}] must have a 'chain' list")
     entries: list[ProviderEntry] = []
     for entry in spec["chain"]:
         if (

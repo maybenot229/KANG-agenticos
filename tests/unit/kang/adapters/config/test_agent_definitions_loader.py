@@ -77,7 +77,8 @@ def test_malformed_toml_raises(tmp_path):
 @pytest.mark.parametrize("field", ["id", "kind", "mandate", "degradation"])
 def test_missing_a_required_string_field_raises(tmp_path, field):
     lines = [
-        line for line in _MECHANICAL_MINIMAL.strip().splitlines()
+        line
+        for line in _MECHANICAL_MINIMAL.strip().splitlines()
         if not line.startswith(f"{field} =")
     ]
     with pytest.raises(AgentDefinitionInvalid, match=field):
@@ -168,8 +169,7 @@ def test_mechanical_with_a_valid_escalation(tmp_path):
     (folder / "prompts").mkdir()
     (folder / "prompts" / "escalate.md").write_text("classify this", encoding="utf-8")
     text = (
-        _MECHANICAL_MINIMAL
-        + '\n[escalation]\ntask_class = "classification"\n'
+        _MECHANICAL_MINIMAL + '\n[escalation]\ntask_class = "classification"\n'
         'prompt_file = "prompts/escalate.md"\n'
     )
     definition = parse_agent_definition(text, folder=folder)
@@ -182,8 +182,7 @@ def test_escalation_task_class_outside_taskspecs_enum_raises(tmp_path):
     (folder / "prompts").mkdir()
     (folder / "prompts" / "escalate.md").write_text("x", encoding="utf-8")
     text = (
-        _MECHANICAL_MINIMAL
-        + '\n[escalation]\ntask_class = "vibes"\n'
+        _MECHANICAL_MINIMAL + '\n[escalation]\ntask_class = "vibes"\n'
         'prompt_file = "prompts/escalate.md"\n'
     )
     with pytest.raises(AgentDefinitionInvalid, match="task_class"):
@@ -193,8 +192,7 @@ def test_escalation_task_class_outside_taskspecs_enum_raises(tmp_path):
 def test_escalation_prompt_file_that_does_not_exist_raises(tmp_path):
     folder = _folder(tmp_path, "sweep")
     text = (
-        _MECHANICAL_MINIMAL
-        + '\n[escalation]\ntask_class = "classification"\n'
+        _MECHANICAL_MINIMAL + '\n[escalation]\ntask_class = "classification"\n'
         'prompt_file = "prompts/escalate.md"\n'
     )
     with pytest.raises(AgentDefinitionInvalid, match="escalation.prompt_file"):
@@ -220,10 +218,22 @@ def test_discover_raises_when_a_folder_has_no_matching_toml(tmp_path):
 
 
 SHIPPED_AGENT_IDS = {
-    "backup_monitor", "chat", "competition_scout", "competition_strategist",
-    "critic", "deadline_sweep", "faith_companion", "health_monitor",
-    "memory_steward", "notifier", "planner", "researcher", "tutor",
-    "vault_indexer", "vault_organizer", "web_monitor",
+    "backup_monitor",
+    "chat",
+    "competition_scout",
+    "competition_strategist",
+    "critic",
+    "deadline_sweep",
+    "faith_companion",
+    "health_monitor",
+    "memory_steward",
+    "notifier",
+    "planner",
+    "researcher",
+    "tutor",
+    "vault_indexer",
+    "vault_organizer",
+    "web_monitor",
 }  # Appendix A's own 15, plus `chat` as agent #16 (ADR-044) — sync_agent
 # (reserved, undefined in 16_SYNC) and plugin_runner (a per-plugin
 # template, not a static catalog entry) stay deliberately excluded
@@ -238,7 +248,9 @@ def test_the_shipped_real_definitions_load_cleanly():
     assert by_id["critic"].tools == ("notify:digest",)  # the zero-world-tools case
     assert by_id["planner"].pipelines == ("weekly_close",)
     assert by_id["backup_monitor"].tools == (
-        "backup.snapshot", "backup.verify", "backup.offsite_check",
+        "backup.snapshot",
+        "backup.verify",
+        "backup.offsite_check",
     )  # resolved to real operations, unlike most of the catalog
     assert by_id["competition_scout"].escalation.task_class == "classification"
     assert by_id["memory_steward"].escalation.task_class == "routine"

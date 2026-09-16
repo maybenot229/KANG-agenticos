@@ -120,9 +120,7 @@ class AnthropicProvider:
         except anthropic.AnthropicError as exc:
             raise ProviderUnavailable(str(exc)) from exc
         latency_ms = int((time.monotonic() - started) * 1000)
-        text = "".join(
-            block.text for block in response.content if block.type == "text"
-        )
+        text = "".join(block.text for block in response.content if block.type == "text")
         tokens_in = response.usage.input_tokens
         tokens_out = response.usage.output_tokens
         return ModelResult(

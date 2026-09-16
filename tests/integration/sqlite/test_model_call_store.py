@@ -53,7 +53,14 @@ def test_record_persists_a_row(conn, store):
         "cost_usd, latency_ms, outcome, at FROM model_call"
     ).fetchone()
     assert row == (
-        "anthropic", "claude-haiku-4", "routine", 10, 5, 0.002, 120, "ok",
+        "anthropic",
+        "claude-haiku-4",
+        "routine",
+        10,
+        5,
+        0.002,
+        120,
+        "ok",
         "2026-09-14T00:00:00Z",
     )
 

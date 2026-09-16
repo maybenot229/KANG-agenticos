@@ -284,9 +284,7 @@ def test_prepare_query_refuses_a_bad_session_before_registry_lookup():
     # session never leaks whether an unrelated operation name is valid.
     dispatcher, *_ = _build(query_handlers={"task.get": lambda conn: None})
     try:
-        dispatcher.prepare_query(
-            ApiRequest("task.get", {}, "bogus-token"), "cid-2"
-        )
+        dispatcher.prepare_query(ApiRequest("task.get", {}, "bogus-token"), "cid-2")
         raise AssertionError("expected ApiError")
     except ApiError as exc:
         assert exc.code == "permission_denied"

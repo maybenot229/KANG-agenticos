@@ -175,9 +175,7 @@ def _compose_prompt(
     contract) — rendered ahead of the current chips/message, which
     describe *this* turn, not the past ones."""
     chips_block = "\n".join(f"- {chip}" for chip in context_chips) or "(none)"
-    history_block = (
-        "\n".join(f"{m.role}: {m.content}" for m in history) or "(none yet)"
-    )
+    history_block = "\n".join(f"{m.role}: {m.content}" for m in history) or "(none yet)"
     return (
         f"{persona}\n\n"
         f"## Prior conversation\n{history_block}\n\n"

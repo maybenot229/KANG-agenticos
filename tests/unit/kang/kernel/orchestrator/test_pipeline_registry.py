@@ -52,8 +52,10 @@ def test_a_pipeline_over_known_agents_builds_a_registry_indexed_by_id():
     registry = build_checked_registry([_agent(id="scout"), _agent(id="notifier")])
     pipeline = PipelineDefinition(
         id="p1",
-        steps=(PipelineStep(agent_id="scout", mode=None),
-               PipelineStep(agent_id="notifier", mode="digest")),
+        steps=(
+            PipelineStep(agent_id="scout", mode=None),
+            PipelineStep(agent_id="notifier", mode="digest"),
+        ),
     )
     pipelines = build_checked_pipeline_registry([pipeline], registry)
     assert len(pipelines) == 1
@@ -65,7 +67,8 @@ def test_a_pipeline_over_known_agents_builds_a_registry_indexed_by_id():
 def test_a_step_naming_an_unregistered_agent_id_refuses_the_whole_load():
     registry = build_checked_registry([_agent(id="scout")])
     bad = PipelineDefinition(
-        id="p1", steps=(PipelineStep(agent_id="nonexistent_agent", mode=None),),
+        id="p1",
+        steps=(PipelineStep(agent_id="nonexistent_agent", mode=None),),
     )
     with pytest.raises(PipelineDefinitionInvalid, match="nonexistent_agent"):
         build_checked_pipeline_registry([bad], registry)
@@ -74,10 +77,12 @@ def test_a_step_naming_an_unregistered_agent_id_refuses_the_whole_load():
 def test_one_bad_pipeline_refuses_the_whole_registry_not_just_that_pipeline():
     registry = build_checked_registry([_agent(id="scout")])
     good = PipelineDefinition(
-        id="good", steps=(PipelineStep(agent_id="scout", mode=None),),
+        id="good",
+        steps=(PipelineStep(agent_id="scout", mode=None),),
     )
     bad = PipelineDefinition(
-        id="bad", steps=(PipelineStep(agent_id="ghost", mode=None),),
+        id="bad",
+        steps=(PipelineStep(agent_id="ghost", mode=None),),
     )
     with pytest.raises(PipelineDefinitionInvalid):
         build_checked_pipeline_registry([good, bad], registry)
@@ -92,7 +97,10 @@ def test_the_real_shipped_pipelines_cross_validate_against_the_real_agent_regist
     pipelines = build_checked_pipeline_registry(pipeline_definitions, agent_registry)
     assert len(pipelines) == 4  # Appendix A's own 4 (ADR-042 D4)
     assert {p.id for p in pipelines} == {
-        "competition_intake", "competition_prep", "deep_research", "weekly_close",
+        "competition_intake",
+        "competition_prep",
+        "deep_research",
+        "weekly_close",
     }
 
 
@@ -100,7 +108,8 @@ def test_matching_claims_reciprocate_cleanly():
     agent = _agent(id="scout", pipelines=("p1",))
     registry = build_checked_registry([agent])
     pipeline = PipelineDefinition(
-        id="p1", steps=(PipelineStep(agent_id="scout", mode=None),),
+        id="p1",
+        steps=(PipelineStep(agent_id="scout", mode=None),),
     )
     pipelines = build_checked_pipeline_registry([pipeline], registry)
     check_pipeline_membership_reciprocity(registry, pipelines)  # no raise
@@ -111,7 +120,8 @@ def test_a_false_membership_claim_raises():
     agent = _agent(id="scout", pipelines=("p1",))
     registry = build_checked_registry([agent])
     pipeline = PipelineDefinition(
-        id="p1", steps=(PipelineStep(agent_id="notifier", mode=None),),
+        id="p1",
+        steps=(PipelineStep(agent_id="notifier", mode=None),),
     )
     other_agent = _agent(id="notifier")
     registry = build_checked_registry([agent, other_agent])
@@ -125,7 +135,8 @@ def test_a_missing_membership_claim_raises():
     agent = _agent(id="scout", pipelines=())
     registry = build_checked_registry([agent])
     pipeline = PipelineDefinition(
-        id="p1", steps=(PipelineStep(agent_id="scout", mode=None),),
+        id="p1",
+        steps=(PipelineStep(agent_id="scout", mode=None),),
     )
     pipelines = build_checked_pipeline_registry([pipeline], registry)
     with pytest.raises(PipelineDefinitionInvalid, match="scout"):

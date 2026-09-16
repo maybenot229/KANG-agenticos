@@ -74,8 +74,7 @@ def parse_pipeline_definition(toml_text: str, *, path: Path) -> PipelineDefiniti
     if not isinstance(steps_data, list) or not steps_data:
         raise PipelineDefinitionInvalid(f"{context}: 'steps' must be a non-empty list")
     steps = tuple(
-        _parse_step(step, index=i, context=context)
-        for i, step in enumerate(steps_data)
+        _parse_step(step, index=i, context=context) for i, step in enumerate(steps_data)
     )
 
     return PipelineDefinition(id=pipeline_id, steps=steps)

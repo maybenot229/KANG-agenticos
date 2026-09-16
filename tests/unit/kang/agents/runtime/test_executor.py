@@ -216,10 +216,17 @@ def _cognitive_deps(
     route=None, sessions=None, new_id=None, clock=None
 ) -> CognitiveExecutorDeps:
     return CognitiveExecutorDeps(
-        route=route or _RecordingRoute(ModelResult(
-            text="a reply", structured=None, tokens_in=10, tokens_out=5,
-            cost_usd=0.0, latency_ms=100,
-        )),
+        route=route
+        or _RecordingRoute(
+            ModelResult(
+                text="a reply",
+                structured=None,
+                tokens_in=10,
+                tokens_out=5,
+                cost_usd=0.0,
+                latency_ms=100,
+            )
+        ),
         read_prompt=lambda agent: f"persona-for-{agent.id}",
         sessions=sessions if sessions is not None else FakeSessionStore(),
         new_id=new_id or _new_id_factory(),
@@ -244,12 +251,21 @@ def test_run_cognitive_agent_refuses_a_non_empty_tools_allowlist():
 
 
 def test_run_cognitive_agent_composes_persona_plus_chips_plus_message():
-    route = _RecordingRoute(ModelResult(
-        text="ok", structured=None, tokens_in=1, tokens_out=1, cost_usd=0.0,
-        latency_ms=1,
-    ))
+    route = _RecordingRoute(
+        ModelResult(
+            text="ok",
+            structured=None,
+            tokens_in=1,
+            tokens_out=1,
+            cost_usd=0.0,
+            latency_ms=1,
+        )
+    )
     run_cognitive_agent(
-        CHAT_AGENT, "what's today?", ["chip one", "chip two"], (),
+        CHAT_AGENT,
+        "what's today?",
+        ["chip one", "chip two"],
+        (),
         _cognitive_deps(route=route),
     )
     assert len(route.calls) == 1
@@ -264,16 +280,30 @@ def test_run_cognitive_agent_composes_persona_plus_chips_plus_message():
 
 
 def test_run_cognitive_agent_composes_prior_history_oldest_first():
-    route = _RecordingRoute(ModelResult(
-        text="ok", structured=None, tokens_in=1, tokens_out=1, cost_usd=0.0,
-        latency_ms=1,
-    ))
+    route = _RecordingRoute(
+        ModelResult(
+            text="ok",
+            structured=None,
+            tokens_in=1,
+            tokens_out=1,
+            cost_usd=0.0,
+            latency_ms=1,
+        )
+    )
     history = (
         Message(
-            id="m1", conversation_id="c1", role="kang", content="first turn", at="t1",
+            id="m1",
+            conversation_id="c1",
+            role="kang",
+            content="first turn",
+            at="t1",
         ),
         Message(
-            id="m2", conversation_id="c1", role="agent", content="first reply", at="t2",
+            id="m2",
+            conversation_id="c1",
+            role="agent",
+            content="first reply",
+            at="t2",
         ),
     )
     deps = _cognitive_deps(route=route)
@@ -286,10 +316,16 @@ def test_run_cognitive_agent_composes_prior_history_oldest_first():
 
 
 def test_run_cognitive_agent_with_no_history_says_so_rather_than_omitting_the_section():
-    route = _RecordingRoute(ModelResult(
-        text="ok", structured=None, tokens_in=1, tokens_out=1, cost_usd=0.0,
-        latency_ms=1,
-    ))
+    route = _RecordingRoute(
+        ModelResult(
+            text="ok",
+            structured=None,
+            tokens_in=1,
+            tokens_out=1,
+            cost_usd=0.0,
+            latency_ms=1,
+        )
+    )
     run_cognitive_agent(CHAT_AGENT, "hi", [], (), _cognitive_deps(route=route))
     _, prompt = route.calls[0]
     assert "(none yet)" in prompt
@@ -364,7 +400,8 @@ def test_run_chat_turn_persists_kangs_message_then_the_reply_in_order():
     )
     messages = conversations.recent_messages(result["conversation_id"], 20)
     assert [(m.role, m.content) for m in messages] == [
-        ("kang", "hi"), ("agent", "a reply"),
+        ("kang", "hi"),
+        ("agent", "a reply"),
     ]
 
 
@@ -372,7 +409,10 @@ def test_run_chat_turn_persists_a_degraded_reply_as_kang_system_not_agent():
     route = _RecordingRoute(raises=ProviderUnavailable("down"))
     conversations = FakeConversationStore()
     result = run_chat_turn(
-        CHAT_AGENT, "hi", [], None,
+        CHAT_AGENT,
+        "hi",
+        [],
+        None,
         _chat_turn_deps(route=route, conversations=conversations),
     )
     messages = conversations.recent_messages(result["conversation_id"], 20)
@@ -383,10 +423,16 @@ def test_run_chat_turn_persists_a_degraded_reply_as_kang_system_not_agent():
 
 def test_run_chat_turn_continuing_a_conversation_includes_its_own_prior_history():
     conversations = FakeConversationStore()
-    route = _RecordingRoute(ModelResult(
-        text="second reply", structured=None, tokens_in=1, tokens_out=1,
-        cost_usd=0.0, latency_ms=1,
-    ))
+    route = _RecordingRoute(
+        ModelResult(
+            text="second reply",
+            structured=None,
+            tokens_in=1,
+            tokens_out=1,
+            cost_usd=0.0,
+            latency_ms=1,
+        )
+    )
     deps = _chat_turn_deps(conversations=conversations)
     first = run_chat_turn(CHAT_AGENT, "first turn", [], None, deps)
 
