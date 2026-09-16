@@ -2,15 +2,26 @@
 # zero model dependency, zero escalation. Its own domain logic
 # (deadline.sweep, ADR-020) is already built and wired as an automatic
 # job (kernel/runtime/scheduler_wiring.py) — this definition documents
-# the agent envelope AG-002 requires around it, it does not change how
-# deadline.sweep itself runs today (no executor exists yet to read this
-# — ADR-040 D1's own named scope boundary).
+# the agent envelope AG-002 requires around it; ADR-041's own executor
+# proves the envelope as a second, unwired path, it does not change how
+# deadline.sweep itself runs today via the scheduler.
+#
+# Corrected by ADR-041 (2026-09-16): `tools` originally transcribed
+# Appendix A's illustrative prose verbatim ("deadlines.read",
+# "deadlines.mark_alerted", "notify:critical") — none of which name a
+# real, separately-callable thing (a tool call IS an operation
+# dispatch, ADR-041 D1). The `deadline.sweep` operation already
+# performs this agent's entire mandate internally (reads active
+# deadlines, marks them alerted, publishes the event the notifier
+# delivers from) — one real operation, not three illustrative ones.
+# "deadlines.mark_alerted" was `deadline.sweep`'s own required SCOPE,
+# not a tool name — the two happened to share a string by coincidence.
 
 id = "deadline_sweep"
 kind = "mechanical"
 mandate = "Lead-time alerts; missed-deadline detection (FR-031)"
 triggers = ["sched:hourly"]
-tools = ["deadlines.read", "deadlines.mark_alerted", "notify:critical"]
+tools = ["deadline.sweep"]
 scopes = []
 timeout_s = 120
 retry = 2

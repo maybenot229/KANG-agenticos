@@ -24,7 +24,9 @@ __all__ = [
     "AGENT_KINDS",
     "AgentDefinition",
     "AgentDefinitionInvalid",
+    "CognitiveAgentNotSupported",
     "EscalationCapability",
+    "ToolNotAllowed",
 ]
 
 AGENT_KINDS = ("cognitive", "mechanical")  # §1.2's own two kinds, exactly
@@ -35,6 +37,21 @@ class AgentDefinitionInvalid(Exception):
     pairing rule. Registry loading fails closed on this (ADR-040 D3): a
     single bad definition refuses the ENTIRE load, never a partial
     registry silently smaller than the one on disk."""
+
+
+class ToolNotAllowed(Exception):
+    """An agent attempted to call an operation outside its own declared
+    `tools` allowlist (AG-005, ADR-028 C4). Raised BEFORE any dispatch
+    is attempted — independent of, and prior to, whatever scope check
+    the dispatch pipeline itself performs (ADR-041 D1)."""
+
+
+class CognitiveAgentNotSupported(Exception):
+    """The mechanical-agent executor (ADR-041) refuses to run a
+    `kind="cognitive"` definition — 03_ROADMAP's own Phase 1 scope:
+    "Intentionally postponed: all cognitive agents beyond basic chat."
+    Not a load-time validity problem (the definition itself is fine,
+    ADR-040 already proved that) — a runtime scope boundary."""
 
 
 @dataclass(frozen=True)
