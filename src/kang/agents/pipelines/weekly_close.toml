@@ -1,0 +1,17 @@
+# weekly_close — Appendix A's own pipeline list (docs/05_AGENTS.md:435):
+# "planner(review) -> memory_steward(weekly) -> notifier" (ADR-042 D4).
+# The weekly review closes the week's plan, memory_steward runs its
+# weekly consolidation pass, and notifier delivers the result.
+
+id = "weekly_close"
+
+[[steps]]
+agent_id = "planner"
+mode = "review"
+
+[[steps]]
+agent_id = "memory_steward"
+mode = "weekly"
+
+[[steps]]
+agent_id = "notifier"

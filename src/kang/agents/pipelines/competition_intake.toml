@@ -1,0 +1,17 @@
+# competition_intake — Appendix A's own pipeline list (docs/05_AGENTS.md:435):
+# "scout -> strategist(evaluate) -> notify", transcribed to real agent ids
+# (ADR-042 D4). Triggered by competition_scout's own sched(daily) finds;
+# strategist(evaluate) turns a found competition into a brief; notifier
+# closes the loop with a delivered digest.
+
+id = "competition_intake"
+
+[[steps]]
+agent_id = "competition_scout"
+
+[[steps]]
+agent_id = "competition_strategist"
+mode = "evaluate"
+
+[[steps]]
+agent_id = "notifier"

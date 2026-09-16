@@ -20,4 +20,7 @@ scopes = []
 timeout_s = 30
 retry = 2
 degradation = "Queue for the next allowed window — never a dropped notification."
-pipelines = []
+# Corrected by ADR-042 (2026-09-16): a step in both real pipelines that
+# end in a notify — was `[]`, an ADR-040 D4 transcription gap only
+# discoverable once real pipeline data existed to check it against.
+pipelines = ["competition_intake", "weekly_close"]

@@ -241,3 +241,8 @@ def test_the_shipped_real_definitions_load_cleanly():
     )  # resolved to real operations, unlike most of the catalog
     assert by_id["competition_scout"].escalation.task_class == "classification"
     assert by_id["memory_steward"].escalation.task_class == "routine"
+    # ADR-040 correction (2026-09-16, made while implementing ADR-042):
+    # both were `pipelines = []`, wrong against Appendix A's own real
+    # pipeline list once ADR-042 shipped that data to check it against.
+    assert by_id["notifier"].pipelines == ("competition_intake", "weekly_close")
+    assert by_id["memory_steward"].pipelines == ("weekly_close",)

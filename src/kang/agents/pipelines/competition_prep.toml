@@ -1,0 +1,18 @@
+# competition_prep — Appendix A's own pipeline list (docs/05_AGENTS.md:435):
+# "strategist(ideas) -> critic -> strategist(revise)" (ADR-042 D4). One
+# agent's own single mandate exercised twice, each facet named by `mode`
+# (ADR-042's own third finding) — not two agents, one Strategist doing
+# ideation then revision, an adversarial Critic pass between them.
+
+id = "competition_prep"
+
+[[steps]]
+agent_id = "competition_strategist"
+mode = "ideas"
+
+[[steps]]
+agent_id = "critic"
+
+[[steps]]
+agent_id = "competition_strategist"
+mode = "revise"

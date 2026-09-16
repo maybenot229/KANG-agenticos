@@ -15,7 +15,10 @@ scopes = ["memory.propose:lesson", "memory.propose:preference", "memory.propose:
 timeout_s = 1800
 retry = 1
 degradation = "Mechanical passes (janitor, dedup) always run; cognitive extraction alone skips when unavailable."
-pipelines = []
+# Corrected by ADR-042 (2026-09-16): a step in weekly_close (weekly
+# consolidation) — was `[]`, an ADR-040 D4 transcription gap only
+# discoverable once real pipeline data existed to check it against.
+pipelines = ["weekly_close"]
 
 [escalation]
 task_class = "routine"
