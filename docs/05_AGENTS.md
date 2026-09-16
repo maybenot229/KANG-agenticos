@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Normative — every agent-related component MUST conform; changes require an ADR
-**Last updated:** 2026-07-11
+**Last updated:** 2026-09-16 (Appendix A: added `chat` as agent #16, ADR-044)
 **Upstream (binding):** `00_VISION.md`, `01_PRINCIPLES.md`, `02_PRODUCT_REQUIREMENTS.md`, `04_ARCHITECTURE.md` (D010, D011, D013, D014, D015), `06_MEMORY.md`, `07_DATABASE.md`
 **Downstream:** `08_PLUGIN_SYSTEM.md`, `12_API.md`, `16_SYNC.md`
 
@@ -429,6 +429,7 @@ Legend: kind C=cognitive, M=mechanical. Timeouts = hard invocation timeout. Retr
 | **backup_monitor** | M | Snapshot execution + verification (07_DATABASE Part 12) | sched (daily, Sleeping; monthly verify) | kang.db → snapshots, verification reports | fs (backup dirs), db admin port, notify≤attention | web, vault, calendar, email | 20m | 1 | alert on any failure — no silent skip, ever | — |
 | **health_monitor** | M | Metrics collection; threshold alerts; `kang doctor` backend | sched (5m tick) | system metrics → health panel, alerts | metrics ports, notify≤**critical** | world-touching tools | 1m | 0 | its absence is detected by watchdog (dead-man switch) | — |
 | **faith_companion** | C | Reading plans, memorization scheduling, journal support (FR-090..092) | kang; sched (daily prompt, repetition) | plans, queue → prompts, reviews | repetition.*, vault.read/write:Faith/, notify≤attention | web, email, calendar.write; **local-model-only for journal contexts (fail-closed)** | 5m | 0 | scheduling deterministic; journal features offline-capable by construction | memory.read:faith-view incl. private (sole holder) |
+| **chat** *(added ADR-044, 2026-09-16)* | C | Converse with Kang using client-supplied context chips (§10.13); no tool access or specialist escalation yet | kang (sync only — never scheduled, never chained) | message + context chips → reply | none this slice | ALL tools (no tool-calling loop exists yet — a declared tool refuses at load) | 60s | 0 | unavailable (no deterministic fallback for open conversation) | none this slice — recipe=null; `06_MEMORY`'s own "Chat (general)" row is the real, later mechanism |
 | **sync_agent** *(reserved, v0.5)* | M | Change-set exchange (D009/16_SYNC) | sched | change_log → encrypted sets | sync transport port | all others | — | — | — | defined in 16_SYNC |
 | **plugin_runner** | M | Supervised execution envelope for plugin-declared agents (D012) | per plugin definition | plugin manifest scope | plugin's granted allowlist ONLY | anything not granted | per manifest ≤ 10m | per manifest | disable-on-repeat-failure (quarantine) | plugin's grants |
 

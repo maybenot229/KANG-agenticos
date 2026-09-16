@@ -29,16 +29,38 @@ from typing import Any
 from kang.domain.ports.agent_definition import (
     AgentDefinition,
     CognitiveAgentNotSupported,
+    CognitiveToolLoopNotSupported,
+    MechanicalAgentNotSupported,
     ToolNotAllowed,
 )
 from kang.domain.ports.clock import Clock
+from kang.domain.ports.model_provider import (
+    ModelResult,
+    NoProviderAvailable,
+    ProviderUnavailable,
+    TaskSpec,
+)
 from kang.domain.ports.session import Session, SessionStore
 
-__all__ = ["AgentRunResult", "Dispatch", "ExecutorDeps", "run_mechanical_agent"]
+__all__ = [
+    "AgentRunResult",
+    "CognitiveExecutorDeps",
+    "Dispatch",
+    "ExecutorDeps",
+    "RouterRoute",
+    "run_cognitive_agent",
+    "run_mechanical_agent",
+]
 
 # (operation, params, session_token, idempotency_key) -> the dispatcher's
 # own response envelope, verbatim.
 Dispatch = Callable[[str, dict[str, Any], str, str | None], dict[str, Any]]
+
+# (spec, prompt) -> the Router's own ModelResult, verbatim. A generic,
+# port-shaped callable rather than importing kang.kernel.router.Router
+# directly — agents/runtime may not import kernel (17 §4.2); the
+# composition root supplies the real closure over a real Router (ADR-044).
+RouterRoute = Callable[[TaskSpec, str], ModelResult]
 
 
 @dataclass(frozen=True)
@@ -48,6 +70,21 @@ class ExecutorDeps:
     which operation, which params, which idempotency key)."""
 
     dispatch: Dispatch
+    sessions: SessionStore
+    new_id: Callable[[], str]
+    clock: Clock
+
+
+@dataclass(frozen=True)
+class CognitiveExecutorDeps:
+    """The cognitive executor's own collaborators (ADR-044), mirroring
+    `ExecutorDeps`'s own shape. `read_prompt` resolves an agent's own
+    `prompt_file` to text — file I/O the composition root performs
+    (which knows `AGENT_DEFINITIONS_DIR`), injected here rather than
+    done in this module, which stays pure/I/O-free like its sibling."""
+
+    route: RouterRoute
+    read_prompt: Callable[[AgentDefinition], str]
     sessions: SessionStore
     new_id: Callable[[], str]
     clock: Clock
@@ -107,3 +144,89 @@ def run_mechanical_agent(
 
     response = deps.dispatch(operation, params, session.token, idempotency_key)
     return AgentRunResult(agent_id=agent.id, operation=operation, response=response)
+
+
+def _compose_prompt(persona: str, context_chips: list[str], message: str) -> str:
+    """One flat string — `ModelProvider.call()` accepts no separate
+    system/user channel (confirmed reading `AnthropicProvider.call()`:
+    one `role: "user"` message, always). Chips are labeled, not merged
+    into `message`, so they are never mistaken for Kang's own words
+    (ADR-044 D4)."""
+    chips_block = "\n".join(f"- {chip}" for chip in context_chips) or "(none)"
+    return (
+        f"{persona}\n\n"
+        f"## Current context (Kang's own chips)\n{chips_block}\n\n"
+        f"## Kang's message\n{message}\n"
+    )
+
+
+def run_cognitive_agent(
+    agent: AgentDefinition,
+    message: str,
+    context_chips: list[str],
+    deps: CognitiveExecutorDeps,
+) -> AgentRunResult:
+    """Run one cognitive agent's single conversational turn (ADR-044 D2)
+    — the mirror of `run_mechanical_agent`, for a model call instead of
+    a tool call.
+
+    Refuses BEFORE `deps.route` is ever called if `agent.kind` is not
+    `"cognitive"`, or if `agent.tools` is non-empty (no tool-calling
+    loop exists yet — AG-005's allowlist has nothing to enforce against
+    without one; refused loudly, never a silent ignore of a declared
+    capability).
+
+    Mints a session for principal `agent:{id}`, `first_party=False` —
+    the same bounded-authority shape every other agent gets, deliberately
+    not a special case for "it's Kang's own conversation" (ADR-044 D2's
+    own argued rejection of that framing: a consequential proposal inside
+    chat breaks out into Kang's own real first-party confirmation later,
+    it does not need chat's own session to already hold his authority).
+
+    On `ProviderUnavailable`/`NoProviderAvailable`: returns the agent's
+    own `degradation` text with `response["degraded"] = True` — never an
+    invented reply (AGP-8). `ProviderRefused` is NOT caught here — a
+    malformed request or bad credential is a real bug/config problem,
+    not a degradable runtime condition; it propagates to the dispatcher's
+    own top-level catch (API-006), which returns an honest `internal`
+    error envelope rather than a fabricated conversational reply."""
+    if agent.kind != "cognitive":
+        raise MechanicalAgentNotSupported(
+            f"agent {agent.id!r} is kind={agent.kind!r}; the cognitive-agent "
+            "executor (ADR-044) does not run mechanical agents"
+        )
+    if agent.tools:
+        raise CognitiveToolLoopNotSupported(
+            f"agent {agent.id!r} declares tools {agent.tools!r}, but no "
+            "tool-calling loop exists yet (ADR-044)"
+        )
+
+    session = Session(
+        token=deps.new_id(),
+        principal=f"agent:{agent.id}",
+        first_party=False,
+        created_at=deps.clock.now().isoformat(),
+    )
+    deps.sessions.create(session)
+
+    persona = deps.read_prompt(agent)
+    prompt = _compose_prompt(persona, context_chips, message)
+    spec = TaskSpec(
+        task_class="deep_reasoning",
+        privacy_tier="normal",
+        context_size=len(prompt) // 4,
+        latency_tolerance="interactive",
+    )
+    try:
+        result = deps.route(spec, prompt)
+    except (ProviderUnavailable, NoProviderAvailable):
+        return AgentRunResult(
+            agent_id=agent.id,
+            operation="model.call",
+            response={"reply": agent.degradation, "degraded": True},
+        )
+    return AgentRunResult(
+        agent_id=agent.id,
+        operation="model.call",
+        response={"reply": result.text, "degraded": False},
+    )

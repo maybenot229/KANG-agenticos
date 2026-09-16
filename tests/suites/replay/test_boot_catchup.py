@@ -193,7 +193,8 @@ def test_deadline_sweep_is_registered_and_boot_catches_up_a_missed_hour(tmp_path
         server.wait_ready()
         assert _job_run_count(tmp_path, DEADLINE_SWEEP_JOB) == 1
         assert _job_run_outcome(tmp_path, DEADLINE_SWEEP_JOB) == "ok"
-        assert _invocation_principal(tmp_path, "deadline.sweep") == "agent:deadline_sweep"
+        principal = _invocation_principal(tmp_path, "deadline.sweep")
+        assert principal == "agent:deadline_sweep"
         # morning_plan is unaffected — two independently catching-up jobs,
         # not one replacing the other.
         assert _job_run_count(tmp_path, MORNING_PLAN_JOB) == 0

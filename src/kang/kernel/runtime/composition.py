@@ -1,15 +1,19 @@
 """Composition root — where concretions meet interfaces (17 §4.3).
 
 Layer: kernel/runtime, but exempt from the import matrix: this module MAY
-import adapters and the api, because something must instantiate concretions
-and inject them (17 §4.3 composition-root exception). It contains wiring
-only — no branching beyond config, no domain logic. `kernel.runtime.
-scheduler_wiring` (ADR-023) and `kernel.runtime.query_routing` (ADR-037)
-carry the same exemption — both split out when their own slice pushed this
-file past the size lint's hard limits; all three files together are one
-conceptual composition root, not three. Registered by exact name in
-tools/importlinter.toml; the exemption MUST NOT spread beyond those three
-without its own justification.
+import adapters and the api, because something must instantiate
+concretions and inject them (17 §4.3 composition-root exception). It
+contains wiring only — no branching beyond config, no domain logic.
+`kernel.runtime.scheduler_wiring` (ADR-023, agents added ADR-043),
+`kernel.runtime.query_routing` (ADR-037), and `kernel.runtime.
+model_wiring` (ADR-044, adapters+agents) carry the same exemption —
+all three split out when their own slice pushed this file past the
+size lint's hard limits; all four files together are one conceptual
+composition root, not four. `composition.py` itself reaches `kang.
+agents` only indirectly, through `model_wiring.py`'s own plain
+functions — an ordinary kernel-to-kernel import, no exemption needed.
+Registered by exact name in tools/importlinter.toml; the exemption
+MUST NOT spread beyond those four without its own justification.
 
 Constitutional home: 11_CODING §11 (composition root, plain constructor
 calls, readable top to bottom), 17 §4.3, 12_API §5 (it assembles the
@@ -68,6 +72,7 @@ from kang.api.operations import (
     make_backup_offsite_check_handler,
     make_backup_snapshot_handler,
     make_backup_verify_handler,
+    make_chat_send_handler,
     make_competition_create_handler,
     make_deadline_create_handler,
     make_deadline_sweep_handler,
@@ -108,7 +113,9 @@ from kang.kernel.bus.delivery import Delivery
 from kang.kernel.bus.reconciliation import Reconciliation
 from kang.kernel.orchestrator.registry import AgentRegistry, build_checked_registry
 from kang.kernel.permissions.engine import build_checked_engine
+from kang.kernel.router.router import Router
 from kang.kernel.runtime.ids import uuid7
+from kang.kernel.runtime.model_wiring import build_router, make_chat_run
 from kang.kernel.runtime.query_routing import _build_query_handlers, _dispatch_query
 from kang.kernel.runtime.scheduler_wiring import (
     _SchedulerWiring,
@@ -150,6 +157,8 @@ class Core:
     agent_registry: AgentRegistry | None = None  # exposed for introspection/
     #   tests, same as clock — ADR-043's first real wiring of AG-004's
     #   registry into a running Core
+    router: Router | None = None  # exposed for introspection/tests, same
+    #   shape — ADR-044's first real wiring of the Model Router
 
     def mint_first_party_session(self) -> Session:
         token = self.new_id()  # type: ignore[operator]
@@ -259,6 +268,9 @@ class _HandlerWiring:
     milestone_store: object
     goal_store: object
     backups: object
+    agent_registry: AgentRegistry  # ADR-044: chat.send's own agent lookup
+    router: Router  # ADR-044: chat.send's own model-call path
+    sessions: object  # ADR-044: chat.send's own agent:chat session mint
 
 
 def _build_handlers(w: _HandlerWiring) -> dict:
@@ -302,6 +314,12 @@ def _build_handlers(w: _HandlerWiring) -> dict:
         "backup.verify": make_backup_verify_handler(w.backups, w.clock),
         "backup.offsite_check": make_backup_offsite_check_handler(
             w.backups, w.bus, w.clock, w.new_id, w.device_id
+        ),
+        "chat.send": make_chat_send_handler(
+            make_chat_run(
+                AGENT_DEFINITIONS_DIR, w.agent_registry, w.router, w.sessions,
+                w.new_id, w.clock,
+            )
         ),
         **_build_project_cluster_handlers(w),
         **_build_consequential_handlers(w),
@@ -507,9 +525,7 @@ def _build_core_locked(
     kang_home: Path, device_id: str, startup_lock: FileStartupLock
 ) -> Core:
     """The rest of `build_core`, run only once the startup lock is held —
-    split out so its own exceptions can be caught by name in one place
-    (11 §4: not a domain concept of its own, purely so `build_core`'s
-    lock/release bracket stays readable)."""
+    split out so its own exceptions can be caught by name in one place."""
     clock = SystemClock()
 
     def new_id() -> str:
@@ -519,6 +535,8 @@ def _build_core_locked(
     apply_migrations(kang, MIGRATIONS_DIR, clock)
     events = open_eventlog(kang_home / "events" / "eventlog.db")
     agent_registry = _build_agent_registry()
+    router = build_router(kang_home, kang, clock)
+    sessions = SqliteSessionStore(kang)
     wiring = _build_bus_wiring(kang_home, kang, events, clock, new_id, device_id)
     stores = _build_stores(kang, clock)
     handler_wiring = _HandlerWiring(
@@ -541,31 +559,24 @@ def _build_core_locked(
         milestone_store=stores.milestone_store,
         goal_store=stores.goal_store,
         backups=_build_backup_service(kang, events, kang_home, clock),
+        agent_registry=agent_registry,
+        router=router,
+        sessions=sessions,
     )
-    # Same _HandlerWiring feeds both tables (command handlers built once
-    # here; query_routing builds each query handler fresh per call, ADR-036 D4).
     handlers = _build_handlers(handler_wiring)
     query_handlers = _build_query_handlers(handler_wiring)
     dispatcher = Dispatcher(
         handlers,
-        DispatcherDeps(
-            sessions=SqliteSessionStore(kang),
-            permissions=wiring.engine,
-            idempotency=SqliteIdempotencyStore(kang),
-            invocations=stores.invocations,
-            audit=wiring.audit,
-            clock=clock,
-            new_id=new_id,
-        ),
+        _build_dispatcher_deps(kang, wiring, stores, sessions, clock, new_id),
         query_handlers=query_handlers,
     )
-    sessions = SqliteSessionStore(kang)
     return Core(
         dispatcher=dispatcher,
         sessions=sessions,
         new_id=new_id,
         _connections=[kang, events],
         agent_registry=agent_registry,
+        router=router,
         scheduler=_wire_scheduler(
             _SchedulerWiring(
                 kang_home=kang_home,
@@ -582,6 +593,23 @@ def _build_core_locked(
         ),
         startup_lock=startup_lock,
         clock=clock,
+    )
+
+
+def _build_dispatcher_deps(
+    kang, wiring, stores, sessions, clock, new_id
+) -> DispatcherDeps:
+    """Split out of `_build_core_locked` purely to keep that function
+    under the size lint's line limit (11 §4), not a domain concept of
+    its own — plain construction, same as everything else here."""
+    return DispatcherDeps(
+        sessions=sessions,
+        permissions=wiring.engine,
+        idempotency=SqliteIdempotencyStore(kang),
+        invocations=stores.invocations,
+        audit=wiring.audit,
+        clock=clock,
+        new_id=new_id,
     )
 
 

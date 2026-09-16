@@ -86,7 +86,7 @@ def test_one_bad_pipeline_refuses_the_whole_registry_not_just_that_pipeline():
 def test_the_real_shipped_pipelines_cross_validate_against_the_real_agent_registry():
     agent_definitions = discover_agent_definitions(SHIPPED_DEFINITIONS_DIR)
     agent_registry = build_checked_registry(agent_definitions)
-    assert len(agent_registry) == 15  # Appendix A's own 15 (ADR-040 D4)
+    assert len(agent_registry) == 16  # Appendix A's own 15 + chat (ADR-044)
 
     pipeline_definitions = discover_pipeline_definitions(SHIPPED_PIPELINES_DIR)
     pipelines = build_checked_pipeline_registry(pipeline_definitions, agent_registry)

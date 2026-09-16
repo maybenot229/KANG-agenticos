@@ -26,6 +26,7 @@ from kang.api.schemas.backup import (
     BackupVerifyRequest,
     BackupVerifyResponse,
 )
+from kang.api.schemas.chat import ChatSendRequest, ChatSendResponse
 from kang.api.schemas.competition import (
     CompetitionCreateRequest,
     CompetitionCreateResponse,
@@ -731,6 +732,26 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         schemas=OperationSchemas(
             request=GoalTransitionRequest, response=GoalTransitionResponse
         ),
+    ),
+    # chat.send (ADR-044): the Chat domain's first operation, and the
+    # first real cognitive-agent call anywhere in the system. scope=None
+    # is DELIBERATE (ADR-027 D2, not the audit.list/system.health mistake
+    # that decision corrected) — first_party_only is what actually gates
+    # this, the exact same channel-not-scope shape 05_AGENTS:475 already
+    # establishes for held_action.approve/cancel: no agent:{id} principal
+    # can ever hold a first-party session, so the channel check alone
+    # already closes the gap a scope would otherwise exist to close.
+    # idempotent=False: two identical messages may legitimately produce
+    # two different model-generated replies — nothing here is a
+    # deterministic domain write safely re-playable by key.
+    _op(
+        "chat.send",
+        "command",
+        None,
+        False,
+        "Send one conversational turn to the chat agent; blocks for one model call.",
+        channel=OperationChannel(first_party_only=True),
+        schemas=OperationSchemas(request=ChatSendRequest, response=ChatSendResponse),
     ),
 )
 

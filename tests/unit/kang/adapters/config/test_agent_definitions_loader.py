@@ -220,13 +220,14 @@ def test_discover_raises_when_a_folder_has_no_matching_toml(tmp_path):
 
 
 SHIPPED_AGENT_IDS = {
-    "backup_monitor", "competition_scout", "competition_strategist", "critic",
-    "deadline_sweep", "faith_companion", "health_monitor", "memory_steward",
-    "notifier", "planner", "researcher", "tutor", "vault_indexer",
-    "vault_organizer", "web_monitor",
-}  # Appendix A's own 15 — sync_agent (reserved, undefined in 16_SYNC) and
-# plugin_runner (a per-plugin template, not a static catalog entry) are
-# both deliberately excluded (ADR-040 D4).
+    "backup_monitor", "chat", "competition_scout", "competition_strategist",
+    "critic", "deadline_sweep", "faith_companion", "health_monitor",
+    "memory_steward", "notifier", "planner", "researcher", "tutor",
+    "vault_indexer", "vault_organizer", "web_monitor",
+}  # Appendix A's own 15, plus `chat` as agent #16 (ADR-044) — sync_agent
+# (reserved, undefined in 16_SYNC) and plugin_runner (a per-plugin
+# template, not a static catalog entry) stay deliberately excluded
+# (ADR-040 D4).
 
 
 def test_the_shipped_real_definitions_load_cleanly():
@@ -246,3 +247,9 @@ def test_the_shipped_real_definitions_load_cleanly():
     # pipeline list once ADR-042 shipped that data to check it against.
     assert by_id["notifier"].pipelines == ("competition_intake", "weekly_close")
     assert by_id["memory_steward"].pipelines == ("weekly_close",)
+    # ADR-044: chat is cognitive, zero tools, zero escalation, and has no
+    # pipeline membership yet (no real pipeline names it as a step).
+    assert by_id["chat"].kind == "cognitive"
+    assert by_id["chat"].tools == ()
+    assert by_id["chat"].pipelines == ()
+    assert by_id["chat"].prompt_file == "prompts/system.md"

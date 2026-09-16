@@ -25,7 +25,9 @@ __all__ = [
     "AgentDefinition",
     "AgentDefinitionInvalid",
     "CognitiveAgentNotSupported",
+    "CognitiveToolLoopNotSupported",
     "EscalationCapability",
+    "MechanicalAgentNotSupported",
     "ToolNotAllowed",
 ]
 
@@ -52,6 +54,24 @@ class CognitiveAgentNotSupported(Exception):
     "Intentionally postponed: all cognitive agents beyond basic chat."
     Not a load-time validity problem (the definition itself is fine,
     ADR-040 already proved that) — a runtime scope boundary."""
+
+
+class MechanicalAgentNotSupported(Exception):
+    """The cognitive-agent executor (ADR-044) refuses to run a
+    `kind="mechanical"` definition — the exact mirror of
+    `CognitiveAgentNotSupported`. Not a load-time validity problem —
+    a runtime scope boundary: mechanical agents run through
+    `run_mechanical_agent`, never this executor."""
+
+
+class CognitiveToolLoopNotSupported(Exception):
+    """The cognitive-agent executor (ADR-044) refuses to run a
+    cognitive definition that declares a non-empty `tools` allowlist —
+    no tool-calling loop exists yet to use one (AG-005's allowlist has
+    nothing to enforce against without one). A future agent declaring
+    tools needs that loop built first; this is refused loudly, never a
+    silent ignore of a declared capability (AGP-8's own discipline,
+    applied to a capability rather than a degradation)."""
 
 
 @dataclass(frozen=True)

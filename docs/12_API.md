@@ -102,6 +102,8 @@ flowchart LR
 
 **Why.** 09_UI §14's task cards (a UI label, deliberately unrenamed — ADR-029 D4), cancellability (AG-007: cancel is `invocation.cancel`, a command), crash-survivability (the state persists as `invocation` rows), and headless clients (CLI, scheduler) all require work-as-resource.
 
+**Dated exception (ADR-044, 2026-09-16):** `chat.send` blocks synchronously for one real model call, bounded by the chat agent's own `timeout_s` (60s) — no `invocation_id`, no event-channel streaming. Argued explicitly, not a silent violation: the general async invocation-resource mechanism this decision describes has never been built for *any* operation yet (every operation today, cognitive or not, already executes synchronously within one `dispatch()` call, just off the request thread via the write-executor, ADR-036); building it generically was judged separate, larger work, not something to bolt on as a side effect of chat's own first cognitive call. See `docs/adr/044-basic-chat-agent.md` D6 for the full argument.
+
 ### API-008 — Cursor pagination only; deterministic order
 
 **Decision.** All list queries paginate by opaque cursor (encoding `(order_key, id)` position), with a declared total-order per query (default: `updated_at desc, id desc`). Offset pagination MUST NOT exist. Cursors survive inserts/deletes without skips or duplicates.

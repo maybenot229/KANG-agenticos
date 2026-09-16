@@ -1,0 +1,23 @@
+# chat — Appendix A row #16 (ADR-044, 2026-09-16). Cognitive, zero
+# tools, zero escalation this slice — the one cognitive agent Phase 1
+# does NOT postpone (03_ROADMAP: "Intentionally postponed: all
+# cognitive agents beyond basic chat"). "Basic context" is exactly the
+# client-supplied `context_chips` (09_UI_DESIGN.md:89's own "removable
+# chips" contract) — NOT 06_MEMORY's "Chat (general)" recipe, which is
+# Phase 2, blocked on Memory, same restraint every other definition's
+# `recipe=None` already uses.
+#
+# Prompt file is a first draft, not tuned — matching critic/planner's
+# own precedent: nothing has run a real cognitive call before this ADR.
+
+id = "chat"
+kind = "cognitive"
+mandate = "Converse with Kang using client-supplied context chips; no tool access or specialist escalation yet."
+triggers = ["kang"]
+tools = []
+scopes = []
+timeout_s = 60
+retry = 0
+degradation = "Chat is unavailable right now — no model could be reached. Never a fabricated reply."
+pipelines = []
+prompt_file = "prompts/system.md"

@@ -27,15 +27,16 @@ forbidden_modules = [
 # 17 §4.3 rules 3, 4 — kernel executes agent *definitions* (data), never agent
 # code; kernel receives adapter instances by injection, never imports them.
 # The exemption (17 §4.3): the composition root MAY import adapters + api,
-# because something must instantiate concretions and inject them. Three
+# because something must instantiate concretions and inject them. Four
 # files carry it — kang.kernel.runtime.composition and, since ADR-023,
 # kang.kernel.runtime.scheduler_wiring (split out of composition.py when a
 # third scheduled job pushed that file past the size lint's hard limits),
-# and since ADR-037, kang.kernel.runtime.query_routing (same trigger, the
-# ADR-036 D4 read-pool-routing slice) — three files together are one
-# conceptual composition root, not three roles. Named here, by exact
-# module, so the exemption cannot spread further without its own line and
-# its own justification.
+# since ADR-037, kang.kernel.runtime.query_routing (same trigger, the
+# ADR-036 D4 read-pool-routing slice), and since ADR-044, kang.kernel.
+# runtime.model_wiring (same trigger again, the Router/chat wiring slice)
+# — four files together are one conceptual composition root, not four
+# roles. Named here, by exact module, so the exemption cannot spread
+# further without its own line and its own justification.
 [[tool.importlinter.contracts]]
 name = "17 §4.3.3-4: kernel never imports agents, adapters, or api"
 type = "forbidden"
@@ -62,6 +63,12 @@ ignore_imports = [
     "kang.kernel.runtime.scheduler_wiring -> kang.agents.**",
     "kang.kernel.runtime.query_routing -> kang.adapters.**",
     "kang.kernel.runtime.query_routing -> kang.api.**",
+    # ADR-044 (2026-09-16): model_wiring.py itself needs both — it builds
+    # the real AnthropicProvider/KeyringCredentialStore (adapters) and
+    # calls run_cognitive_agent (agents) — the exact reason it was split
+    # out of composition.py in the first place.
+    "kang.kernel.runtime.model_wiring -> kang.adapters.**",
+    "kang.kernel.runtime.model_wiring -> kang.agents.**",
 ]
 
 # 17 §4.3 rule 5 — adapters translate at the port line; importing a domain

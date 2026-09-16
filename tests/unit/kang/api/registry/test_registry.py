@@ -70,10 +70,15 @@ UNSCOPED_BY_DECISION = {
     # would contradict a normative sentence.
     "held_action.approve",
     "held_action.cancel",
+    # ADR-044: chat.send is channel-gated the same way (first_party_only
+    # — no agent:{id} principal, `agent:chat` included, can ever hold a
+    # first-party session), not the audit.list/system.health mistake
+    # ADR-027 corrected (those had no channel gate at all).
+    "chat.send",
 }
 
 
-def test_only_three_operations_are_unscoped_and_each_is_deliberate():
+def test_only_four_operations_are_unscoped_and_each_is_deliberate():
     """ADR-027's central claim. A new operation registered with
     scope=None is reachable by ANY authenticated principal with no
     capability check at all — including, once M7 lands, an `agent:{id}`
@@ -92,6 +97,19 @@ def test_the_system_metadata_reads_are_scoped():
     assert operation("permission.list")["scope"] == "permissions.read"
     assert operation("system.health")["scope"] == "system.read"
     assert operation("notification.ack")["scope"] == "notifications.ack"
+
+
+def test_chat_send_is_first_party_only_unscoped_and_not_idempotent():
+    """ADR-044 D3: `first_party_only` is what actually gates this
+    operation (the same channel-not-scope shape held_action.approve/
+    cancel already use), not the scope engine — and two identical
+    messages may legitimately produce two different model-generated
+    replies, so it is never idempotency-keyed like a deterministic
+    domain write."""
+    entry = operation("chat.send")
+    assert entry["scope"] is None
+    assert entry["first_party_only"] is True
+    assert entry["idempotency"] == "none"
 
 
 def test_every_explain_operation_shares_one_scope():

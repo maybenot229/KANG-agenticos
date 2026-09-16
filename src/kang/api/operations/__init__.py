@@ -24,6 +24,7 @@ from kang.api.operations.backup_ops import (
     make_backup_snapshot_handler,
     make_backup_verify_handler,
 )
+from kang.api.operations.chat_ops import ChatRun, make_chat_send_handler
 from kang.api.operations.competition_ops import (
     COMPETITIONS_PRINCIPAL,
     make_competition_create_handler,
@@ -101,6 +102,7 @@ __all__ = [
     "make_backup_snapshot_handler",
     "make_backup_verify_handler",
     "COMPETITIONS_PRINCIPAL",
+    "ChatRun",
     "ConfirmationDeps",
     "ConfirmationRequest",
     "DEADLINES_PRINCIPAL",
@@ -111,6 +113,7 @@ __all__ = [
     "PlannerDeps",
     "TASKS_PRINCIPAL",
     "make_audit_list_handler",
+    "make_chat_send_handler",
     "make_competition_create_handler",
     "make_competition_list_handler",
     "make_deadline_create_handler",
