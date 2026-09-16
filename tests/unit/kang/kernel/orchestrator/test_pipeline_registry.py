@@ -17,7 +17,10 @@ from kang.domain.ports.pipeline_definition import (
     PipelineDefinitionInvalid,
     PipelineStep,
 )
-from kang.kernel.orchestrator.pipeline_registry import build_checked_pipeline_registry
+from kang.kernel.orchestrator.pipeline_registry import (
+    build_checked_pipeline_registry,
+    check_pipeline_membership_reciprocity,
+)
 from kang.kernel.orchestrator.registry import build_checked_registry
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
@@ -91,3 +94,47 @@ def test_the_real_shipped_pipelines_cross_validate_against_the_real_agent_regist
     assert {p.id for p in pipelines} == {
         "competition_intake", "competition_prep", "deep_research", "weekly_close",
     }
+
+
+def test_matching_claims_reciprocate_cleanly():
+    agent = _agent(id="scout", pipelines=("p1",))
+    registry = build_checked_registry([agent])
+    pipeline = PipelineDefinition(
+        id="p1", steps=(PipelineStep(agent_id="scout", mode=None),),
+    )
+    pipelines = build_checked_pipeline_registry([pipeline], registry)
+    check_pipeline_membership_reciprocity(registry, pipelines)  # no raise
+
+
+def test_a_false_membership_claim_raises():
+    # scout claims p1 but is not actually a step of it.
+    agent = _agent(id="scout", pipelines=("p1",))
+    registry = build_checked_registry([agent])
+    pipeline = PipelineDefinition(
+        id="p1", steps=(PipelineStep(agent_id="notifier", mode=None),),
+    )
+    other_agent = _agent(id="notifier")
+    registry = build_checked_registry([agent, other_agent])
+    pipelines = build_checked_pipeline_registry([pipeline], registry)
+    with pytest.raises(PipelineDefinitionInvalid, match="scout"):
+        check_pipeline_membership_reciprocity(registry, pipelines)
+
+
+def test_a_missing_membership_claim_raises():
+    # scout is actually a step of p1 but never declared it.
+    agent = _agent(id="scout", pipelines=())
+    registry = build_checked_registry([agent])
+    pipeline = PipelineDefinition(
+        id="p1", steps=(PipelineStep(agent_id="scout", mode=None),),
+    )
+    pipelines = build_checked_pipeline_registry([pipeline], registry)
+    with pytest.raises(PipelineDefinitionInvalid, match="scout"):
+        check_pipeline_membership_reciprocity(registry, pipelines)
+
+
+def test_the_real_shipped_catalog_and_pipelines_reciprocate_cleanly():
+    agent_definitions = discover_agent_definitions(SHIPPED_DEFINITIONS_DIR)
+    agent_registry = build_checked_registry(agent_definitions)
+    pipeline_definitions = discover_pipeline_definitions(SHIPPED_PIPELINES_DIR)
+    pipelines = build_checked_pipeline_registry(pipeline_definitions, agent_registry)
+    check_pipeline_membership_reciprocity(agent_registry, pipelines)  # no raise
