@@ -51,6 +51,7 @@ from kang.adapters.sqlite.calendar_store import SqliteCalendarStore
 from kang.adapters.sqlite.competition_store import SqliteCompetitionStore
 from kang.adapters.sqlite.connection import open_connection, open_read_only_connection
 from kang.adapters.sqlite.connection_pool import ReadPool, WriteExecutor
+from kang.adapters.sqlite.conversation_store import SqliteConversationStore
 from kang.adapters.sqlite.deadline_store import SqliteDeadlineStore
 from kang.adapters.sqlite.goal_store import SqliteGoalStore
 from kang.adapters.sqlite.held_action_store import SqliteHeldActionStore
@@ -104,6 +105,7 @@ from kang.domain.notifications import (
     make_drain_handler,
     notification_requested_payload,
 )
+from kang.domain.ports.conversation_store import ConversationStore
 from kang.domain.ports.eventlog import EventEnvelope
 from kang.domain.ports.session import Session
 from kang.domain.ports.startup_lock import AlreadyRunningError
@@ -115,7 +117,7 @@ from kang.kernel.orchestrator.registry import AgentRegistry, build_checked_regis
 from kang.kernel.permissions.engine import build_checked_engine
 from kang.kernel.router.router import Router
 from kang.kernel.runtime.ids import uuid7
-from kang.kernel.runtime.model_wiring import build_router, make_chat_run
+from kang.kernel.runtime.model_wiring import ChatWiringDeps, build_router, make_chat_run
 from kang.kernel.runtime.query_routing import _build_query_handlers, _dispatch_query
 from kang.kernel.runtime.scheduler_wiring import (
     _SchedulerWiring,
@@ -271,6 +273,7 @@ class _HandlerWiring:
     agent_registry: AgentRegistry  # ADR-044: chat.send's own agent lookup
     router: Router  # ADR-044: chat.send's own model-call path
     sessions: object  # ADR-044: chat.send's own agent:chat session mint
+    conversations: ConversationStore  # ADR-046: chat.send's own history
 
 
 def _build_handlers(w: _HandlerWiring) -> dict:
@@ -317,8 +320,15 @@ def _build_handlers(w: _HandlerWiring) -> dict:
         ),
         "chat.send": make_chat_send_handler(
             make_chat_run(
-                AGENT_DEFINITIONS_DIR, w.agent_registry, w.router, w.sessions,
-                w.new_id, w.clock,
+                ChatWiringDeps(
+                    agent_definitions_dir=AGENT_DEFINITIONS_DIR,
+                    agent_registry=w.agent_registry,
+                    router=w.router,
+                    conversations=w.conversations,
+                    sessions=w.sessions,
+                    new_id=w.new_id,
+                    clock=w.clock,
+                )
             )
         ),
         **_build_project_cluster_handlers(w),
@@ -537,6 +547,7 @@ def _build_core_locked(
     agent_registry = _build_agent_registry()
     router = build_router(kang_home, kang, clock)
     sessions = SqliteSessionStore(kang)
+    conversations = SqliteConversationStore(kang)
     wiring = _build_bus_wiring(kang_home, kang, events, clock, new_id, device_id)
     stores = _build_stores(kang, clock)
     handler_wiring = _HandlerWiring(
@@ -562,6 +573,7 @@ def _build_core_locked(
         agent_registry=agent_registry,
         router=router,
         sessions=sessions,
+        conversations=conversations,
     )
     handlers = _build_handlers(handler_wiring)
     query_handlers = _build_query_handlers(handler_wiring)

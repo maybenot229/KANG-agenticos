@@ -34,6 +34,11 @@ from kang.domain.ports.agent_definition import (
     ToolNotAllowed,
 )
 from kang.domain.ports.clock import Clock
+from kang.domain.ports.conversation_store import (
+    ConversationNotFound,
+    ConversationStore,
+    Message,
+)
 from kang.domain.ports.model_provider import (
     ModelResult,
     NoProviderAvailable,
@@ -44,13 +49,22 @@ from kang.domain.ports.session import Session, SessionStore
 
 __all__ = [
     "AgentRunResult",
+    "CHAT_HISTORY_LIMIT",
+    "ChatTurnDeps",
     "CognitiveExecutorDeps",
     "Dispatch",
     "ExecutorDeps",
     "RouterRoute",
+    "run_chat_turn",
     "run_cognitive_agent",
     "run_mechanical_agent",
 ]
+
+# ADR-046 D5: a plain count cap, not a token-budget-aware truncation
+# (that is Phase-2 Context-Assembler territory, 06_MEMORY's own real
+# "Chat (general)" recipe — chat's own recipe stays deferred to it).
+# Named as a known simplification, not hidden.
+CHAT_HISTORY_LIMIT = 20
 
 # (operation, params, session_token, idempotency_key) -> the dispatcher's
 # own response envelope, verbatim.
@@ -146,15 +160,27 @@ def run_mechanical_agent(
     return AgentRunResult(agent_id=agent.id, operation=operation, response=response)
 
 
-def _compose_prompt(persona: str, context_chips: list[str], message: str) -> str:
+def _compose_prompt(
+    persona: str,
+    history: tuple[Message, ...],
+    context_chips: list[str],
+    message: str,
+) -> str:
     """One flat string — `ModelProvider.call()` accepts no separate
     system/user channel (confirmed reading `AnthropicProvider.call()`:
     one `role: "user"` message, always). Chips are labeled, not merged
     into `message`, so they are never mistaken for Kang's own words
-    (ADR-044 D4)."""
+    (ADR-044 D4). `history` (ADR-046 D5) is the prior transcript,
+    already oldest-first (`ConversationStore.recent_messages`'s own
+    contract) — rendered ahead of the current chips/message, which
+    describe *this* turn, not the past ones."""
     chips_block = "\n".join(f"- {chip}" for chip in context_chips) or "(none)"
+    history_block = (
+        "\n".join(f"{m.role}: {m.content}" for m in history) or "(none yet)"
+    )
     return (
         f"{persona}\n\n"
+        f"## Prior conversation\n{history_block}\n\n"
         f"## Current context (Kang's own chips)\n{chips_block}\n\n"
         f"## Kang's message\n{message}\n"
     )
@@ -164,11 +190,14 @@ def run_cognitive_agent(
     agent: AgentDefinition,
     message: str,
     context_chips: list[str],
+    history: tuple[Message, ...],
     deps: CognitiveExecutorDeps,
 ) -> AgentRunResult:
     """Run one cognitive agent's single conversational turn (ADR-044 D2)
     — the mirror of `run_mechanical_agent`, for a model call instead of
-    a tool call.
+    a tool call. `history` (ADR-046) is prior turns to compose into the
+    prompt — this function itself does no persistence; that is
+    `run_chat_turn`'s own job, below.
 
     Refuses BEFORE `deps.route` is ever called if `agent.kind` is not
     `"cognitive"`, or if `agent.tools` is non-empty (no tool-calling
@@ -210,7 +239,7 @@ def run_cognitive_agent(
     deps.sessions.create(session)
 
     persona = deps.read_prompt(agent)
-    prompt = _compose_prompt(persona, context_chips, message)
+    prompt = _compose_prompt(persona, history, context_chips, message)
     spec = TaskSpec(
         task_class="deep_reasoning",
         privacy_tier="normal",
@@ -230,3 +259,66 @@ def run_cognitive_agent(
         operation="model.call",
         response={"reply": result.text, "degraded": False},
     )
+
+
+@dataclass(frozen=True)
+class ChatTurnDeps:
+    """`run_chat_turn`'s own collaborators (ADR-046) — wraps
+    `CognitiveExecutorDeps` rather than duplicating `new_id`/`clock`,
+    plus the one new dependency this turn-level orchestration needs."""
+
+    cognitive: CognitiveExecutorDeps
+    conversations: ConversationStore
+
+
+def run_chat_turn(
+    agent: AgentDefinition,
+    message: str,
+    context_chips: list[str],
+    conversation_id: str | None,
+    deps: ChatTurnDeps,
+) -> dict:
+    """One real, persisted multi-turn exchange (ADR-046) — the
+    conversation-lifecycle orchestration `run_cognitive_agent` itself
+    deliberately does not own. `conversation_id=None` starts a new
+    conversation (the server mints the id, matching every other entity
+    in this codebase — ADR-046 D4); a real id continues an existing one
+    (`ConversationNotFound` propagates for an unknown one, never a
+    silent create-under-that-id).
+
+    Persistence order: Kang's own message is appended BEFORE the model
+    call (a crash mid-call still records what Kang actually said); the
+    reply is appended AFTER, as `role="agent"` on success or
+    `role="kang_system"` when degraded (ADR-046 D3 — a real system
+    notice, never the agent "speaking" a reply it didn't generate).
+
+    Returns a plain dict matching `ChatSendResponse`'s own shape
+    exactly (`reply`, `degraded`, `conversation_id`) — `chat_ops.py`'s
+    handler returns this verbatim, no reshaping needed."""
+    clock = deps.cognitive.clock
+    new_id = deps.cognitive.new_id
+
+    if conversation_id is None:
+        conversation_id = new_id()
+        deps.conversations.start(conversation_id, clock.now().isoformat())
+    elif deps.conversations.get(conversation_id) is None:
+        raise ConversationNotFound(f"no conversation {conversation_id!r}")
+
+    history = deps.conversations.recent_messages(conversation_id, CHAT_HISTORY_LIMIT)
+    deps.conversations.append_message(
+        conversation_id, new_id(), "kang", message, clock.now().isoformat()
+    )
+
+    result = run_cognitive_agent(agent, message, context_chips, history, deps.cognitive)
+    reply = result.response["reply"]
+    degraded = result.response["degraded"]
+
+    deps.conversations.append_message(
+        conversation_id,
+        new_id(),
+        "kang_system" if degraded else "agent",
+        reply,
+        clock.now().isoformat(),
+    )
+
+    return {"reply": reply, "degraded": degraded, "conversation_id": conversation_id}

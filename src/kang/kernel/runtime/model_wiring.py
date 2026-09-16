@@ -1,5 +1,5 @@
 """Model-call wiring — the composition root's Router/chat-specific slice
-(ADR-044).
+(ADR-044, ADR-046).
 
 Layer: kernel/runtime, exempt from the import matrix exactly as
 `composition.py`/`scheduler_wiring.py` are (17 §4.3's composition-root
@@ -15,25 +15,34 @@ used for their own splits.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from kang.adapters.anthropic.provider import AnthropicProvider
 from kang.adapters.config.providers_loader import ProvidersLoadError, load_providers
 from kang.adapters.os_windows.credentials import KeyringCredentialStore
 from kang.adapters.sqlite.model_call_store import SqliteModelCallStore
-from kang.agents.runtime.executor import CognitiveExecutorDeps, run_cognitive_agent
+from kang.agents.runtime.executor import (
+    ChatTurnDeps,
+    CognitiveExecutorDeps,
+    run_chat_turn,
+)
+from kang.domain.ports.conversation_store import ConversationStore
 from kang.domain.ports.provider_config import ProvidersConfig
 from kang.kernel.orchestrator.registry import AgentRegistry
 from kang.kernel.router.router import Router
 
-__all__ = ["ChatRun", "build_router", "make_chat_run"]
+__all__ = ["ChatRun", "ChatWiringDeps", "build_router", "make_chat_run"]
 
-# (message, context_chips) -> {"reply": str, "degraded": bool}, verbatim
-# — mirrors `api/operations/chat_ops.py`'s own ChatRun alias exactly
-# (that module may not import this one, api -> agents/kernel both being
-# forbidden — 17 §4.3.8); the composition root is the one place both
-# shapes are known to agree.
-ChatRun = Callable[[str, list[str]], dict]
+# (message, context_chips, conversation_id) -> {"reply": str,
+# "degraded": bool, "conversation_id": str}, verbatim — mirrors
+# `api/operations/chat_ops.py`'s own ChatRun alias exactly (that module
+# may not import this one, api -> agents/kernel both being forbidden —
+# 17 §4.3.8); the composition root is the one place both shapes are
+# known to agree. May raise ConversationNotFound (domain.ports) for an
+# unknown client-supplied conversation_id — chat_ops.py's own handler
+# catches it.
+ChatRun = Callable[[str, list[str], str | None], dict]
 
 
 def build_router(kang_home: Path, kang, clock) -> Router:
@@ -58,43 +67,55 @@ def build_router(kang_home: Path, kang, clock) -> Router:
     return Router(config, providers, SqliteModelCallStore(kang), clock)
 
 
-def make_chat_run(
-    agent_definitions_dir: Path,
-    agent_registry: AgentRegistry,
-    router: Router,
-    sessions,
-    new_id,
-    clock,
-) -> ChatRun:
+@dataclass(frozen=True)
+class ChatWiringDeps:
+    """Everything `make_chat_run` needs (11 §4: beyond a few params, a
+    dataclass — this crossed that line the moment ADR-046 added
+    `conversations`)."""
+
+    agent_definitions_dir: Path
+    agent_registry: AgentRegistry
+    router: Router
+    conversations: ConversationStore
+    sessions: object
+    new_id: object
+    clock: object
+
+
+def make_chat_run(wiring: ChatWiringDeps) -> ChatRun:
     """Builds the plain `ChatRun` callable `chat_ops.make_chat_send_handler`
-    needs (ADR-044) — `api` may not import `kang.agents`, so this
-    closure, not the handler itself, is where `run_cognitive_agent` is
+    needs (ADR-044/046) — `api` may not import `kang.agents`, so this
+    closure, not the handler itself, is where `run_chat_turn` is
     actually called. Reads the real `chat` `AgentDefinition` from the
     registry on every call (never cached) — the same "always the
     current, validated definition" posture every other registry lookup
     in this codebase already has."""
 
     def read_prompt(agent) -> str:
-        return (agent_definitions_dir / agent.id / agent.prompt_file).read_text(
-            encoding="utf-8"
-        )
+        path = wiring.agent_definitions_dir / agent.id / agent.prompt_file
+        return path.read_text(encoding="utf-8")
 
-    deps = CognitiveExecutorDeps(
-        route=router.route,
-        read_prompt=read_prompt,
-        sessions=sessions,
-        new_id=new_id,
-        clock=clock,
+    deps = ChatTurnDeps(
+        cognitive=CognitiveExecutorDeps(
+            route=wiring.router.route,
+            read_prompt=read_prompt,
+            sessions=wiring.sessions,
+            new_id=wiring.new_id,
+            clock=wiring.clock,
+        ),
+        conversations=wiring.conversations,
     )
 
-    def chat_run(message: str, context_chips: list[str]) -> dict:
-        agent = agent_registry.get("chat")
+    def chat_run(
+        message: str, context_chips: list[str], conversation_id: str | None
+    ) -> dict:
+        agent = wiring.agent_registry.get("chat")
         if agent is None:
             raise KeyError(
                 "chat.send was registered but no 'chat' agent exists in "
                 "the AgentRegistry — a wiring defect, not a runtime "
                 "condition to degrade past"
             )
-        return run_cognitive_agent(agent, message, context_chips, deps).response
+        return run_chat_turn(agent, message, context_chips, conversation_id, deps)
 
     return chat_run

@@ -13,10 +13,13 @@ import pytest
 
 from kang.adapters.fakes.api_stores import FakeSessionStore
 from kang.adapters.fakes.clock import FakeClock
+from kang.adapters.fakes.conversation_store import FakeConversationStore
 from kang.agents.runtime.executor import (
     AgentRunResult,
+    ChatTurnDeps,
     CognitiveExecutorDeps,
     ExecutorDeps,
+    run_chat_turn,
     run_cognitive_agent,
     run_mechanical_agent,
 )
@@ -27,6 +30,7 @@ from kang.domain.ports.agent_definition import (
     MechanicalAgentNotSupported,
     ToolNotAllowed,
 )
+from kang.domain.ports.conversation_store import ConversationNotFound, Message
 from kang.domain.ports.model_provider import (
     ModelResult,
     NoProviderAvailable,
@@ -225,15 +229,17 @@ def _cognitive_deps(
 
 def test_run_cognitive_agent_refuses_a_mechanical_agent_before_any_route_call():
     route = _RecordingRoute()
+    deps = _cognitive_deps(route=route)
     with pytest.raises(MechanicalAgentNotSupported):
-        run_cognitive_agent(MECHANICAL_AGENT, "hi", [], _cognitive_deps(route=route))
+        run_cognitive_agent(MECHANICAL_AGENT, "hi", [], (), deps)
     assert route.calls == []
 
 
 def test_run_cognitive_agent_refuses_a_non_empty_tools_allowlist():
     route = _RecordingRoute()
+    deps = _cognitive_deps(route=route)
     with pytest.raises(CognitiveToolLoopNotSupported, match="notify:digest"):
-        run_cognitive_agent(COGNITIVE_AGENT, "hi", [], _cognitive_deps(route=route))
+        run_cognitive_agent(COGNITIVE_AGENT, "hi", [], (), deps)
     assert route.calls == []
 
 
@@ -243,7 +249,7 @@ def test_run_cognitive_agent_composes_persona_plus_chips_plus_message():
         latency_ms=1,
     ))
     run_cognitive_agent(
-        CHAT_AGENT, "what's today?", ["chip one", "chip two"],
+        CHAT_AGENT, "what's today?", ["chip one", "chip two"], (),
         _cognitive_deps(route=route),
     )
     assert len(route.calls) == 1
@@ -257,8 +263,40 @@ def test_run_cognitive_agent_composes_persona_plus_chips_plus_message():
     assert "what's today?" in prompt
 
 
+def test_run_cognitive_agent_composes_prior_history_oldest_first():
+    route = _RecordingRoute(ModelResult(
+        text="ok", structured=None, tokens_in=1, tokens_out=1, cost_usd=0.0,
+        latency_ms=1,
+    ))
+    history = (
+        Message(
+            id="m1", conversation_id="c1", role="kang", content="first turn", at="t1",
+        ),
+        Message(
+            id="m2", conversation_id="c1", role="agent", content="first reply", at="t2",
+        ),
+    )
+    deps = _cognitive_deps(route=route)
+    run_cognitive_agent(CHAT_AGENT, "second turn", [], history, deps)
+    _, prompt = route.calls[0]
+    first_turn_pos = prompt.index("first turn")
+    first_reply_pos = prompt.index("first reply")
+    second_turn_pos = prompt.index("second turn")
+    assert first_turn_pos < first_reply_pos < second_turn_pos
+
+
+def test_run_cognitive_agent_with_no_history_says_so_rather_than_omitting_the_section():
+    route = _RecordingRoute(ModelResult(
+        text="ok", structured=None, tokens_in=1, tokens_out=1, cost_usd=0.0,
+        latency_ms=1,
+    ))
+    run_cognitive_agent(CHAT_AGENT, "hi", [], (), _cognitive_deps(route=route))
+    _, prompt = route.calls[0]
+    assert "(none yet)" in prompt
+
+
 def test_run_cognitive_agent_returns_the_real_reply_on_success():
-    result = run_cognitive_agent(CHAT_AGENT, "hi", [], _cognitive_deps())
+    result = run_cognitive_agent(CHAT_AGENT, "hi", [], (), _cognitive_deps())
     assert isinstance(result, AgentRunResult)
     assert result.agent_id == "chat"
     assert result.operation == "model.call"
@@ -270,22 +308,92 @@ def test_run_cognitive_agent_returns_the_real_reply_on_success():
 )
 def test_run_cognitive_agent_degrades_never_inventing_a_reply(exc):
     route = _RecordingRoute(raises=exc)
-    result = run_cognitive_agent(CHAT_AGENT, "hi", [], _cognitive_deps(route=route))
+    deps = _cognitive_deps(route=route)
+    result = run_cognitive_agent(CHAT_AGENT, "hi", [], (), deps)
     assert result.response == {"reply": CHAT_AGENT.degradation, "degraded": True}
 
 
 def test_run_cognitive_agent_propagates_provider_refused():
     route = _RecordingRoute(raises=ProviderRefused("bad request"))
+    deps = _cognitive_deps(route=route)
     with pytest.raises(ProviderRefused):
-        run_cognitive_agent(CHAT_AGENT, "hi", [], _cognitive_deps(route=route))
+        run_cognitive_agent(CHAT_AGENT, "hi", [], (), deps)
 
 
 def test_run_cognitive_agent_mints_a_non_first_party_agent_session():
     sessions = FakeSessionStore()
     clock = FakeClock()
     deps = _cognitive_deps(sessions=sessions, clock=clock)
-    run_cognitive_agent(CHAT_AGENT, "hi", [], deps)
+    run_cognitive_agent(CHAT_AGENT, "hi", [], (), deps)
     [session] = sessions._by_token.values()
     assert session.principal == "agent:chat"
     assert session.first_party is False  # SEC-003 by construction, no special case
     assert session.created_at == clock.now().isoformat()
+
+
+# ---- run_chat_turn (ADR-046) -----------------------------------------------
+
+
+def _chat_turn_deps(route=None, conversations=None, sessions=None, clock=None):
+    return ChatTurnDeps(
+        cognitive=_cognitive_deps(route=route, sessions=sessions, clock=clock),
+        conversations=(
+            conversations if conversations is not None else FakeConversationStore()
+        ),
+    )
+
+
+def test_run_chat_turn_with_no_conversation_id_mints_one_and_starts_it():
+    conversations = FakeConversationStore()
+    result = run_chat_turn(
+        CHAT_AGENT, "hi", [], None, _chat_turn_deps(conversations=conversations)
+    )
+    assert result["conversation_id"]
+    assert conversations.get(result["conversation_id"]) is not None
+
+
+def test_run_chat_turn_raises_conversation_not_found_for_an_unknown_id():
+    with pytest.raises(ConversationNotFound):
+        run_chat_turn(CHAT_AGENT, "hi", [], "ghost", _chat_turn_deps())
+
+
+def test_run_chat_turn_persists_kangs_message_then_the_reply_in_order():
+    conversations = FakeConversationStore()
+    result = run_chat_turn(
+        CHAT_AGENT, "hi", [], None, _chat_turn_deps(conversations=conversations)
+    )
+    messages = conversations.recent_messages(result["conversation_id"], 20)
+    assert [(m.role, m.content) for m in messages] == [
+        ("kang", "hi"), ("agent", "a reply"),
+    ]
+
+
+def test_run_chat_turn_persists_a_degraded_reply_as_kang_system_not_agent():
+    route = _RecordingRoute(raises=ProviderUnavailable("down"))
+    conversations = FakeConversationStore()
+    result = run_chat_turn(
+        CHAT_AGENT, "hi", [], None,
+        _chat_turn_deps(route=route, conversations=conversations),
+    )
+    messages = conversations.recent_messages(result["conversation_id"], 20)
+    assert messages[-1].role == "kang_system"
+    assert messages[-1].content == CHAT_AGENT.degradation
+    assert result["degraded"] is True
+
+
+def test_run_chat_turn_continuing_a_conversation_includes_its_own_prior_history():
+    conversations = FakeConversationStore()
+    route = _RecordingRoute(ModelResult(
+        text="second reply", structured=None, tokens_in=1, tokens_out=1,
+        cost_usd=0.0, latency_ms=1,
+    ))
+    deps = _chat_turn_deps(conversations=conversations)
+    first = run_chat_turn(CHAT_AGENT, "first turn", [], None, deps)
+
+    deps2 = _chat_turn_deps(route=route, conversations=conversations)
+    run_chat_turn(CHAT_AGENT, "second turn", [], first["conversation_id"], deps2)
+
+    _, prompt = route.calls[0]
+    assert "first turn" in prompt
+    assert "a reply" in prompt  # the first turn's own real reply text
+    assert "second turn" in prompt

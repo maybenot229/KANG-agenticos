@@ -135,7 +135,7 @@ PRAGMA cache_size  = -65536;       -- 64 MB page cache per connection
 
 ### Decision DB-003 — UUIDv7 as lowercase TEXT
 
-**Decision.** Every synchronizable entity's primary key is a UUIDv7, stored as 36-char lowercase TEXT. Local-only rows (job_run, model_call) MAY use `INTEGER PRIMARY KEY` rowids.
+**Decision.** Every synchronizable entity's primary key is a UUIDv7, stored as 36-char lowercase TEXT. Local-only rows (job_run, model_call) MAY use `INTEGER PRIMARY KEY` rowids. `conversation`/`message` (§5.5) are a third case, named there by ADR-046: UUIDv7 TEXT identity for stable cross-reference, but exempt from the sync quartet — neither fully synchronizable nor local-only in the sense the two rules above describe.
 
 **Why UUIDv7:** time-ordered (index-friendly inserts, meaningful default sort), collision-free across future devices (D009 — retrofit is brutal, adopt at v0.1), standard.
 **Why TEXT not BLOB(16):** inspectability (Principle 1.4.4 — Kang reads his own DB); joins remain human-debuggable; the size cost (~20 bytes/row×keys) is irrelevant at Part XIV scale. Transparency beats 16 bytes.
@@ -527,6 +527,21 @@ CREATE TABLE model_call (            -- usage & cost ledger (D010)
   at TEXT NOT NULL
 );
 
+-- Corrected by ADR-046 (2026-09-16): TEXT/UUIDv7 ids here look
+-- "synchronizable" per DB-003, but neither table carries the sync
+-- quartet (device_id/revision) Part X §1 requires of a synchronizable
+-- row, and neither is named in DB-003's own local-only exemption list
+-- (job_run, model_call — both INTEGER PRIMARY KEY) either. Resolved as
+-- a third category DB-003's own binary didn't yet name: UUIDv7 TEXT
+-- identity for stable cross-reference (from_conversation, §9.1, must
+-- survive transcript purge as an id-only reference in the same id
+-- space every other entity uses) — but no sync quartet, because a
+-- conversation/message row is single-writer, append-only, and
+-- retention-purged (§7.1), never a field two devices would race to
+-- edit differently. Not a conflict-resolution candidate; not local-
+-- only either (an INTEGER rowid could never serve as a stable
+-- cross-entity reference). A real third shape, named explicitly here
+-- rather than silently matched to either existing pattern.
 CREATE TABLE conversation (          -- metadata; transcript retention per Memory §7.1
   id TEXT PRIMARY KEY, started TEXT NOT NULL, last_message TEXT NOT NULL,
   title TEXT, message_count INTEGER NOT NULL DEFAULT 0,
