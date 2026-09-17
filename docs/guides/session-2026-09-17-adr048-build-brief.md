@@ -99,8 +99,8 @@ Home for DDL-level tests: `tests/integration/sqlite/` (13 §2.3 — adapters aga
 
 ## 6. Commits (CLAUDE.md; Kang's standing instruction)
 
-- The acceptance of ADR-048, its INDEX row, and this brief are **uncommitted** as of this writing. Make them the first commit: `docs(adr): accept ADR-048 - the memory truth schema` (the same shape as `docs(adr): accept ADR-042`).
-- The implementation is the second commit, detailed and honest in the style of `git log`'s recent entries: what changed, what was found, what is proven, what is deferred (D4's list).
+- The acceptance of ADR-048, its INDEX row, and this brief are already committed locally (`44e9f00`, `docs(adr): accept ADR-048 - the memory truth schema`). Start from that commit on `main`; `git status` should be clean before you touch anything.
+- The implementation is one commit, detailed and honest in the style of `git log`'s recent entries: what changed, what was found, what is proven, what is deferred (D4's list).
 - **Never push.** Every commit this whole stretch has stayed local until Kang says otherwise.
 - End commit messages with the attribution line the session's system reminder gives you.
 - Do not accept, reopen, or re-decide any ADR. If something in ADR-048 turns out to be wrong against the real database, stop, write down exactly what you found, and ask Kang.
