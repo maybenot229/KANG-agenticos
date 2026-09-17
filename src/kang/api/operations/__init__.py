@@ -35,6 +35,7 @@ from kang.api.operations.consequential import (
     ConfirmationRequest,
     require_confirmation,
 )
+from kang.api.operations.conversation_ops import make_conversation_purge_handler
 from kang.api.operations.deadline_ops import (
     DEADLINES_PRINCIPAL,
     make_deadline_create_handler,
@@ -116,6 +117,7 @@ __all__ = [
     "make_chat_send_handler",
     "make_competition_create_handler",
     "make_competition_list_handler",
+    "make_conversation_purge_handler",
     "make_deadline_create_handler",
     "make_deadline_list_handler",
     "make_deadline_sweep_handler",

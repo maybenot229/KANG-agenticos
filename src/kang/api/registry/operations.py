@@ -33,6 +33,10 @@ from kang.api.schemas.competition import (
     CompetitionListRequest,
     CompetitionListResponse,
 )
+from kang.api.schemas.conversation import (
+    ConversationPurgeRequest,
+    ConversationPurgeResponse,
+)
 from kang.api.schemas.deadline import (
     DeadlineCreateRequest,
     DeadlineCreateResponse,
@@ -288,6 +292,18 @@ OPERATIONS: tuple[dict[str, Any], ...] = (
         "Alert every tracked deadline whose lead threshold has been crossed.",
         schemas=OperationSchemas(
             request=DeadlineSweepRequest, response=DeadlineSweepResponse
+        ),
+    ),
+    # ADR-047: memory_steward's own first real tool — purges conversation
+    # transcripts past CONVERSATION_RETENTION_DAYS (90d, 06_MEMORY §7.1).
+    _op(
+        "conversation.purge",
+        "command",
+        "conversations.purge",
+        True,
+        "Purge conversation transcripts past the retention threshold.",
+        schemas=OperationSchemas(
+            request=ConversationPurgeRequest, response=ConversationPurgeResponse
         ),
     ),
     # deadline.list: added 2026-08-05 for the dashboard's Zone 2 (09_UI §4).

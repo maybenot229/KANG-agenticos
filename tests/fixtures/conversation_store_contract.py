@@ -81,3 +81,37 @@ class ConversationStoreContract:
         conv1_messages = store.recent_messages("conv-1", limit=20)
         assert [m.content for m in conv1_messages] == ["for conv-1"]
         assert store.recent_messages("conv-2", limit=20) == ()
+
+    def test_purge_stale_deletes_messages_but_keeps_the_conversation_id(self, store):
+        store.start("conv-1", _T0)
+        store.append_message("conv-1", "msg-1", "kang", "old", _T1)
+
+        purged = store.purge_stale(cutoff="2026-12-01T00:00:00Z")
+
+        assert purged == ("conv-1",)
+        conversation = store.get("conv-1")
+        assert conversation.id == "conv-1"
+        assert conversation.purged is True
+        assert store.recent_messages("conv-1", limit=20) == ()
+
+    def test_purge_stale_leaves_conversations_at_or_after_the_cutoff(self, store):
+        store.start("conv-1", _T0)
+        store.append_message("conv-1", "msg-1", "kang", "recent", _T1)
+
+        purged = store.purge_stale(cutoff="2020-01-01T00:00:00Z")
+
+        assert purged == ()
+        conversation = store.get("conv-1")
+        assert conversation.purged is False
+        assert [m.content for m in store.recent_messages("conv-1", limit=20)] == [
+            "recent"
+        ]
+
+    def test_purge_stale_is_idempotent_on_an_already_purged_conversation(self, store):
+        store.start("conv-1", _T0)
+        store.append_message("conv-1", "msg-1", "kang", "old", _T1)
+        first = store.purge_stale(cutoff="2026-12-01T00:00:00Z")
+        second = store.purge_stale(cutoff="2026-12-01T00:00:00Z")
+
+        assert first == ("conv-1",)
+        assert second == ()

@@ -47,6 +47,7 @@ __all__ = [
     "BACKUP_OFFSITE_CHECK_JOB",
     "BACKUP_SNAPSHOT_JOB",
     "BACKUP_VERIFY_JOB",
+    "CONVERSATION_PURGE_JOB",
     "DEADLINE_SWEEP_JOB",
     "HELD_ACTION_EXPIRE_JOB",
     "JOB_OPERATIONS",
@@ -70,6 +71,12 @@ BACKUP_VERIFY_JOB = "backup_verify"  # 05 Appendix E name (ADR-032)
 BACKUP_OFFSITE_CHECK_JOB = "backup_offsite_check"  # ADR-034 — Appendix E
 #   itemizes no job for this (ADR-034's own Context section); named to
 #   match the existing backup.* family, not invented from nothing.
+CONVERSATION_PURGE_JOB = "conversation_purge"  # ADR-047 — fills Appendix
+#   E's `memory_steward.nightly` row (daily, run_once_latest); named
+#   task-shaped like every other row in this table (`deadline_sweep`,
+#   `backup_snapshot`, ...) rather than reusing that row's own
+#   agent-dotted spelling, matching backup_offsite_check's own
+#   precedent for a slot the table names by cadence, not by job id.
 
 TICK_INTERVAL_S = 60  # ADR-019: how often the live tick re-runs catch-up.
 # A plain constant, not a kang.toml key — nothing has asked to tune this
@@ -92,6 +99,7 @@ JOB_OPERATIONS: dict[str, str] = {
     "backup_snapshot": "backup.snapshot",  # ADR-031
     "backup_verify": "backup.verify",  # ADR-032
     "backup_offsite_check": "backup.offsite_check",  # ADR-034
+    "conversation_purge": "conversation.purge",  # ADR-047
 }
 
 # ADR-043/045: jobs whose real scheduled trigger runs through the
@@ -113,6 +121,7 @@ AGENT_ROUTED_JOBS: dict[str, str] = {
     BACKUP_SNAPSHOT_JOB: "backup_monitor",
     BACKUP_VERIFY_JOB: "backup_monitor",
     BACKUP_OFFSITE_CHECK_JOB: "backup_monitor",
+    CONVERSATION_PURGE_JOB: "memory_steward",  # ADR-047
 }
 
 
@@ -322,13 +331,32 @@ def _wire_scheduler(wiring: _SchedulerWiring):
 
 
 def _register_scheduled_jobs(job_store, triggers, clock) -> None:
-    """The five job rows `_wire_scheduler` registers on every boot (11 §4
-    — split into two families purely to keep both this function and
+    """The six job rows `_wire_scheduler` registers on every boot (11 §4
+    — split into families purely to keep both this function and
     `_wire_scheduler` under the size lint's line limit; neither split is
     a domain concept of its own, same reasoning `_build_stores`/
     `_build_bus_wiring` were extracted for)."""
     _register_planning_jobs(job_store, triggers, clock)
     _register_backup_jobs(job_store, clock)
+    _register_memory_steward_jobs(job_store, clock)
+
+
+def _register_memory_steward_jobs(job_store, clock) -> None:
+    """conversation_purge (ADR-047) — the first real job filling
+    Appendix E's `memory_steward.nightly` slot."""
+    job_store.register_job(
+        Job(
+            id=CONVERSATION_PURGE_JOB,
+            name=CONVERSATION_PURGE_JOB,
+            # 05 Appendix E: daily, run_once_latest — a missed week's
+            # worth of nights still only needs one sweep of whatever is
+            # now stale, not N redundant sweeps (ADR-031's own reasoning
+            # for backup_snapshot, reused here).
+            schedule="daily",
+            catch_up="run_once_latest",
+            created_at=clock.now(),
+        )
+    )
 
 
 def _register_planning_jobs(job_store, triggers, clock) -> None:

@@ -101,3 +101,14 @@ class ConversationStore(Protocol):
         or empty conversation; this port does not raise on that case,
         callers that care about existence use `get` first."""
         ...
+
+    def purge_stale(self, cutoff: str) -> tuple[str, ...]:
+        """ADR-047: delete every `message` row belonging to a
+        conversation whose `last_message < cutoff` and `purged = 0`,
+        set that conversation's own `purged = 1` (id survives for
+        06_MEMORY §9.1's future `from_conversation` link, transcript
+        does not — `07_DATABASE.md`'s own DDL comment on `purged`).
+        Returns the purged conversation ids. Already-purged
+        conversations are untouched (idempotent re-runs purge nothing
+        new)."""
+        ...

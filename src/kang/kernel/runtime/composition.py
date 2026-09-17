@@ -75,6 +75,7 @@ from kang.api.operations import (
     make_backup_verify_handler,
     make_chat_send_handler,
     make_competition_create_handler,
+    make_conversation_purge_handler,
     make_deadline_create_handler,
     make_deadline_sweep_handler,
     make_goal_achieve_handler,
@@ -296,6 +297,7 @@ def _build_handlers(w: _HandlerWiring) -> dict:
         "deadline.sweep": make_deadline_sweep_handler(
             w.bus, w.deadline_store, w.clock, w.new_id, w.device_id
         ),
+        "conversation.purge": make_conversation_purge_handler(w.conversations, w.clock),
         "notification.ack": make_notification_ack_handler(
             w.notification_store, w.clock
         ),

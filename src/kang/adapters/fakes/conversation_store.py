@@ -70,3 +70,16 @@ class FakeConversationStore:
     def recent_messages(self, conversation_id: str, limit: int) -> tuple[Message, ...]:
         messages = self._messages.get(conversation_id, [])
         return tuple(messages[-limit:]) if limit > 0 else ()
+
+    def purge_stale(self, cutoff: str) -> tuple[str, ...]:
+        stale_ids = tuple(
+            conversation_id
+            for conversation_id, conversation in self._conversations.items()
+            if not conversation.purged and conversation.last_message < cutoff
+        )
+        for conversation_id in stale_ids:
+            self._messages[conversation_id] = []
+            self._conversations[conversation_id] = replace(
+                self._conversations[conversation_id], purged=True
+            )
+        return stale_ids

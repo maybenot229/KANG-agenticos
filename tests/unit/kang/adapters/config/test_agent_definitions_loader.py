@@ -259,6 +259,13 @@ def test_the_shipped_real_definitions_load_cleanly():
     # pipeline list once ADR-042 shipped that data to check it against.
     assert by_id["notifier"].pipelines == ("competition_intake", "weekly_close")
     assert by_id["memory_steward"].pipelines == ("weekly_close",)
+    # ADR-047: memory_steward's first real, resolved tool sits alongside
+    # its two still-illustrative ones (its real mandate is Phase 2).
+    assert by_id["memory_steward"].tools == (
+        "conversation.purge",
+        "gate.client",
+        "notify:digest",
+    )
     # ADR-044: chat is cognitive, zero tools, zero escalation, and has no
     # pipeline membership yet (no real pipeline names it as a step).
     assert by_id["chat"].kind == "cognitive"

@@ -22,6 +22,7 @@ from pathlib import Path
 from kang.adapters.fakes.clock import FakeClock
 from kang.adapters.sqlite.backup_service import SqliteBackupService
 from kang.adapters.sqlite.connection import open_connection
+from kang.adapters.sqlite.conversation_store import SqliteConversationStore
 from kang.adapters.sqlite.held_action_store import SqliteHeldActionStore
 from kang.domain.ports.held_action import HeldAction
 from kang.kernel.runtime.composition import build_core
@@ -29,6 +30,7 @@ from kang.kernel.runtime.scheduler_wiring import (
     BACKUP_OFFSITE_CHECK_JOB,
     BACKUP_SNAPSHOT_JOB,
     BACKUP_VERIFY_JOB,
+    CONVERSATION_PURGE_JOB,
     DEADLINE_SWEEP_JOB,
     HELD_ACTION_EXPIRE_JOB,
     MORNING_PLAN_JOB,
@@ -330,6 +332,60 @@ def test_backup_snapshot_is_registered_and_a_real_boot_takes_a_real_snapshot(tmp
     finally:
         restored.close()
     assert {"task", "job", "schema_version"} <= tables
+
+
+def test_conversation_purge_is_registered_and_a_real_boot_purges_a_stale_conversation(
+    tmp_path,
+):
+    """ADR-047: conversation_purge is a real seventh job, filling
+    Appendix E's `memory_steward.nightly` slot for the first time.
+    Proves the write actually happened, not that a job_run row exists:
+    a real, 100-day-old conversation seeded before boot must genuinely
+    lose its transcript, and a recent one must survive untouched."""
+    _seed_config(tmp_path)
+    build_core(tmp_path).close()  # creates schema, registers all jobs
+
+    old_at = (datetime.now(timezone.utc) - timedelta(days=100)).isoformat()
+    recent_at = datetime.now(timezone.utc).isoformat()
+    conn = open_connection(tmp_path / "kang.db")
+    try:
+        store = SqliteConversationStore(conn)
+        store.start("conv-old", old_at)
+        store.append_message("conv-old", "msg-old", "kang", "old", old_at)
+        store.start("conv-recent", recent_at)
+        store.append_message("conv-recent", "msg-recent", "kang", "recent", recent_at)
+    finally:
+        conn.close()
+
+    _register_job_then_backdate_it(tmp_path, days=2, job_id=CONVERSATION_PURGE_JOB)
+    assert _job_run_count(tmp_path, CONVERSATION_PURGE_JOB) == 0
+
+    server = _Server(tmp_path)
+    try:
+        server.wait_ready()
+        assert _job_run_count(tmp_path, CONVERSATION_PURGE_JOB) == 1
+        assert _job_run_outcome(tmp_path, CONVERSATION_PURGE_JOB) == "ok"
+        # ADR-047: routed through the mechanical-agent envelope, under
+        # memory_steward's own first real grant — never kernel:scheduler.
+        assert _invocation_principal(tmp_path, "conversation.purge") == (
+            "agent:memory_steward"
+        )
+    finally:
+        server.stop()
+
+    conn = open_connection(tmp_path / "kang.db")
+    try:
+        store = SqliteConversationStore(conn)
+        old = store.get("conv-old")
+        assert old.purged is True
+        assert store.recent_messages("conv-old", limit=20) == ()
+        recent = store.get("conv-recent")
+        assert recent.purged is False
+        assert [m.content for m in store.recent_messages("conv-recent", limit=20)] == [
+            "recent"
+        ]
+    finally:
+        conn.close()
 
 
 def test_backup_verify_is_registered_and_a_real_boot_restore_tests_a_real_snapshot(

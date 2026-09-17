@@ -93,3 +93,11 @@
 # same directory, ADR-031/032); backups.read covers the third (ADR-034 D2
 # — it writes no file, a genuinely different scope, not a duplicate).
 "agent:backup_monitor" = ["backups.write", "backups.read"]
+
+# ADR-047 (2026-09-17): memory_steward's real, scheduled trigger for
+# Appendix E's `memory_steward.nightly` slot — conversation_purge — now
+# runs through the mechanical-agent envelope. Its own first real grant;
+# the rest of memory_steward's declared mandate (janitor/dedup/
+# consolidation) stays Phase 2, not yet real, so nothing else is granted
+# here yet.
+"agent:memory_steward" = ["conversations.purge"]

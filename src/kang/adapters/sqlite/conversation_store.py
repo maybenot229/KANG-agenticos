@@ -120,3 +120,28 @@ class SqliteConversationStore:
             (conversation_id, limit),
         ).fetchall()
         return tuple(_row_to_message(row) for row in reversed(rows))
+
+    def purge_stale(self, cutoff: str) -> tuple[str, ...]:
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            rows = self._conn.execute(
+                "SELECT id FROM conversation WHERE purged = 0 AND last_message < ?",
+                (cutoff,),
+            ).fetchall()
+            ids = tuple(row[0] for row in rows)
+            if ids:
+                placeholders = ",".join("?" for _ in ids)
+                self._conn.execute(
+                    f"DELETE FROM message WHERE conversation_id IN ({placeholders})",
+                    ids,
+                )
+                self._conn.execute(
+                    f"UPDATE conversation SET purged = 1 WHERE id IN ({placeholders})",
+                    ids,
+                )
+            self._conn.execute("COMMIT")
+        except sqlite3.Error:
+            if self._conn.in_transaction:
+                self._conn.execute("ROLLBACK")
+            raise
+        return ids

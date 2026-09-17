@@ -2,15 +2,23 @@
 # with a declared cognitive escalation (§1.2's `M→C` shape): janitor,
 # dedup, and weekly consolidation are deterministic; pattern extraction
 # is the one step that may escalate to a model call, and skips cleanly
-# when one isn't available. `tools` transcribes Appendix A's own
-# illustrative prose (`gate.client` for "gate client") — not resolved
-# to real operations (no executor runs this agent yet).
+# when one isn't available.
+#
+# Corrected by ADR-047 (2026-09-17): `tools`' first entry,
+# "conversation.purge", is real — resolved, registered, the exact
+# operation `memory_steward.nightly` (Appendix E) now really runs.
+# "gate.client" and "notify:digest" stay exactly what they always were:
+# illustrative prose transcribed from Appendix A, not yet resolved to
+# real operations (AG-005 defers this; memory_steward's own janitor/
+# dedup/consolidation mandate is Phase 2, not started). Said plainly
+# rather than smoothed over: this definition now carries one real tool
+# and two still-illustrative ones side by side, on purpose.
 
 id = "memory_steward"
 kind = "mechanical"
 mandate = "Janitor, dedup, weekly consolidation, pattern extraction (06_MEMORY Part VI)"
 triggers = ["sched:nightly", "sched:weekly", "sched:monthly"]
-tools = ["gate.client", "notify:digest"]
+tools = ["conversation.purge", "gate.client", "notify:digest"]
 scopes = ["memory.propose:lesson", "memory.propose:preference", "memory.propose:observation"]
 timeout_s = 1800
 retry = 1
