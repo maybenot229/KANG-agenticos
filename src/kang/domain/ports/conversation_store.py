@@ -102,6 +102,15 @@ class ConversationStore(Protocol):
         callers that care about existence use `get` first."""
         ...
 
+    def list_recent(self, limit: int) -> tuple[Conversation, ...]:
+        """The `limit` most recently active conversations (by
+        `last_message`), newest first — mirroring `InvocationStore.
+        recent()`'s own "new list surface, not cursor-paginated"
+        shape (API-008 names cursor pagination as the default; this
+        is a named, open gap, not a silent omission). Purged
+        conversations (nothing left to read) are excluded."""
+        ...
+
     def purge_stale(self, cutoff: str) -> tuple[str, ...]:
         """ADR-047: delete every `message` row belonging to a
         conversation whose `last_message < cutoff` and `purged = 0`,

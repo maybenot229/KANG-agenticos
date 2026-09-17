@@ -38,6 +38,10 @@ EXPECTED_QUERY_HANDLER_NAMES = frozenset(
         "competition.list",
         "milestone.list",
         "goal.list",
+        # ADR-047: conversation.list/message.list (02_PRODUCT_
+        # REQUIREMENTS.md:697's "Conversation history" system view).
+        "conversation.list",
+        "message.list",
     }
 )
 
@@ -49,7 +53,7 @@ class _FakeHandlerWiring:
     permission_engine: object = None
 
 
-def test_build_query_handlers_covers_exactly_the_16_read_pool_operations():
+def test_build_query_handlers_covers_exactly_the_18_read_pool_operations():
     handlers = _build_query_handlers(_FakeHandlerWiring())
     assert set(handlers) == EXPECTED_QUERY_HANDLER_NAMES
     assert "system.health" not in handlers  # the one named exception

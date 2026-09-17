@@ -121,6 +121,14 @@ class SqliteConversationStore:
         ).fetchall()
         return tuple(_row_to_message(row) for row in reversed(rows))
 
+    def list_recent(self, limit: int) -> tuple[Conversation, ...]:
+        rows = self._conn.execute(
+            f"SELECT {_CONVERSATION_COLUMNS} FROM conversation WHERE purged = 0 "
+            "ORDER BY last_message DESC, id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return tuple(_row_to_conversation(row) for row in rows)
+
     def purge_stale(self, cutoff: str) -> tuple[str, ...]:
         self._conn.execute("BEGIN IMMEDIATE")
         try:

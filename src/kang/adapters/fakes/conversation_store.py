@@ -71,6 +71,11 @@ class FakeConversationStore:
         messages = self._messages.get(conversation_id, [])
         return tuple(messages[-limit:]) if limit > 0 else ()
 
+    def list_recent(self, limit: int) -> tuple[Conversation, ...]:
+        active = [c for c in self._conversations.values() if not c.purged]
+        active.sort(key=lambda c: (c.last_message, c.id), reverse=True)
+        return tuple(active[:limit])
+
     def purge_stale(self, cutoff: str) -> tuple[str, ...]:
         stale_ids = tuple(
             conversation_id

@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING
 
 from kang.adapters.sqlite.competition_store import SqliteCompetitionStore
 from kang.adapters.sqlite.connection_pool import ReadPool, WriteExecutor
+from kang.adapters.sqlite.conversation_store import SqliteConversationStore
 from kang.adapters.sqlite.deadline_store import SqliteDeadlineStore
 from kang.adapters.sqlite.goal_store import SqliteGoalStore
 from kang.adapters.sqlite.held_action_store import SqliteHeldActionStore
@@ -38,12 +39,14 @@ from kang.api.errors import ApiError
 from kang.api.operations import (
     make_audit_list_handler,
     make_competition_list_handler,
+    make_conversation_list_handler,
     make_deadline_list_handler,
     make_explain_invocation_handler,
     make_explain_stub_handler,
     make_goal_list_handler,
     make_held_action_list_handler,
     make_invocation_list_handler,
+    make_message_list_handler,
     make_milestone_list_handler,
     make_permission_list_handler,
     make_project_list_handler,
@@ -94,6 +97,12 @@ def _build_query_handlers(w: "_HandlerWiring") -> dict:
         "audit.list": lambda conn: make_audit_list_handler(w.audit, w.clock),
         "invocation.list": lambda conn: make_invocation_list_handler(
             SqliteInvocationStore(conn)
+        ),
+        "conversation.list": lambda conn: make_conversation_list_handler(
+            SqliteConversationStore(conn)
+        ),
+        "message.list": lambda conn: make_message_list_handler(
+            SqliteConversationStore(conn)
         ),
         "held_action.list": lambda conn: make_held_action_list_handler(
             SqliteHeldActionStore(conn)

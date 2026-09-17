@@ -82,6 +82,31 @@ class ConversationStoreContract:
         assert [m.content for m in conv1_messages] == ["for conv-1"]
         assert store.recent_messages("conv-2", limit=20) == ()
 
+    def test_list_recent_orders_newest_last_message_first(self, store):
+        store.start("conv-1", _T0)
+        store.start("conv-2", _T0)
+        store.append_message("conv-1", "msg-1", "kang", "first", _T1)
+        store.append_message("conv-2", "msg-2", "kang", "second", _T2)
+
+        listed = store.list_recent(limit=20)
+
+        assert [c.id for c in listed] == ["conv-2", "conv-1"]
+
+    def test_list_recent_respects_the_limit(self, store):
+        for i in range(5):
+            store.start(f"conv-{i}", f"2026-09-16T10:0{i}:00Z")
+
+        listed = store.list_recent(limit=2)
+
+        assert len(listed) == 2
+
+    def test_list_recent_excludes_purged_conversations(self, store):
+        store.start("conv-1", _T0)
+        store.append_message("conv-1", "msg-1", "kang", "old", _T1)
+        store.purge_stale(cutoff="2026-12-01T00:00:00Z")
+
+        assert store.list_recent(limit=20) == ()
+
     def test_purge_stale_deletes_messages_but_keeps_the_conversation_id(self, store):
         store.start("conv-1", _T0)
         store.append_message("conv-1", "msg-1", "kang", "old", _T1)

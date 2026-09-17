@@ -12,12 +12,16 @@ M4 serves the first real operations; the set grows additively (API-005) as
 each milestone adds domain surface. Event types mirror the bus registry
 (kernel/bus/event_registry) — one vocabulary, imported not re-declared.
 
-The `_op(...)` literal itself — `OPERATIONS`, `OperationChannel`,
-`OperationSchemas`, every schema import it needs — lives in
-`kang.api.registry.operations`, split out 2026-09-13 (ADR-034) once the
-operation set crossed the size lint's line limit here. `OPERATIONS` is
-re-exported below so every external caller's import path
-(`from kang.api.registry import OPERATIONS`) is unchanged.
+The `_op(...)` literal itself — `OperationChannel`, `OperationSchemas`,
+every schema import it needs — lives in `kang.api.registry.operations`,
+split out 2026-09-13 (ADR-034) once the operation set crossed the size
+lint's line limit here; a second file, `operations_ext.py`, joined it
+2026-09-17 (ADR-047) once `operations.py` itself crossed that same
+limit — same reasoning, no new concept, purely the tuple continuing.
+`OPERATIONS` is assembled HERE (the two files' tuples concatenated) and
+re-exported below so every external caller's import path (`from
+kang.api.registry import OPERATIONS`) is unchanged regardless of how
+many files the literal itself spans.
 """
 
 from __future__ import annotations
@@ -26,8 +30,25 @@ import json
 from typing import Any
 
 from kang.api.errors import ERROR_CODES
-from kang.api.registry.operations import OPERATIONS
+from kang.api.registry.operations import OPERATIONS as _CORE_OPERATIONS
+from kang.api.registry.operations_ext import EXTRA_OPERATIONS as _EXTRA_OPERATIONS
 from kang.kernel.bus.event_registry import EVENT_TYPES as _BUS_EVENT_TYPES
+
+OPERATIONS: tuple[dict[str, Any], ...] = _CORE_OPERATIONS + _EXTRA_OPERATIONS
+
+# ADR 001 Amendment's registration-time gate: an operation MUST NOT declare
+# commit_mode="redrive" until its target adapter has a proven idempotency
+# contract + conformance test. No such adapter exists yet (M4) — this loop
+# is the enforcement point for when one first tries to register. Moved here
+# (2026-09-17, ADR-047) from `operations.py` when that file's own tuple
+# stopped being the complete set — this loop must see all of it.
+for _entry in OPERATIONS:
+    if _entry["commit_mode"] == "redrive":
+        raise NotImplementedError(
+            f"{_entry['name']}: commit_mode='redrive' requires a proven "
+            "adapter idempotency contract + conformance test before "
+            "registration (ADR 001 Amendment) — none exist yet at M4"
+        )
 
 __all__ = [
     "ERROR_CODES",
