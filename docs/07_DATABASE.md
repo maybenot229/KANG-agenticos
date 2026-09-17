@@ -274,6 +274,14 @@ CREATE TABLE memory_revision (     -- edit history (Memory §8.2)
   revision   INTEGER NOT NULL,
   content    TEXT NOT NULL,
   edited_by  TEXT NOT NULL, edited_at TEXT NOT NULL,
+  -- Dated amendment (2026-09-18, ADR-048 Amendment, migration 0021): this
+  -- row is synchronizable (Part X §5 preserves LWW losers here) and so
+  -- carries its own device_id (Part X §1) — the DDL as originally written
+  -- omitted it, a third internal inconsistency of the class ADR-046 found
+  -- for conversation/message. 0020 had worked around the gap by deriving
+  -- the capture row's device from the owning memory_record; 0021 rebuilt
+  -- the table with the column and the capture trigger reads it directly.
+  device_id  TEXT NOT NULL,
   PRIMARY KEY (record_id, revision)
 );
 

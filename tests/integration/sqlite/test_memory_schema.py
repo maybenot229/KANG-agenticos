@@ -326,8 +326,21 @@ def test_memory_revision_fk_to_missing_record_is_refused(conn):
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute(
             "INSERT INTO memory_revision (record_id, revision, content, "
+            "edited_by, edited_at, device_id) VALUES "
+            "('no-such-record', 1, 'x', 'kang', '2026-09-17T00:00:00Z', 'dev-1')"
+        )
+
+
+def test_memory_revision_device_id_is_required(conn):
+    """ADR-048 Amendment (2026-09-18, migration 0021): memory_revision is a
+    synchronizable row (07 Part X §5) and carries its own device_id (Part X
+    §1) — NOT NULL, no default that could invent a device."""
+    _memory_record(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO memory_revision (record_id, revision, content, "
             "edited_by, edited_at) VALUES "
-            "('no-such-record', 1, 'x', 'kang', '2026-09-17T00:00:00Z')"
+            "('mem-1', 1, 'hello world', 'kang', '2026-09-17T00:00:00Z')"
         )
 
 
@@ -335,8 +348,8 @@ def test_memory_revision_cascades_on_record_delete(conn):
     _memory_record(conn)
     conn.execute(
         "INSERT INTO memory_revision (record_id, revision, content, "
-        "edited_by, edited_at) VALUES "
-        "('mem-1', 1, 'hello world', 'kang', '2026-09-17T00:00:00Z')"
+        "edited_by, edited_at, device_id) VALUES "
+        "('mem-1', 1, 'hello world', 'kang', '2026-09-17T00:00:00Z', 'dev-1')"
     )
     conn.execute("DELETE FROM memory_record WHERE id = 'mem-1'")
     remaining = conn.execute(
@@ -711,18 +724,22 @@ def test_memory_record_statistics_only_update_is_not_captured(conn):
     assert after == before  # D5: statistics-only writes never capture
 
 
-def test_memory_revision_insert_is_captured_with_the_owning_records_device(conn):
-    _memory_record(conn, id="mem-1", device_id="dev-xyz")
+def test_memory_revision_insert_is_captured_with_its_own_device(conn):
+    """ADR-048 Amendment (2026-09-18, migration 0021): the capture row carries
+    the EDITING device from the revision row itself — never the owning
+    record's device_id (0020's subquery workaround, now gone). The parent is
+    deliberately on a different device so the two cannot be confused."""
+    _memory_record(conn, id="mem-1", device_id="dev-parent")
     conn.execute(
         "INSERT INTO memory_revision (record_id, revision, content, "
-        "edited_by, edited_at) VALUES "
-        "('mem-1', 1, 'hello world', 'kang', '2026-09-17T00:00:00Z')"
+        "edited_by, edited_at, device_id) VALUES "
+        "('mem-1', 1, 'hello world', 'kang', '2026-09-17T00:00:00Z', 'dev-editor')"
     )
     row = conn.execute(
         "SELECT entity, entity_id, op, device_id FROM change_log "
         "WHERE entity = 'memory_revision'"
     ).fetchone()
-    assert row == ("memory_revision", "mem-1", "insert", "dev-xyz")
+    assert row == ("memory_revision", "mem-1", "insert", "dev-editor")
 
 
 def test_episode_insert_update_delete_are_each_captured(conn):

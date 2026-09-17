@@ -237,3 +237,56 @@ def test_failed_migration_leaves_no_partial_truth(tmp_path):
         conn.execute("SELECT id FROM half_done")
     assert conn.execute("SELECT COUNT(version) FROM schema_version").fetchone()[0] == 0
     conn.close()
+
+
+def test_0021_memory_revision_rebuild_is_lossless_and_captures_its_own_device(tmp_path):
+    """ADR-048 Amendment (2026-09-18): 0021 recreates `memory_revision` to
+    add its own `device_id` (07 Part X §1 — a synchronizable row). A row
+    written under 0020's shape survives with `device_id` taken from its
+    owning record (the only honest value 0020 had), the cascade survives,
+    and a row written AFTER 0021 is change-captured with the device it
+    itself carries — never the parent's (0020's subquery is gone)."""
+    all_migrations = sorted(MIGRATIONS_DIR.glob("[0-9][0-9][0-9][0-9]_*.sql"))
+    pre_0021 = [p for p in all_migrations if int(p.name[:4]) < 21]
+
+    conn = open_connection(tmp_path / "kang.db")
+    staged = tmp_path / "staged"
+    staged.mkdir()
+    for path in pre_0021:
+        shutil.copy(path, staged / path.name)
+    apply_migrations(conn, staged, FakeClock())
+
+    conn.execute(
+        "INSERT INTO memory_record (id, type, status, content, trust_tier, "
+        "source_kind, source_detail, reason, created_by, created_at, "
+        "updated_at, device_id) VALUES ('mem-1', 'fact', 'active', 'v1', 2, "
+        "'stated', 'chat', 'kang said so', 'kang', 't', 't', 'dev-parent')"
+    )
+    conn.execute(
+        "INSERT INTO memory_revision (record_id, revision, content, edited_by, "
+        "edited_at) VALUES ('mem-1', 1, 'v0', 'kang', 't0')"
+    )
+    conn.commit()
+
+    apply_migrations(conn, MIGRATIONS_DIR, FakeClock())  # applies 0021
+
+    rows = conn.execute(
+        "SELECT record_id, revision, content, device_id FROM memory_revision "
+        "ORDER BY revision"
+    ).fetchall()
+    assert rows == [("mem-1", 1, "v0", "dev-parent")]
+
+    conn.execute(
+        "INSERT INTO memory_revision (record_id, revision, content, edited_by, "
+        "edited_at, device_id) VALUES ('mem-1', 2, 'v1', 'kang', 't1', 'dev-editor')"
+    )
+    captured = conn.execute(
+        "SELECT revision, device_id FROM change_log WHERE entity = 'memory_revision' "
+        "ORDER BY seq"
+    ).fetchall()
+    assert captured[-1] == (2, "dev-editor")
+
+    conn.execute("DELETE FROM memory_record WHERE id = 'mem-1'")
+    remaining = conn.execute("SELECT COUNT(*) FROM memory_revision").fetchone()[0]
+    assert remaining == 0  # ON DELETE CASCADE survived the rebuild
+    conn.close()
