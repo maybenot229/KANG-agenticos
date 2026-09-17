@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Normative for build order and engineering process — RFC-2119 throughout; changes require an ADR; decision prefix `IM-*` (claimed in `docs/INDEX.md` §4.4)
-**Last updated:** 2026-07-12
+**Last updated:** 2026-09-17 (ADR-048: dated note at §4's Phase 2 row resolving the corpus-generator-vs-schema ordering)
 **Upstream (binding):** the entire constitution, transitively; directly: `03_ROADMAP.md` (phase law), `11_CODING_STANDARDS.md` (DoD, CI, debt), `13_TESTING.md` (suites, gates), `17_PROJECT_STRUCTURE.md` (where everything lands), `04_ARCHITECTURE.md` (D001–D016), `15_EVENT_BUS.md`, `07_DATABASE.md`, `05_AGENTS.md`, `12_API.md`
 **Role:** the bridge between architecture and engineering. It answers exactly one question: **"If a new engineer cloned the repository today, what should be built, in what order, and why?"**
 
@@ -147,6 +147,17 @@ Each milestone: **Builds / Proves / Gate (CI + checkpoint that MUST be green to 
 | **3 — Specialists** | Order within: multi-provider routing + budget ladders + emergency reserve **before** the first cognitive agent that can spend (03 §4); injection red-team suite joins CI **with** the first Tier-0-input agent, not after; agents arrive as definitions in dependency order of their pipelines (scout → strategist → critic → researcher → tutor); each agent's zero-model degradation path is built and tested **with** the agent | 03 §4 exit + provoked-quarantine drill passed + budget ladder tests green |
 | **4 — Platform** | SDK surface extracted **from** the stabilized Phase-3 interfaces (never invented ahead of them); fixture plugin + conformance suite **before** the first real plugin; the 2–3 real plugins built **inside** this phase are the SDK's acceptance test (03 §5's mitigation, sequenced as law); PL-004 deprecation duties activate only at v0.4 tag | 03 §5 exit + zero-core-diff plugin proof + conformance catches a planted SDK break |
 | **5 — Expansion** | `16_SYNC.md` written **before** any sync code (03 §6; the change_log has by now years of exercised capture); sync convergence suites extend the replay harness (13 §7) before the engine lands; each objective (sync, local models, voice, email/Chrome, consolidation, automation) is its own release with its own trigger-readiness — **calendar order between them is explicitly not defined here** | Per-objective; v1.0 readiness per §9.8 |
+
+**Dated note (2026-09-17, ADR-048 Context finding 4).** The Phase 2 row's
+"synthetic corpus generator **first**... then store schema" cannot be read
+literally: a generator that emits rows needs tables to emit into. The
+honest reading, recorded here so a later session does not re-derive it:
+the corpus generator is first among *behavioral* components and precedes
+the gate (the first policy); the schema is truth, not behavior, and
+precedes the generator that fills it (18 §7.2's own "schema-bearing truth
+precedes every policy that governs it," applied one step earlier).
+ADR-048's migration `0020` is that schema slice, landed immediately ahead
+of the corpus generator in the Phase 2 build order.
 
 ---
 

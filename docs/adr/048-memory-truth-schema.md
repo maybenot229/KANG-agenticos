@@ -1,6 +1,6 @@
 # ADR-048 — The memory truth schema: where candidates live, how derived indexes key rows, and what one migration lands
 
-**Status:** accepted (2026-09-17) — Kang's own "accept it", same session as drafting; Options 1B / 2B / 3B as recommended, D1–D5 accepted as written. **Not yet implemented** — implementation is delegated to a separate coding session; its build brief is `docs/guides/session-2026-09-17-adr048-build-brief.md`. Phase 2 does not begin until Phase 1's lived exit (03_ROADMAP §1.2/§2); accepting the decision is not the same as starting the phase.
+**Status:** accepted (2026-09-17) — Kang's own "accept it", same session as drafting; Options 1B / 2B / 3B as recommended, D1–D5 accepted as written. **Implemented (2026-09-17)** by the delegated coding session named in the build brief, `docs/guides/session-2026-09-17-adr048-build-brief.md` — see this document's own Verification section for what landed. Phase 2 does not begin until Phase 1's lived exit (03_ROADMAP §1.2/§2); landing this migration is not the same as starting the phase.
 **Date:** 2026-09-17
 **Supersedes:** none
 **Affected documents (if accepted):** `07_DATABASE.md` §5.1 (`memory_record.status` CHECK narrowed; `memory_candidate_queue`'s role fixed as the only home of a candidate — a dated amendment resolving an internal inconsistency, D1), §5.1/§5.3/§5.5 (an explicit `rowid INTEGER PRIMARY KEY` alias on the four FTS-indexed tables `memory_record`, `episode`, `vault_chunk`, `message` — D2), DB-003 (a dated clarification, not a reversal: the UUIDv7 stays the identity; the integer is storage-local — D2), §5.1 (change-capture trigger column list excludes access statistics — D5); `06_MEMORY.md` §2.1D / M-002 (a dated clarification: `candidate`/`rejected` are queue-resident states, the record table holds gate-passed records only — D1); `18_IMPLEMENTATION_MASTER_PLAN.md` §4 Phase 2 row (an ordering clarification: the schema DDL precedes the corpus generator that emits into it — Context, finding 4)
@@ -118,7 +118,11 @@ Migration `0020` (the next free number at drafting time — re-verified at write
 
 ## Verification
 
-**Not yet implemented.** This ADR is proposed; nothing in it has been built, and no test result below is claimed.
+**Implemented — see the dated paragraph at the end of this section.** The
+two paragraphs immediately below are the historical record of this ADR's
+drafting session (2026-09-17, before acceptance); left as written, not
+edited to match what was actually built, so the ADR's own before/after is
+honestly legible.
 
 **Probes run while drafting (2026-09-17, this machine only — Python 3.12.5, SQLite 3.45.3, throwaway in-memory and temp-file databases, deleted after; not CI, not a claim about any other environment):** FTS5 and JSON1 are compiled in; `enable_load_extension(True)` succeeds; an explicit `rowid INTEGER PRIMARY KEY` alias is accepted, a foreign key to the `UNIQUE` text column beside it is enforced with `PRAGMA foreign_keys=ON`, and an external-content FTS5 table keyed on it resolves; implicit rowids on a `TEXT PRIMARY KEY` table were *not* renumbered by `VACUUM` or `VACUUM INTO` on this version (the finding that makes Option 2A tempting and, against the documentation, still wrong for a ten-year system).
 
@@ -129,3 +133,69 @@ Migration `0020` (the next free number at drafting time — re-verified at write
 - 07 §5.6 — change capture fires for `memory_record`/`memory_revision`/`episode`/`link` and not for the queue or derived tables; D5 — a statistics-only update emits no capture row.
 - D2 — no port dataclass or API response schema carries the integer rowid (a structural test over the port modules, same shape as the registry's schema sweep).
 - 13 §2.8 (first line of it) — there is no table in which a candidate and an active record coexist: proven by DDL, before the gate exists.
+
+**Implemented and verified (2026-09-17, same day as acceptance, by the
+delegated coding session this ADR's own header names).** What landed:
+`migrations/0020_memory_truth_schema.sql` — `embedding_version`;
+`memory_record`/`memory_revision`/`memory_candidate_queue`/`episode` (D1's
+narrowed status, D2's rowid, the DB-005 CHECK made literal); `vault_note`/
+`vault_chunk`; `link`/`link_index`; the `message` rebuild (D2); all four
+`fts_*` tables with their sync triggers, `fts_memory`'s private exclusion,
+and change-capture triggers on every synchronizable table this migration
+creates. `vec_*`, secondary indexes, views, `memory.toml`, and every
+store/port/fake/operation stayed out, exactly as D4 lists.
+
+A real gap found while implementing, not pre-specified by this ADR: 07's
+own `memory_revision` DDL (copied verbatim here) carries no `device_id`
+column, but D3 requires its insert to be change-captured and
+`change_log.device_id` is `NOT NULL`. Resolved in the migration by having
+the capture trigger derive `device_id` from the owning `memory_record` row
+via a subquery on `NEW.record_id` (memory_revision rows are always
+inserted in the same transaction as the record edit that produced them,
+06 §8.2) — an implementation-mechanics fix, not a Decision change; no text
+above this paragraph was touched for it. Flagged for Kang to confirm or
+correct.
+
+Proven, not assumed: `tests/integration/sqlite/test_memory_schema.py` (60
+tests — every CHECK/NOT NULL/FK exercised with a violating insert,
+including D1's removed `'candidate'`/`'rejected'` states and the DB-005
+private invariant in both directions; enum exhaustiveness for
+`memory_record.type`/`.status`, `episode.type`, `link.type` checked
+programmatically against the migration's own CHECK text, cited to
+06_MEMORY's line ranges; FTS5 sync insert/update/delete on all four
+tables plus `fts_memory`'s private exclusion in both flip directions and
+on delete, each followed by `'integrity-check'`; change capture on
+`memory_record`/`episode`/`link`/`memory_revision`, D5's statistics-only
+exemption, and the absence of capture on `memory_candidate_queue`/
+`link_index`/`vault_note`/`vault_chunk`/`embedding_version`; the
+provenance-invariant NOT NULL sweep; zero rows in every new truth table
+after the full chain) plus one new test in
+`tests/integration/sqlite/test_migrations.py`
+(`test_0020_message_rebuild_is_lossless`, the `0006`-style model: two
+pre-existing messages survive the rebuild in order, `idx_message_
+conversation_at` is recreated, and the cascade from `conversation` still
+fires). Full suite: **1159 passed** (`tests/unit`+`tests/suites` 837
+unchanged, `tests/integration` 322, up from 261 — 61 new test items,
+matching exactly). All lints clean (`ruff format --check`, `ruff check`,
+`lint-imports` 8/8 kept, `lint_sizes.py` 0 hard violations, `lint_banned_
+patterns.py`, `lint_tree_hygiene.py`, `lint_doc_citations.py`,
+`build_root_docs.py --check`).
+
+Live-verified beyond pytest, against a throwaway `%KANG_HOME%` (never the
+real one; deleted after): staged `0001`–`0019` seeded with a real
+conversation and two real messages, then the full shipped migration set
+applied via the real, unmocked harness (`adapters/sqlite/migrations.py` —
+the same mechanism `Core`'s own startup uses). A fresh, separate read-only
+connection then confirmed: both messages survived with real `rowid`
+values in insertion order; `fts_message MATCH 'sunny'` found the second
+one; `PRAGMA foreign_key_check` returned empty; `PRAGMA integrity_check`
+returned `ok`; every new truth table (`memory_record` through
+`embedding_version`) held zero rows. The real, non-throwaway `%KANG_HOME%`
+was touched read-only only, before writing the migration, to confirm
+`schema_version` head = 19 and `message`/`conversation` both empty (recorded
+in the migration's own header, as `0016` did) — never migrated.
+
+D2's own owed claim — "no port dataclass or API response schema carries
+the integer rowid" — is **not** proven this slice and is not claimed as
+done: no memory port exists yet (D4). Owed to the next slice (the
+insert-only store ports), which is this claim's first real caller.

@@ -120,6 +120,55 @@ def test_0006_task_change_capture_still_fires_after_recreation(conn):
     assert captured == [("insert",)]
 
 
+def test_0020_message_rebuild_is_lossless(tmp_path):
+    """0020 recreates `message` to add its D2 rowid alias fts_message's
+    content_rowid binds to. Rows written under the old shape MUST survive,
+    in order, with the cascade and index intact (07 Part XIII.5; model:
+    test_0006_preserves_task_rows_across_the_table_recreation)."""
+    all_migrations = sorted(MIGRATIONS_DIR.glob("[0-9][0-9][0-9][0-9]_*.sql"))
+    pre_0020 = [p for p in all_migrations if int(p.name[:4]) < 20]
+
+    conn = open_connection(tmp_path / "kang.db")
+    staged = tmp_path / "staged"
+    staged.mkdir()
+    for path in pre_0020:
+        shutil.copy(path, staged / path.name)
+    apply_migrations(conn, staged, FakeClock())
+
+    conn.execute(
+        "INSERT INTO conversation (id, started, last_message, message_count) "
+        "VALUES ('conv-1', 'c', 'u', 2)"
+    )
+    conn.execute(
+        "INSERT INTO message (id, conversation_id, role, content, at) VALUES "
+        "('msg-1', 'conv-1', 'kang', 'first', '2026-09-17T00:00:00.000Z')"
+    )
+    conn.execute(
+        "INSERT INTO message (id, conversation_id, role, content, at) VALUES "
+        "('msg-2', 'conv-1', 'agent', 'second', '2026-09-17T00:00:01.000Z')"
+    )
+    conn.commit()
+
+    apply_migrations(conn, MIGRATIONS_DIR, FakeClock())  # applies 0020
+
+    rows = conn.execute(
+        "SELECT id, role, content, at FROM message ORDER BY rowid"
+    ).fetchall()
+    assert rows == [
+        ("msg-1", "kang", "first", "2026-09-17T00:00:00.000Z"),
+        ("msg-2", "agent", "second", "2026-09-17T00:00:01.000Z"),
+    ]
+    indexes = {row[1] for row in conn.execute("PRAGMA index_list('message')")}
+    assert "idx_message_conversation_at" in indexes
+
+    conn.execute("DELETE FROM conversation WHERE id = 'conv-1'")
+    remaining = conn.execute(
+        "SELECT COUNT(*) FROM message WHERE conversation_id = 'conv-1'"
+    ).fetchone()[0]
+    assert remaining == 0  # ON DELETE CASCADE survived the rebuild
+    conn.close()
+
+
 def test_applied_checksum_matches_the_file(conn):
     apply_migrations(conn, MIGRATIONS_DIR, FakeClock())
     stored = conn.execute(

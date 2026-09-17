@@ -4,7 +4,8 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Living — changes require an ADR; this document is normative for all memory behavior
-**Last updated:** 2026-07-11
+**Last updated:** 2026-09-17 (ADR-048: dated clarifying note at §2.1D/M-002 —
+candidate/rejected are quarantine-table states, not `memory_record` states)
 **Upstream (immutable):** `00_VISION.md`, `01_PRINCIPLES.md`, `02_PRODUCT_REQUIREMENTS.md`, `04_ARCHITECTURE.md` (esp. Decision 007)
 **Downstream (will depend on this):** `07_DATABASE.md`, `05_AGENTS.md`, `08_PLUGIN_SYSTEM.md`, `12_API.md`
 
@@ -126,6 +127,17 @@ Every record carries its tier. Retrieval exposes it. Agents MUST phrase Tier-0-d
 - `working` — the assembled context for one invocation. RAM only. Logged by *reference* (record ids) for reproducibility, never persisted as content.
 - `candidate` — a lifecycle **status**, not a type: a proposed record awaiting the write gate (Part IV). Candidates live in a quarantine table, excluded from all retrieval.
 
+  **Dated clarification (2026-09-17, ADR-048 D1).** `07_DATABASE.md`'s own
+  DDL once gave a candidate two homes (`memory_record.status` included
+  `'candidate'`/`'rejected'`, while `memory_candidate_queue` separately
+  carried a full proposal payload) — an internal inconsistency ADR-048
+  found and resolved by amending `07_DATABASE.md` §5.1: `memory_record`'s
+  `status` CHECK now holds only `active`/`under_review`/`superseded`/
+  `archived`; `candidate` and `rejected` are real states that live
+  **exclusively** in `memory_candidate_queue`, never in `memory_record`.
+  This is the sentence above, made mechanical by the database (migration
+  `0020`).
+
 ### 2.2 Structured store (for completeness)
 
 Projects, tasks, milestones, competitions, deadlines, goals, quiz results are **exact state**, specified in `07_DATABASE.md`. They participate in memory via (a) deterministic retrieval in context assembly (always-correct, never vector-approximated) and (b) links. This document governs their *retrieval role*, not their schemas.
@@ -165,6 +177,21 @@ stateDiagram-v2
 | `under_review` → `superseded` | Resolution names a winner | Kang, or consolidator per resolution rules (Part VI) | Loser gets `superseded_by` link; excluded from default retrieval; history intact |
 | `active/superseded` → `archived` | Retention policy or consolidation | Consolidator / Kang | Removed from default retrieval + vector index; FTS-searchable in "deep search" mode |
 | `archived` → `deleted` | Kang explicit; or per-type purge policy | Kang / janitor (policy-cited) | Content destroyed; tombstone remains; embedding + index rows removed |
+
+**Dated clarification (2026-09-17, ADR-048 D1).** The `[*] --> candidate`
+and `candidate --> active`/`candidate --> rejected` transitions above are a
+**table move** (`memory_candidate_queue` row → `memory_record` row, or
+`memory_candidate_queue` row → purged after 30 days), not a `status`
+column flip — `memory_record` never holds a `candidate` or `rejected`
+row (07_DATABASE §5.1, migration `0020`). Every transition from `active`
+onward is a real `status` flip on the same `memory_record` row, unchanged
+from this diagram. Admission (queue → record, the write gate) and
+lifecycle transition (`active` and onward, this section) are accordingly
+**two store-layer functions**, not the one this section's own "one
+store-layer function with exhaustive tests" line originally described —
+the gate's own exhaustive suite is 13_TESTING §2.8; this section's
+transition function covers `active`-and-later only. Named here so the
+gate slice does not try to reunify them.
 
 **Why a strict machine.** Every downstream guarantee (no fabrication, explainability, trustworthy retrieval) depends on knowing exactly which records are "live." Fuzzy liveness = fuzzy truth.
 

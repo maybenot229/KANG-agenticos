@@ -4,7 +4,9 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Database Architect)
 **Status:** Normative — every persistence-related component MUST conform; changes require an ADR
-**Last updated:** 2026-07-11
+**Last updated:** 2026-09-17 (ADR-048 amendments: §5.1/§5.3/§5.5 rowid columns
+and the narrowed `memory_record.status` CHECK, DB-003's third-category
+clarification, §5.6/§4.1's D5 note, §6.1's landed-in-0020 note)
 **Upstream (binding):** `00_VISION.md`, `01_PRINCIPLES.md`, `02_PRODUCT_REQUIREMENTS.md`, `04_ARCHITECTURE.md` (D003, D004, D008, D009, D016), `06_MEMORY.md`
 **Downstream:** `05_AGENTS.md`, `08_PLUGIN_SYSTEM.md`, `12_API.md`, `16_SYNC.md`
 
@@ -137,6 +139,18 @@ PRAGMA cache_size  = -65536;       -- 64 MB page cache per connection
 
 **Decision.** Every synchronizable entity's primary key is a UUIDv7, stored as 36-char lowercase TEXT. Local-only rows (job_run, model_call) MAY use `INTEGER PRIMARY KEY` rowids. `conversation`/`message` (§5.5) are a third case, named there by ADR-046: UUIDv7 TEXT identity for stable cross-reference, but exempt from the sync quartet — neither fully synchronizable nor local-only in the sense the two rules above describe.
 
+**Dated clarification (2026-09-17, ADR-048 D2), not a reversal.** Identity
+stays the UUIDv7 TEXT column on every table, without exception. Four
+tables — `memory_record`, `episode`, `vault_chunk`, `message` — additionally
+carry a storage-local `rowid INTEGER PRIMARY KEY` alias, landed in migration
+`0020`. It exists for exactly one purpose: FTS5's `content_rowid` (and,
+later, sqlite-vec's `record_rowid`) need a rowid SQLite's own contract
+guarantees stable, which an implicit rowid on a `TEXT PRIMARY KEY` table is
+not (SQLite's own VACUUM documentation reserves the right to renumber one).
+The integer never crosses the `adapters/sqlite/` boundary — no port
+datatype, API response, event payload, `change_log.entity_id`, or
+tombstone ever carries it.
+
 **Why UUIDv7:** time-ordered (index-friendly inserts, meaningful default sort), collision-free across future devices (D009 — retrofit is brutal, adopt at v0.1), standard.
 **Why TEXT not BLOB(16):** inspectability (Principle 1.4.4 — Kang reads his own DB); joins remain human-debuggable; the size cost (~20 bytes/row×keys) is irrelevant at Part XIV scale. Transparency beats 16 bytes.
 
@@ -205,15 +219,34 @@ CREATE TABLE dead_letter (
 Index doctrine per Part VI: every index cites its consumer; speculative indexes forbidden. Compaction (90 days, D006) deletes `confirmed` events below every subscriber's cursor; `orphaned` rows and unresolved `dead_letter` rows are **never compacted away silently** — they are surfaced until Kang resolves them.
 ### 5.1 Memory domain (implements `06_MEMORY.md`)
 
+> **Dated amendment (2026-09-17, ADR-048 D1/D2, migration 0020).** Two
+> changes from the DDL as originally written, landed and tested in
+> `migrations/0020_memory_truth_schema.sql`:
+> - `memory_record.status`'s CHECK loses `'candidate'`/`'rejected'` and its
+>   `DEFAULT` — a candidate now lives **only** in `memory_candidate_queue`
+>   below; `memory_record` holds gate-passed records exclusively (resolves
+>   the two-homes inconsistency ADR-048 Finding 1 found between this DDL
+>   and 06_MEMORY §2.1D, which always said "candidates live in a
+>   quarantine table"). The gate supplies `'active'` explicitly at
+>   approval — no default that could accidentally admit.
+> - `memory_record`, `episode` (below), and `vault_chunk`/`message`
+>   (§5.3/§5.5) each gain an explicit `rowid INTEGER PRIMARY KEY` first
+>   column (ADR-048 D2) — see DB-003's own dated clarification below.
+
 ```sql
 CREATE TABLE memory_record (
-  id            TEXT PRIMARY KEY,                -- UUIDv7
+  rowid         INTEGER PRIMARY KEY,             -- ADR-048 D2: storage-local
+                                                  --   FTS5 binding only; never
+                                                  --   crosses adapters/sqlite
+  id            TEXT NOT NULL UNIQUE,             -- UUIDv7 — identity everywhere else
   type          TEXT NOT NULL CHECK (type IN
                  ('profile','preference','fact','relationship',
                   'lesson','rule','observation','reflection')),
-  status        TEXT NOT NULL DEFAULT 'candidate' CHECK (status IN
-                 ('candidate','active','under_review','superseded',
-                  'archived','rejected')),                    -- deleted = row gone + tombstone
+  status        TEXT NOT NULL CHECK (status IN
+                 ('active','under_review','superseded',
+                  'archived')),                    -- deleted = row gone + tombstone
+                                                    -- ADR-048 D1: no DEFAULT —
+                                                    --   see amendment note above
   content       TEXT NOT NULL CHECK (length(content) > 0),
   trust_tier    INTEGER NOT NULL CHECK (trust_tier IN (0,1,2)),
   confidence    REAL NOT NULL DEFAULT 1.0 CHECK (confidence BETWEEN 0 AND 1),
@@ -245,7 +278,11 @@ CREATE TABLE memory_revision (     -- edit history (Memory §8.2)
 );
 
 CREATE TABLE episode (
-  id         TEXT PRIMARY KEY,
+  -- Dated amendment (2026-09-17, ADR-048 D2, migration 0020): gains a
+  -- rowid INTEGER PRIMARY KEY first column, same reason and shape as
+  -- memory_record's above.
+  rowid      INTEGER PRIMARY KEY,
+  id         TEXT NOT NULL UNIQUE,
   type       TEXT NOT NULL CHECK (type IN
               ('plan','review','retrospective','session','decision')),
   occurred_at TEXT NOT NULL,      -- event time (distinct from created_at)
@@ -409,7 +446,10 @@ CREATE TABLE vault_note (
 );
 
 CREATE TABLE vault_chunk (
-  id TEXT PRIMARY KEY,
+  -- Dated amendment (2026-09-17, ADR-048 D2, migration 0020): gains a
+  -- rowid INTEGER PRIMARY KEY first column, same reason as memory_record's.
+  rowid INTEGER PRIMARY KEY,
+  id TEXT NOT NULL UNIQUE,
   note_path TEXT NOT NULL REFERENCES vault_note(path) ON DELETE CASCADE,
   anchor TEXT,                       -- heading anchor
   seq INTEGER NOT NULL,              -- order within note
@@ -547,8 +587,14 @@ CREATE TABLE conversation (          -- metadata; transcript retention per Memor
   title TEXT, message_count INTEGER NOT NULL DEFAULT 0,
   purged INTEGER NOT NULL DEFAULT 0  -- transcript gone; id survives for from_conversation links
 );
+-- Dated amendment (2026-09-17, ADR-048 D2, migration 0020): message gains
+-- a rowid INTEGER PRIMARY KEY first column, same reason as memory_record's
+-- (fts_message's content_rowid binds to it). The 0016 table-recreate
+-- pattern rebuilt this table one day after it was created (ADR-024/0016);
+-- id stays the identity everywhere outside adapters/sqlite.
 CREATE TABLE message (
-  id TEXT PRIMARY KEY,
+  rowid INTEGER PRIMARY KEY,
+  id TEXT NOT NULL UNIQUE,
   conversation_id TEXT NOT NULL REFERENCES conversation(id) ON DELETE CASCADE,
   role TEXT NOT NULL CHECK (role IN ('kang','kang_system','agent')),
   content TEXT NOT NULL, at TEXT NOT NULL
@@ -588,6 +634,14 @@ CREATE TABLE change_log (            -- outbox: row-level change capture
 
 Populated by narrow AFTER-triggers on synchronizable tables (the third sanctioned trigger duty, §4.1). Until sync ships: rotated at 90 days by the janitor; the mechanism is exercised (and tested) from day one so v0.5 builds on proven capture, not fresh code. Tombstones (§5.1) complete the delete story; per-field LWW uses `revision` + `fields`.
 
+**Dated note (2026-09-17, ADR-048 D5, migration 0020).** `memory_record`
+carries two access-statistics columns (`last_accessed`, `access_count`)
+that only a scheduled writer touches, never a synchronizable edit
+(retrieval runs read-only, DB-001). Its update-capture trigger is declared
+`AFTER UPDATE OF <every column except last_accessed, access_count>` — a
+statistics-only write emits no `change_log` row and does not bump
+`revision`. No other table in this migration has this shape.
+
 ---
 
 ## Part VI — Index Strategy
@@ -624,6 +678,15 @@ CREATE VIRTUAL TABLE fts_memory USING fts5(
 ```
 
 External-content mode (no text duplication). **Private-sensitivity rows are excluded by trigger condition** — ciphertext is not indexed, plaintext of private records never exists in the DB (§11). `INSERT INTO fts_x(fts_x) VALUES('rebuild')` is wired into `kang rebuild-indexes`.
+
+**Dated note (2026-09-17, ADR-048 D3, migration 0020).** All four tables —
+`fts_memory`, `fts_episode`, `fts_chunk`, `fts_message` — landed together
+in one migration, per Kang's 2026-09-17 ruling that they are never a
+one-off shape the others must later match (ADR-048 Finding 3). Only
+`fts_memory`'s triggers carry the `private` exclusion condition (its
+insert trigger's `WHEN`, and the matching two-sided `WHERE` on its update
+trigger's delete/insert pair, per the migration's own comments) — the
+other three have no `sensitivity` column to condition on.
 
 ### 6.2 sqlite-vec
 
