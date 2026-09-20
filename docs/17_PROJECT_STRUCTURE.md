@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Normative — RFC-2119 throughout; changes require an ADR; RESERVED items carry activation triggers
-**Last updated:** 2026-07-12
+**Last updated:** 2026-09-21 (ADR-049: dated correction at §2 — the corpus generator's home is `tests/fixtures/corpus/`, not `tools/`)
 **Upstream (binding):** `01_PRINCIPLES.md` (E1–E10, AR1–AR8), `04_ARCHITECTURE.md` (D001, D002, D003, D005, D012), `05_AGENTS.md` (AG-002 registered definitions, AR5), `07_DATABASE.md` (Part I data directory), `08_PLUGIN_SYSTEM.md` (§4, §5), `10_SECURITY.md` (SEC-005, SEC-011), `11_CODING_STANDARDS.md` (§1, §2, §3, §5, §25), `12_API.md` (API-002, §16), `13_TESTING.md` (§2 taxonomy), `15_EVENT_BUS.md` (§6.3 registry)
 **Role:** 11_CODING §1 froze the repository's top level and D005 froze the core's layer packages. This document is their authoritative expansion: the complete physical map, the dependency constitution in full, and the growth rules that keep the map true for a decade. Where 11_CODING §1 is the summary, this document is the detail; **they MUST never disagree** — if they do, file the ADR.
 
@@ -145,9 +145,19 @@ kang/                                  # the monorepo (one repo — D001: parts 
 ├── config/                            # DEFAULTS + EXAMPLES only (§8) — runtime truth lives in
 │                                      #   %KANG_HOME%/config; nothing here is read in production
 │
-└── tools/                             # dev-only: linters/contracts, corpus generator, docs
+└── tools/                             # dev-only: linters/contracts, docs
                                        #   builder, release scripts. NEVER imported by src/ (§4)
 ```
+
+**Dated correction (2026-09-21, ADR-049 D1).** This tree's `tools/` comment
+once listed "corpus generator." That home is structurally impossible:
+`tools/` may not import `src/` at runtime (§4.2), and the generator must
+build its database through the real migration harness in `adapters/sqlite/`
+— re-implementing that harness inside `tools/` would be a second schema
+authority (AR6). The generator lives in `tests/fixtures/corpus/` (this same
+tree's `tests/fixtures/` line already names "synthetic corpus"), and its
+consuming suites in `tests/suites/migration/` and `tests/suites/performance/`
+(§11). The `tools/` mention is retired; no `tools/` wrapper exists.
 
 **What is deliberately absent:** `shared/`, `utils/`, `common/`, `lib/`, `core/` (§7); `scripts/` at root (lives in `tools/`); empty reserved folders (§16, PS-007); any directory named after a person, a date, or a version.
 

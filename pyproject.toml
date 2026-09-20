@@ -116,3 +116,6 @@ select = ["E", "F", "I", "T20", "BLE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# ADR-049 D5: a typo in a marker must not silently un-mark a nightly test.
+addopts = "--strict-markers"
+markers = ["nightly: decade-scale corpus suites; scheduled tier only"]
