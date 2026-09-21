@@ -1,0 +1,16 @@
+# memory.toml — the memory system's tunable (ADR-051 D8; 06_MEMORY Appendix A).
+# Shipped default the installer copies to %KANG_HOME%/config/ (17 §8).
+#
+# Exactly one real key today: the one this slice reads, to compute a
+# candidate's `expires_at` at propose time. `duplicate_cosine` is not shipped
+# (nothing reads it until embeddings exist, ADR-051 D5), and `[retention]`
+# is not shipped (its readers are the janitor slice).
+#
+# FAILS CLOSED: an absent or malformed file does NOT fall back to a built-in
+# 14 — the gate refuses to run. A gate whose expiry window silently defaults
+# is a gate whose "silence is a veto" contract (06 §4.3) is unverifiable.
+
+[gate]
+# Pending candidates are marked `expired` after this many
+# days — silence is a veto, not consent (06_MEMORY §4.3).
+candidate_expiry_days = 14

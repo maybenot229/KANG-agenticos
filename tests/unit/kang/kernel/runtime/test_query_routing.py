@@ -42,6 +42,8 @@ EXPECTED_QUERY_HANDLER_NAMES = frozenset(
         # REQUIREMENTS.md:697's "Conversation history" system view).
         "conversation.list",
         "message.list",
+        # ADR-051 D3: the approval queue (first_party_only, read pool).
+        "candidate.list",
     }
 )
 
@@ -53,7 +55,7 @@ class _FakeHandlerWiring:
     permission_engine: object = None
 
 
-def test_build_query_handlers_covers_exactly_the_18_read_pool_operations():
+def test_build_query_handlers_covers_exactly_the_19_read_pool_operations():
     handlers = _build_query_handlers(_FakeHandlerWiring())
     assert set(handlers) == EXPECTED_QUERY_HANDLER_NAMES
     assert "system.health" not in handlers  # the one named exception

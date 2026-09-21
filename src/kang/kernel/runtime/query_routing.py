@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from kang.adapters.sqlite.candidate_queue_store import SqliteCandidateQueueStore
 from kang.adapters.sqlite.competition_store import SqliteCompetitionStore
 from kang.adapters.sqlite.connection_pool import ReadPool, WriteExecutor
 from kang.adapters.sqlite.conversation_store import SqliteConversationStore
@@ -38,6 +39,7 @@ from kang.api.dispatch import ApiRequest
 from kang.api.errors import ApiError
 from kang.api.operations import (
     make_audit_list_handler,
+    make_candidate_list_handler,
     make_competition_list_handler,
     make_conversation_list_handler,
     make_deadline_list_handler,
@@ -103,6 +105,9 @@ def _build_query_handlers(w: "_HandlerWiring") -> dict:
         ),
         "message.list": lambda conn: make_message_list_handler(
             SqliteConversationStore(conn)
+        ),
+        "candidate.list": lambda conn: make_candidate_list_handler(
+            SqliteCandidateQueueStore(conn)
         ),
         "held_action.list": lambda conn: make_held_action_list_handler(
             SqliteHeldActionStore(conn)

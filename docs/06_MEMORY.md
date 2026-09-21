@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Living — changes require an ADR; this document is normative for all memory behavior
-**Last updated:** 2026-09-17 (ADR-048: dated clarifying note at §2.1D/M-002 —
+**Last updated:** 2026-09-21 (ADR-051: dated notes at §4.1, §4.2, §12.1 — what the gate builds and refuses, the absent semantic probes, the event-log reading; ADR-048: §2.1D/M-002 —
 candidate/rejected are quarantine-table states, not `memory_record` states)
 **Upstream (immutable):** `00_VISION.md`, `01_PRINCIPLES.md`, `02_PRODUCT_REQUIREMENTS.md`, `04_ARCHITECTURE.md` (esp. Decision 007)
 **Downstream (will depend on this):** `07_DATABASE.md`, `05_AGENTS.md`, `08_PLUGIN_SYSTEM.md`, `12_API.md`
@@ -223,6 +223,8 @@ The single most safety-critical component. **All writes — no exceptions, inclu
 - No AI proposal may reach `active` without an explicit Kang action. There is **no confidence threshold that bypasses this** — see Decision M-003.
 - Nothing writes memory from raw conversation automatically (FR-014). A chat message becomes memory only via Kang's explicit save or a registered rule acting on a *structured outcome* (e.g., task created), never on prose.
 
+**Dated note (2026-09-21, ADR-051 D4/D6).** The table above describes more than the code does until the slices it names exist. Built: Kang's first-party auto-pass, and AI proposals queued for approval — the gate returns `admit` only for principal exactly `kang` on a first-party session, and no argument, threshold, or configuration key changes that (M-003, made structural). **Refused with a typed error, not supported:** `rule:{id}` writers (no registered-rule concept exists), `plugin:{id}` writers (Phase 4), any principal shape the gate cannot hold to account, and `sensitivity='private'` (no encryptor until the private-records slice). `rule`/`profile` types are refused for every writer but first-party `kang`, enforced by the gate a second time on top of the pairing lint. Resolving the queue (`memory.approve`/`.edit_approve`/`.reject`) is refused for every principal but first-party `kang` even if a `memory.approve` scope were wrongly granted. The four-type limit on AI proposals (`fact`/`preference`/`lesson`/`observation`) is carried by each agent's per-type `memory.propose:{type}` grants, not re-enforced by the gate — `memory_steward` holds three of the four.
+
 ### Decision M-003 — AI proposals never auto-commit, at any confidence
 
 **Decision.** AI-proposed memories are always queued for Kang's approval. Confidence scores affect *queue ordering and presentation*, never *bypass*.
@@ -270,6 +272,8 @@ links[]       optional typed links (Part IX)
 **Duplicate detection.** Two probes: (1) normalized-content hash (case/whitespace-folded) for exact dupes → silent merge with provenance append; (2) embedding cosine ≥ 0.90 against active records *of the same type* → human-visible near-dup flag. Threshold is config (`memory.toml`), tuned after real data; 0.90 is the starting point, chosen conservative-high to avoid false merges (false merge = data loss; false non-merge = mild clutter the consolidator catches later).
 
 **Conflict detection.** For `fact`/`preference`/`rule` proposals: retrieve top-8 same-type semantic neighbors; run a cheap NLI/contradiction check (task class `classification`, D010 — local-model eligible). Contradiction → both records to the queue with a side-by-side. The *proposal* never silently replaces the incumbent, and the incumbent never silently blocks the proposal: **conflicts are surfaced, not resolved by machine** (PRD §12 conflict rule extended to memory).
+
+**Dated note (2026-09-21, ADR-051 D5).** The cosine near-duplicate probe and the NLI contradiction check are **not implemented**: they need embeddings, which are a later slice, and 18 §4 orders the gate before them (*policy before power*). Shipped instead: the exact-hash probe only (case- and whitespace-folded content, against `active`, non-`private` records of the same type) with 06's own silent merge — no new record, the incumbent's provenance appended, revision bumped, the merge audited. There is no content-hash column, so the probe folds and compares in Python over same-type active rows (no migration in this slice). "Provenance appended" is realized as a newline-appended `writer source_kind:source_detail` line on the incumbent's `source_detail` (bounded to 500 characters, appended once per distinct line); the schema has no provenance-list column and revision *history* (`memory_revision`) begins only when `memory.update` exists, so no revision row is written. The `flags`/`flag_context` queue columns stay empty until the semantic probes fill them; no admission outcome changes when they arrive. Until then the gate is genuinely weaker than this section describes: a near-duplicate or a contradiction reaches Kang unflagged, and he may approve both halves of a contradiction without being shown the pair. `duplicate_cosine` is not shipped in `memory.toml` for the same reason.
 
 ### 4.3 The approval queue (UX contract)
 
@@ -502,7 +506,7 @@ The Context Assembler executes a **recipe** per agent/task: which deterministic 
 | Level | Meaning | Behavior |
 |---|---|---|
 | `normal` | Default | Standard scoping |
-| `sensitive` | Kang-flagged or rule-flagged (health, grades, finances, relationships) | Only agents with explicit `memory.read:sensitive` grant; **never** to Tier-0-adjacent contexts (web-tool-holding agents); redacted in logs/manifests (ids only) |
+| `sensitive` | Kang-flagged or rule-flagged (health, grades, finances, relationships) | Only agents with explicit `memory.read:sensitive` grant; **never** to Tier-0-adjacent contexts (web-tool-holding agents); redacted in logs/manifests (ids only) — *dated note (2026-09-21, ADR-051 D7):* the recovery-grade `memory.saved` event carries a record's full content into `events/eventlog.db`, because EB-003 requires a payload that reconstructs the row. That file is truth infrastructure inside `%KANG_HOME%` — the same trust and backup boundary as `kang.db` — not one of the "logs" this row means (structured debug logs and context manifests, which leave the record's own storage domain). Gate audit entries carry ids, type, and outcome, never content. `private` content never enters the log: private proposals are refused until the encryptor exists, and then the row itself holds only ciphertext. Worth re-reading if sync ever ships event-log contents off-machine. |
 | `private` | Prayer journal; anything Kang marks private | **Encrypted at rest** (app-level, age/libsodium, key in OS keychain — decision deferred to `07_DATABASE.md §encryption` per D013); excluded from *all* retrieval and consolidation except the explicitly-granted agent (Faith) under a `private`-tier TaskSpec, which routes **local-model-only or fail-closed** (D010) |
 
 ### 12.2 Memory scopes (permission engine, D013)

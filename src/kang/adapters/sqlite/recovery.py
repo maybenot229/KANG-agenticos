@@ -58,6 +58,7 @@ _EXISTS_TABLE = {
     "competition": "competition",
     "milestone": "milestone",
     "goal": "goal",
+    "memory": "memory_record",
 }
 
 _DEADLINE_FIELDS = (
@@ -125,6 +126,34 @@ _GOAL_FIELDS = (
     "updated_at",
     "device_id",
     "revision",
+)
+
+
+# ADR-051 D7: the full memory_record row a `memory.saved` payload carries —
+# every 07 §5.1 column, none of the storage-local rowid (ADR-048 D2).
+_MEMORY_FIELDS = (
+    "id",
+    "type",
+    "status",
+    "content",
+    "trust_tier",
+    "confidence",
+    "sensitivity",
+    "content_enc",
+    "source_kind",
+    "source_detail",
+    "source_quote",
+    "reason",
+    "created_by",
+    "created_at",
+    "updated_at",
+    "device_id",
+    "revision",
+    "importance",
+    "pinned",
+    "last_accessed",
+    "access_count",
+    "embedding_ver",
 )
 
 
@@ -399,6 +428,51 @@ def _apply_goal_upsert(conn: sqlite3.Connection, envelope: EventEnvelope) -> str
     return "applied"
 
 
+def _payload_memory_row(envelope: EventEnvelope) -> tuple:
+    payload = envelope.payload
+    missing = [f for f in _MEMORY_FIELDS if f not in payload]
+    if missing:
+        raise RecoveryError(
+            f"recovery-grade payload for {envelope.type} is not "
+            f"self-sufficient (EB-003): missing {missing}"
+        )
+    # `pinned` crosses the port line as a bool and lands as 0/1.
+    return tuple(
+        int(payload[f]) if f == "pinned" else payload[f] for f in _MEMORY_FIELDS
+    )
+
+
+def _apply_memory_upsert(conn: sqlite3.Connection, envelope: EventEnvelope) -> str:
+    row = _payload_memory_row(envelope)
+    memory_id = row[0]
+    revision = row[_MEMORY_FIELDS.index("revision")]
+    current = conn.execute(
+        "SELECT revision FROM memory_record WHERE id = ?", (memory_id,)
+    ).fetchone()
+    if current is not None and current[0] >= revision:
+        return "noop"  # already committed — idempotent by id + revision
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        if current is None:
+            conn.execute(
+                f"INSERT INTO memory_record ({', '.join(_MEMORY_FIELDS)}) "
+                f"VALUES ({', '.join('?' for _ in _MEMORY_FIELDS)})",
+                row,
+            )
+        else:
+            assignments = ", ".join(f"{name} = ?" for name in _MEMORY_FIELDS[1:])
+            conn.execute(
+                f"UPDATE memory_record SET {assignments} WHERE id = ?",
+                row[1:] + (memory_id,),
+            )
+        conn.execute("COMMIT")
+    except sqlite3.Error:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
+    return "applied"
+
+
 _APPLIERS = {
     "task.created": _apply_task_upsert,
     "task.updated": _apply_task_upsert,
@@ -422,6 +496,10 @@ _APPLIERS = {
     "milestone.updated": _apply_milestone_upsert,
     "goal.updated": _apply_goal_upsert,
     "project.updated": _apply_project_upsert,
+    # ADR-051 D7: memory.saved's own obligation — a Kang save, an approval,
+    # or a silent merge (the update branch), full row, idempotent by
+    # id + revision.
+    "memory.saved": _apply_memory_upsert,
 }
 
 

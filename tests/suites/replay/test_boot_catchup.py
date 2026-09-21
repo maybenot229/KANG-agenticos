@@ -21,15 +21,18 @@ from pathlib import Path
 
 from kang.adapters.fakes.clock import FakeClock
 from kang.adapters.sqlite.backup_service import SqliteBackupService
+from kang.adapters.sqlite.candidate_queue_store import SqliteCandidateQueueStore
 from kang.adapters.sqlite.connection import open_connection
 from kang.adapters.sqlite.conversation_store import SqliteConversationStore
 from kang.adapters.sqlite.held_action_store import SqliteHeldActionStore
+from kang.domain.ports.candidate_queue_store import Candidate
 from kang.domain.ports.held_action import HeldAction
 from kang.kernel.runtime.composition import build_core
 from kang.kernel.runtime.scheduler_wiring import (
     BACKUP_OFFSITE_CHECK_JOB,
     BACKUP_SNAPSHOT_JOB,
     BACKUP_VERIFY_JOB,
+    CANDIDATE_EXPIRE_JOB,
     CONVERSATION_PURGE_JOB,
     DEADLINE_SWEEP_JOB,
     HELD_ACTION_EXPIRE_JOB,
@@ -384,6 +387,62 @@ def test_conversation_purge_is_registered_and_a_real_boot_purges_a_stale_convers
         assert [m.content for m in store.recent_messages("conv-recent", limit=20)] == [
             "recent"
         ]
+    finally:
+        conn.close()
+
+
+def test_candidate_expire_is_registered_and_a_real_boot_expires_only_the_stale_row(
+    tmp_path,
+):
+    """ADR-051 D9: candidate_expire is a real eighth job — memory_steward's
+    second — enforcing 06 §4.3's "silence is a veto". Proves the write
+    happened: a real candidate whose window closed before boot is genuinely
+    marked `expired`, a fresh one stays pending, and no `memory_record` row
+    appears (an expiry never admits anything)."""
+    _seed_config(tmp_path)
+    build_core(tmp_path).close()  # creates schema, registers all jobs
+
+    now = datetime.now(timezone.utc)
+    conn = open_connection(tmp_path / "kang.db")
+    try:
+        queue = SqliteCandidateQueueStore(conn)
+        for cid, expires in (
+            ("cand-stale", now - timedelta(days=2)),
+            ("cand-fresh", now + timedelta(days=10)),
+        ):
+            queue.enqueue(
+                Candidate(
+                    id=cid,
+                    payload={"type": "fact", "content": "c", "confidence": 0.5},
+                    proposed_at=(now - timedelta(days=16)).isoformat(),
+                    expires_at=expires.isoformat(),
+                )
+            )
+    finally:
+        conn.close()
+
+    _register_job_then_backdate_it(tmp_path, days=2, job_id=CANDIDATE_EXPIRE_JOB)
+    assert _job_run_count(tmp_path, CANDIDATE_EXPIRE_JOB) == 0
+
+    server = _Server(tmp_path)
+    try:
+        server.wait_ready()
+        assert _job_run_count(tmp_path, CANDIDATE_EXPIRE_JOB) == 1
+        assert _job_run_outcome(tmp_path, CANDIDATE_EXPIRE_JOB) == "ok"
+        # Routed through the mechanical-agent envelope under memory_steward's
+        # own grant (`candidates.expire`) — never kernel:scheduler.
+        assert _invocation_principal(tmp_path, "candidate.expire") == (
+            "agent:memory_steward"
+        )
+    finally:
+        server.stop()
+
+    conn = open_connection(tmp_path / "kang.db")
+    try:
+        queue = SqliteCandidateQueueStore(conn)
+        assert queue.get("cand-stale").resolved == "expired"
+        assert queue.get("cand-fresh").pending
+        assert conn.execute("SELECT COUNT(*) FROM memory_record").fetchone()[0] == 0
     finally:
         conn.close()
 

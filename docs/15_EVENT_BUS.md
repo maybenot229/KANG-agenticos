@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Normative — RFC-2119 throughout; changes require an ADR; RESERVED items carry activation triggers
-**Last updated:** 2026-07-12
+**Last updated:** 2026-09-21 (ADR-051: dated note at §6.1 — `memory.saved` registered)
 **Upstream (binding):** `01_PRINCIPLES.md` (P5, P8, AR3, AR6, E1, E10), `04_ARCHITECTURE.md` (D001, D004, D006, D014, D015), `05_AGENTS.md` (AG-001, AGP-3/4, §6 trigger modes), `06_MEMORY.md` (Part IV write gate, M-003), `07_DATABASE.md` (DB-001 durability pairing, Part 12, Part 15, §5.6), `08_PLUGIN_SYSTEM.md` (§7, Appendix A, Appendix D), `10_SECURITY.md` (SEC-001..010, §5), `12_API.md` (API-001, §6 event channel), `13_TESTING.md` (§2.5, §2.6)
 
 **Role.** D006 established the Event Bus; fragments of its behavior are already law in six other documents. This document is the bus's constitution: it **consolidates by reference, decides what was undecided, and resolves what was in tension.** It deliberately restates as little as possible.
@@ -183,6 +183,8 @@ schema, index doctrine, and compaction mechanics.
 | **Notification** | A notification became due per policy | `notification.requested` | No |
 
 Integrity incidents (10_SECURITY §6: "a first-class event class") are **System** events with a fixed subtype set mirroring 07 Part 15's F-codes.
+
+**Dated note (2026-09-21, ADR-051 D7).** `memory.saved` — named as a Domain example above since this document was written — is now a *registered* type: recovery-grade, plugin-visible, full-row payload (every `memory_record` column but the storage-local rowid, ADR-048 D2), with a re-application applier and a payload-sufficiency fixture (§16.2). Published under the kernel principal `kernel:memory` for a record that reaches `memory_record` — a Kang save, an approval, or a silent merge — with the row committing only inside the publish (EB-004; 07 DB-001's event-before-commit pairing for the write gate). `memory.proposed`/`.rejected`/`.expired` are deliberately **not** registered: no consumer exists (ADR-026), and every such transition is audited instead.
 
 ### 6.2 The `notification.requested` ruling (tension resolved, not renamed)
 

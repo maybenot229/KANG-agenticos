@@ -58,10 +58,58 @@ _MILESTONE_COLUMNS = (
     "id, project_id, title, due, status, created_at, updated_at, device_id, revision"
 )
 
+_MEMORY_COLUMNS = (
+    "id, type, status, content, trust_tier, confidence, sensitivity, "
+    "content_enc, source_kind, source_detail, source_quote, reason, created_by, "
+    "created_at, updated_at, device_id, revision, importance, pinned, "
+    "last_accessed, access_count, embedding_ver"
+)
+
 _GOAL_COLUMNS = (
     "id, title, description, horizon, status, created_at, updated_at, "
     "device_id, revision"
 )
+
+
+def memory_payload(index: int = 0, **overrides) -> dict:
+    """A self-sufficient memory payload (ADR-051 D7/EB-003) — the full 07 §5.1
+    column set minus the rowid, matching `domain.memory.memory_event_payload`."""
+    payload = {
+        "id": f"mem-{index:04d}",
+        "type": "fact",
+        "status": "active",
+        "content": "School term ends June 12",
+        "trust_tier": 2,
+        "confidence": 1.0,
+        "sensitivity": "normal",
+        "content_enc": None,
+        "source_kind": "stated",
+        "source_detail": "conversation",
+        "source_quote": None,
+        "reason": "Kang said so",
+        "created_by": "kang",
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00",
+        "device_id": "device-test",
+        "revision": 1,
+        "importance": 0.5,
+        "pinned": False,
+        "last_accessed": None,
+        "access_count": 0,
+        "embedding_ver": None,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _memory_envelope(**overrides) -> EventEnvelope:
+    fields = dict(
+        type="memory.saved",
+        payload=memory_payload(0),
+        entity_refs=({"kind": "memory", "id": "mem-0000"},),
+    )
+    fields.update(overrides)
+    return make_envelope(0, **fields)
 
 
 def deadline_payload(index: int = 0, **overrides) -> dict:
@@ -281,6 +329,8 @@ _FIXTURES = {
         seed_sql=_MILESTONE_FIXTURE_PROJECT_SEED,
     ),
     "goal.created": Fixture(_goal_envelope(), "goal", _GOAL_COLUMNS),
+    # ADR-051 D7: memory.saved reconstructs the full memory_record row.
+    "memory.saved": Fixture(_memory_envelope(), "memory_record", _MEMORY_COLUMNS),
     # ADR-018: each entity's first status-transition mutation — the one
     # a crash must not lose, same reasoning as deadline.updated above.
     "milestone.updated": Fixture(

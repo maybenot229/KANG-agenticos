@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Living — changes require an ADR (see §1.3)
-**Last updated:** 2026-07-11
+**Last updated:** 2026-09-21 (ADR-051: dated correction at D013 §14.1 — `memory.write` -> `memory.propose`)
 **Upstream:** `00_VISION.md`, `01_PRINCIPLES.md`, `02_PRODUCT_REQUIREMENTS.md`
 
 ---
@@ -560,6 +560,8 @@ Extension points (versioned, in `plugins_sdk/`): `IntegrationAdapter`, `Monitor`
 ### 14.1 Permission engine
 
 - **Capability-based scopes:** `memory.read:{views}`, `memory.write:{types}`, `vault.read`, `vault.write:{folders}`, `web.fetch:{domains}`, `calendar.write`, `email.draft`, `fs.read:{paths}`, … Grants live in `permissions.toml` per principal (agent/plugin), default-deny.
+
+  **Dated correction (2026-09-21, ADR-051 D1).** `memory.write:{types}` in the list above is stale vocabulary: it was never implemented and nothing uses it. The live scope is `memory.propose:{types}` — already what 05_AGENTS §8, 06_MEMORY §12.2, the pairing lint, and `memory_steward.toml` say. A proposing principal holds *both* the bare `memory.propose` (the operation's coarse scope) and its per-type qualifiers, because `Scope.covers` makes the two different permissions (ADR-051 D2). No behavior changes; one concept now has one name (11_CODING §3).
 - **Enforcement at the tool layer** (the only layer that touches the world): every tool call carries the principal; the engine checks scope; denials are logged and surfaced, never silent.
 - **Consequential-action gate (S1/FR-073):** actions classed `consequential` (send, delete, publish, spend, calendar-write, vault-delete) require an interactive confirmation token from Kang — *architecturally unreachable* without it: the confirmation is checked inside the tool executor, not left to agent good manners.
 

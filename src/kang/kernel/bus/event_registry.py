@@ -71,6 +71,35 @@ _DEADLINE_PAYLOAD_FIELDS = (
     "revision",
 )
 
+# Same contract for the memory record (ADR-051 D7): the full 07 §5.1 column
+# set minus the storage-local rowid (ADR-048 D2), so a lost `memory.saved`
+# replays exactly. Mirrors `domain.memory.records.MEMORY_EVENT_FIELDS`, which
+# builds it (a test pins the two equal).
+_MEMORY_PAYLOAD_FIELDS = (
+    "id",
+    "type",
+    "status",
+    "content",
+    "trust_tier",
+    "confidence",
+    "sensitivity",
+    "content_enc",
+    "source_kind",
+    "source_detail",
+    "source_quote",
+    "reason",
+    "created_by",
+    "created_at",
+    "updated_at",
+    "device_id",
+    "revision",
+    "importance",
+    "pinned",
+    "last_accessed",
+    "access_count",
+    "embedding_ver",
+)
+
 # Same contract for the project entity (ADR-013): the full field set, so a
 # lost project.created write replays exactly. Mirrors 07 §5.2's columns and
 # `project_service.project_event_payload()`, which builds it.
@@ -326,6 +355,22 @@ _TYPES: tuple[EventType, ...] = (
         plugin_visible=True,
         version_introduced="0.1",
         required_payload_fields=_PROJECT_PAYLOAD_FIELDS,
+    ),
+    # ---- memory.saved, per ADR-051 D7 ------------------------------------
+    # A memory record is the trust store's truth: losing an admitted or
+    # merged record on crash recovery would silently un-remember what Kang
+    # approved (07 DB-001's normative "event-log entry before the DB write"
+    # pairing for the write gate). Full-row, recovery-grade. Published only
+    # for records that reach `memory_record` (a Kang save, an approval, a
+    # silent merge) — no memory.proposed/.rejected/.expired: no consumer
+    # exists (ADR-026), and every such transition is audited.
+    EventType(
+        name="memory.saved",
+        category="domain",
+        recovery_grade=True,
+        plugin_visible=True,
+        version_introduced="0.1",
+        required_payload_fields=_MEMORY_PAYLOAD_FIELDS,
     ),
     # ---- backup.offsite_stale, per ADR-034 -------------------------------
     # 07 Part XII.5's off-machine warning: a pure fact, never recovery-

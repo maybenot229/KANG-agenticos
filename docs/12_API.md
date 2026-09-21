@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Normative — the definitive contract between the Core and every client, forever; changes require an ADR
-**Last updated:** 2026-07-11
+**Last updated:** 2026-09-21 (ADR-051: dated note at §10 — which memory operations exist)
 **Upstream (binding):** all prior documents; especially `04_ARCHITECTURE.md` (D002), `05_AGENTS.md`, `06_MEMORY.md`, `07_DATABASE.md`, `08_PLUGIN_SYSTEM.md`, `09_UI_DESIGN.md` (UI-P1), `10_SECURITY.md`
 **Downstream:** every frontend, CLI, plugin SDK, sidecar, and future client ever written.
 
@@ -176,6 +176,8 @@ Streaming output (chat tokens, invocation progress, log tails) rides the event c
 - `memory.search` (modes: default | deep | structured), `memory.explain_retrieval {correlation_id}` → the manifest with per-term scores (§12).
 - **Private unlock:** `private.unlock {record_id}` — first-party only, consequential-style explicit action, returns decrypted content once, never cached by the Core in plaintext, audited (06_MEMORY §12.1; DB-005).
 - `knowledge.ask {question}` → invocation resource implementing FR-064 ("what do I know about X?") with citations.
+
+**Dated note (2026-09-21, ADR-051 D3).** Built so far: `memory.propose` (scope `memory.propose`, plus a per-type `memory.propose:{type}` check by the handler — ADR-051 D2), `memory.approve`, `memory.edit_approve`, `memory.reject` (scope `memory.approve`, `first_party_only`, and the gate refuses any principal but first-party `kang`), `candidate.list` (the approval queue, `first_party_only`), and `candidate.expire` (scope `candidates.expire`, the 14-day sweep, run by `memory_steward`). **Not built yet, named:** `memory.update`, `memory.pin`, `memory.archive`, `memory.restore`, `memory.delete`, `memory.search`, `memory.explain_retrieval`, `private.unlock`, `knowledge.ask` (`explain.memory` remains a stub). The "one command each" UX line above holds for the four Kang-facing resolutions; `memory.propose` for anyone but first-party Kang always creates a candidate.
 
 ## 11. Planning, Agent, Plugin APIs (contract highlights)
 

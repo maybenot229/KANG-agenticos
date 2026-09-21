@@ -56,6 +56,19 @@ from kang.api.schemas.invocation import (
     InvocationListResponse,
 )
 from kang.api.schemas.job import JobDisableRequest, JobEnableRequest
+from kang.api.schemas.memory import (
+    CandidateExpireRequest,
+    CandidateExpireResponse,
+    CandidateListRequest,
+    CandidateListResponse,
+    MemoryApproveRequest,
+    MemoryApproveResponse,
+    MemoryEditApproveRequest,
+    MemoryProposeRequest,
+    MemoryProposeResponse,
+    MemoryRejectRequest,
+    MemoryRejectResponse,
+)
 from kang.api.schemas.milestone import (
     MilestoneCreateRequest,
     MilestoneCreateResponse,
@@ -471,5 +484,84 @@ EXTRA_OPERATIONS: tuple[dict[str, Any], ...] = (
         "Send one conversational turn to the chat agent; blocks for one model call.",
         channel=OperationChannel(first_party_only=True),
         schemas=OperationSchemas(request=ChatSendRequest, response=ChatSendResponse),
+    ),
+    # ---- the memory write gate (ADR-051 D3) -------------------------------
+    # memory.propose declares the COARSE scope `memory.propose`; the handler
+    # asks the same engine a second time about `memory.propose:{type}` (D2).
+    # Scope.covers means the bare and qualified grants are different
+    # permissions, so every proposing principal holds both. M-003: whatever
+    # the caller, a non-Kang proposal is a candidate, never an active record.
+    _op(
+        "memory.propose",
+        "command",
+        "memory.propose",
+        False,
+        "Propose a memory: Kang's first-party save auto-passes; every other "
+        "writer's proposal is queued for approval.",
+        schemas=OperationSchemas(
+            request=MemoryProposeRequest, response=MemoryProposeResponse
+        ),
+    ),
+    # The four Kang-facing resolutions share ONE authority ("resolve the
+    # approval queue", scope memory.approve, which only `kang` will ever
+    # hold) and the first-party channel (ADR-002) so no plugin or agent
+    # session can drain Kang's queue. The gate additionally refuses any
+    # principal but first-party `kang` (defence in depth).
+    _op(
+        "memory.approve",
+        "command",
+        "memory.approve",
+        False,
+        "Approve a queued candidate: it becomes an active record under the "
+        "queue row's own id.",
+        channel=OperationChannel(first_party_only=True),
+        schemas=OperationSchemas(
+            request=MemoryApproveRequest, response=MemoryApproveResponse
+        ),
+    ),
+    _op(
+        "memory.edit_approve",
+        "command",
+        "memory.approve",
+        False,
+        "Approve a queued candidate with edited content.",
+        channel=OperationChannel(first_party_only=True),
+        schemas=OperationSchemas(
+            request=MemoryEditApproveRequest, response=MemoryApproveResponse
+        ),
+    ),
+    _op(
+        "memory.reject",
+        "command",
+        "memory.approve",
+        False,
+        "Reject a queued candidate (kept 30 days for 'why was this rejected?').",
+        channel=OperationChannel(first_party_only=True),
+        schemas=OperationSchemas(
+            request=MemoryRejectRequest, response=MemoryRejectResponse
+        ),
+    ),
+    _op(
+        "candidate.list",
+        "query",
+        "memory.approve",
+        True,
+        "The approval queue: pending first, oldest first.",
+        channel=OperationChannel(first_party_only=True),
+        schemas=OperationSchemas(
+            request=CandidateListRequest, response=CandidateListResponse
+        ),
+    ),
+    # The 14-day sweep (ADR-051 D9): silence is a veto, not consent (06 §4.3).
+    # Mirrors conversation.purge: memory_steward's second real tool.
+    _op(
+        "candidate.expire",
+        "command",
+        "candidates.expire",
+        True,
+        "Expire pending candidates past their veto window.",
+        schemas=OperationSchemas(
+            request=CandidateExpireRequest, response=CandidateExpireResponse
+        ),
     ),
 )

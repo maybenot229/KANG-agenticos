@@ -68,6 +68,12 @@ from kang.api.operations.job_ops import (
     make_job_disable_handler,
     make_job_enable_handler,
 )
+from kang.api.operations.memory_ops import (
+    MEMORY_PRINCIPAL,
+    MemoryOpsDeps,
+    make_candidate_list_handler,
+    make_memory_handlers,
+)
 from kang.api.operations.milestone_ops import (
     MILESTONES_PRINCIPAL,
     make_milestone_create_handler,
@@ -121,6 +127,10 @@ __all__ = [
     "make_chat_send_handler",
     "make_competition_create_handler",
     "make_competition_list_handler",
+    "MEMORY_PRINCIPAL",
+    "MemoryOpsDeps",
+    "make_candidate_list_handler",
+    "make_memory_handlers",
     "make_conversation_list_handler",
     "make_conversation_purge_handler",
     "make_deadline_create_handler",

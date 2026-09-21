@@ -52,6 +52,12 @@
 # ADR-013/014/015 established, first applied here).
 "kernel:goals" = ["events.publish:kang"]
 
+# The memory write gate publishes memory.saved — the trust store's own truth
+# (a Kang save, an approval, a silent merge; EB-010). ADR-051 D7: the memory
+# handlers publish under this principal, not the requester's, and commit the
+# record row only inside the publish (EB-004).
+"kernel:memory" = ["events.publish:kang"]
+
 # The backup domain service publishes backup.offsite_stale — the fact
 # that 07 Part XII.5's marker check found (EB-010). ADR-034: backup's
 # first event-publishing path (backup.snapshot/.verify publish nothing).
@@ -100,4 +106,22 @@
 # the rest of memory_steward's declared mandate (janitor/dedup/
 # consolidation) stays Phase 2, not yet real, so nothing else is granted
 # here yet.
-"agent:memory_steward" = ["conversations.purge"]
+#
+# ADR-051 (2026-09-21): its first MEMORY grants — the write gate's. TWO
+# shapes for one capability, on purpose (D2): `Scope.covers` means the bare
+# `memory.propose` does NOT authorize a qualified request and a qualified
+# grant does NOT authorize the bare one, so the dispatcher's coarse check
+# ("may this principal propose at all") and the handler's per-type check
+# ("may it propose THIS type") each need their own line. Whatever it holds,
+# M-003 still queues every proposal for Kang: no scope here can admit a
+# record. `memory.propose:rule`/`:profile` are ungrantable (pairing lint) and
+# refused again by the gate. `candidates.expire` is candidate.expire's scope
+# (D9, 06 §4.3's veto sweep) — the agent's second real tool.
+"agent:memory_steward" = [
+  "conversations.purge",
+  "memory.propose",
+  "memory.propose:lesson",
+  "memory.propose:preference",
+  "memory.propose:observation",
+  "candidates.expire",
+]

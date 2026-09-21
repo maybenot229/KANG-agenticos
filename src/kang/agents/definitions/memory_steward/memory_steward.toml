@@ -14,11 +14,19 @@
 # rather than smoothed over: this definition now carries one real tool
 # and two still-illustrative ones side by side, on purpose.
 
+# Corrected by ADR-051 (2026-09-21): `tools` gains its second real, resolved
+# entry, "candidate.expire" — the 14-day silence-is-a-veto sweep of the
+# approval queue (06 §4.3, ADR-051 D9), run by the `candidate_expire` job
+# through this same envelope. Its `scopes` below are now also real grants in
+# permissions.toml (with the bare `memory.propose` the dispatcher needs — D2).
+# "gate.client" stays illustrative: this agent proposes only once a producer
+# exists (consolidation, Phase 2+).
+
 id = "memory_steward"
 kind = "mechanical"
 mandate = "Janitor, dedup, weekly consolidation, pattern extraction (06_MEMORY Part VI)"
 triggers = ["sched:nightly", "sched:weekly", "sched:monthly"]
-tools = ["conversation.purge", "gate.client", "notify:digest"]
+tools = ["conversation.purge", "candidate.expire", "gate.client", "notify:digest"]
 scopes = ["memory.propose:lesson", "memory.propose:preference", "memory.propose:observation"]
 timeout_s = 1800
 retry = 1

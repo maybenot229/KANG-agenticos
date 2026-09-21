@@ -35,6 +35,7 @@ from aiohttp import web
 
 from kang.adapters.config.agent_definitions_loader import discover_agent_definitions
 from kang.adapters.config.backup_config import load_external_backup_marker
+from kang.adapters.config.memory_loader import MemoryConfigError, load_memory_config
 from kang.adapters.config.permissions_loader import (
     KANG_ONLY_GRANTS,
     GrantLoadError,
@@ -48,6 +49,7 @@ from kang.adapters.os_windows.clock import SystemClock
 from kang.adapters.os_windows.startup_lock import FileStartupLock
 from kang.adapters.sqlite.backup_service import SqliteBackupService
 from kang.adapters.sqlite.calendar_store import SqliteCalendarStore
+from kang.adapters.sqlite.candidate_queue_store import SqliteCandidateQueueStore
 from kang.adapters.sqlite.competition_store import SqliteCompetitionStore
 from kang.adapters.sqlite.connection import open_connection, open_read_only_connection
 from kang.adapters.sqlite.connection_pool import ReadPool, WriteExecutor
@@ -58,6 +60,7 @@ from kang.adapters.sqlite.held_action_store import SqliteHeldActionStore
 from kang.adapters.sqlite.idempotency_store import SqliteIdempotencyStore
 from kang.adapters.sqlite.invocation_store import SqliteInvocationStore
 from kang.adapters.sqlite.job_store import SqliteJobStore, SqliteKillSwitch
+from kang.adapters.sqlite.memory_store import SqliteMemoryStore
 from kang.adapters.sqlite.migrations import apply_migrations
 from kang.adapters.sqlite.milestone_store import SqliteMilestoneStore
 from kang.adapters.sqlite.notification_store import SqliteNotificationStore
@@ -65,6 +68,7 @@ from kang.adapters.sqlite.project_store import SqliteProjectStore
 from kang.adapters.sqlite.recovery import SqliteRecoveryApplier
 from kang.adapters.sqlite.session_store import SqliteSessionStore
 from kang.adapters.sqlite.task_store import SqliteTaskStore
+from kang.adapters.sqlite.transaction import SqliteUnitOfWork
 from kang.api.dispatch import ApiRequest, Dispatcher, DispatcherDeps
 from kang.api.http_binding import make_app
 from kang.api.operations import (
@@ -99,6 +103,7 @@ from kang.api.operations import (
     make_task_complete_handler,
     make_task_create_handler,
 )
+from kang.api.operations.memory_ops import MemoryOpsDeps, make_memory_handlers
 from kang.api.registry import OPERATIONS
 from kang.domain.notifications import (
     make_backup_offsite_enqueue_handler,
@@ -275,6 +280,7 @@ class _HandlerWiring:
     router: Router  # ADR-044: chat.send's own model-call path
     sessions: object  # ADR-044: chat.send's own agent:chat session mint
     conversations: ConversationStore  # ADR-046: chat.send's own history
+    memory: MemoryOpsDeps  # ADR-051: the write gate's operations
 
 
 def _build_handlers(w: _HandlerWiring) -> dict:
@@ -333,6 +339,7 @@ def _build_handlers(w: _HandlerWiring) -> dict:
                 )
             )
         ),
+        **make_memory_handlers(w.memory),
         **_build_project_cluster_handlers(w),
         **_build_consequential_handlers(w),
     }
@@ -576,6 +583,7 @@ def _build_core_locked(
         router=router,
         sessions=sessions,
         conversations=conversations,
+        memory=_memory_ops_deps(kang_home, kang, wiring, clock, new_id, device_id),
     )
     handlers = _build_handlers(handler_wiring)
     query_handlers = _build_query_handlers(handler_wiring)
@@ -607,6 +615,28 @@ def _build_core_locked(
         ),
         startup_lock=startup_lock,
         clock=clock,
+    )
+
+
+def _memory_ops_deps(kang_home, kang, wiring, clock, new_id, device_id):
+    """ADR-051: the write gate's wiring. `memory.toml` is read here, fail-
+    closed (D8): absent or malformed leaves `config=None`, so the record-
+    creating operations refuse rather than default an expiry window."""
+    try:
+        config = load_memory_config(kang_home / "config" / "memory.toml")
+    except MemoryConfigError:
+        config = None
+    return MemoryOpsDeps(
+        bus=wiring.bus,
+        memory=SqliteMemoryStore(kang),
+        queue=SqliteCandidateQueueStore(kang),
+        unit_of_work=SqliteUnitOfWork(kang),
+        permissions=wiring.engine,
+        audit=wiring.audit,
+        clock=clock,
+        new_id=new_id,
+        device_id=device_id,
+        config=config,
     )
 
 

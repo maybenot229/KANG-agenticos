@@ -47,6 +47,7 @@ __all__ = [
     "BACKUP_OFFSITE_CHECK_JOB",
     "BACKUP_SNAPSHOT_JOB",
     "BACKUP_VERIFY_JOB",
+    "CANDIDATE_EXPIRE_JOB",
     "CONVERSATION_PURGE_JOB",
     "DEADLINE_SWEEP_JOB",
     "HELD_ACTION_EXPIRE_JOB",
@@ -71,6 +72,8 @@ BACKUP_VERIFY_JOB = "backup_verify"  # 05 Appendix E name (ADR-032)
 BACKUP_OFFSITE_CHECK_JOB = "backup_offsite_check"  # ADR-034 — Appendix E
 #   itemizes no job for this (ADR-034's own Context section); named to
 #   match the existing backup.* family, not invented from nothing.
+CANDIDATE_EXPIRE_JOB = "candidate_expire"  # ADR-051 D9 — memory_steward's
+#   second real job: 06 §4.3's "silence is a veto" sweep of the approval queue.
 CONVERSATION_PURGE_JOB = "conversation_purge"  # ADR-047 — fills Appendix
 #   E's `memory_steward.nightly` row (daily, run_once_latest); named
 #   task-shaped like every other row in this table (`deadline_sweep`,
@@ -100,6 +103,7 @@ JOB_OPERATIONS: dict[str, str] = {
     "backup_verify": "backup.verify",  # ADR-032
     "backup_offsite_check": "backup.offsite_check",  # ADR-034
     "conversation_purge": "conversation.purge",  # ADR-047
+    "candidate_expire": "candidate.expire",  # ADR-051 D9
 }
 
 # ADR-043/045: jobs whose real scheduled trigger runs through the
@@ -122,6 +126,7 @@ AGENT_ROUTED_JOBS: dict[str, str] = {
     BACKUP_VERIFY_JOB: "backup_monitor",
     BACKUP_OFFSITE_CHECK_JOB: "backup_monitor",
     CONVERSATION_PURGE_JOB: "memory_steward",  # ADR-047
+    CANDIDATE_EXPIRE_JOB: "memory_steward",  # ADR-051 D9
 }
 
 
@@ -352,6 +357,17 @@ def _register_memory_steward_jobs(job_store, clock) -> None:
             # worth of nights still only needs one sweep of whatever is
             # now stale, not N redundant sweeps (ADR-031's own reasoning
             # for backup_snapshot, reused here).
+            schedule="daily",
+            catch_up="run_once_latest",
+            created_at=clock.now(),
+        )
+    )
+    # ADR-051 D9: the same shape — one sweep of whatever is now past its
+    # veto window is all a missed week needs.
+    job_store.register_job(
+        Job(
+            id=CANDIDATE_EXPIRE_JOB,
+            name=CANDIDATE_EXPIRE_JOB,
             schedule="daily",
             catch_up="run_once_latest",
             created_at=clock.now(),

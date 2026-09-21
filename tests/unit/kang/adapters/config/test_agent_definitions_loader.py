@@ -261,8 +261,10 @@ def test_the_shipped_real_definitions_load_cleanly():
     assert by_id["memory_steward"].pipelines == ("weekly_close",)
     # ADR-047: memory_steward's first real, resolved tool sits alongside
     # its two still-illustrative ones (its real mandate is Phase 2).
+    # ADR-051: its second real tool, the candidate expiry sweep.
     assert by_id["memory_steward"].tools == (
         "conversation.purge",
+        "candidate.expire",
         "gate.client",
         "notify:digest",
     )
