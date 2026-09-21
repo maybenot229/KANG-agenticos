@@ -1,0 +1,137 @@
+# ADR-051 — The memory write gate: admission as pure domain policy, two engine checks, and the first six memory operations
+
+**Status:** accepted (2026-09-21) — Kang's own "accept it", same session as drafting; Options 1B / 2B / 3B as recommended, D1–D10 accepted as written. The third slice of the Phase 2 slicing plan (ADR-048 the schema, ADR-049 the corpus). **Not yet implemented** — implementation is delegated to a separate coding session; its build brief is `docs/guides/session-2026-09-21-adr051-build-brief.md`.
+**Date:** 2026-09-21
+**Supersedes:** none
+**Affected documents (if accepted):** `04_ARCHITECTURE.md` D013 §14.1 (a dated correction: its scope example `memory.write:{types}` is stale vocabulary — the live vocabulary is `memory.propose:{types}`, already what 05 §8, 06 §12.2, the pairing lint and `memory_steward.toml` all use, D1); `06_MEMORY.md` §4.2 (a dated note: the gate's cosine and NLI probes have no implementation until embeddings exist, and what ships instead, D5) and §4.1 (a dated note: `rule:` writers are refused until a rule registry exists, D6); `15_EVENT_BUS.md` §6.1 (the closed taxonomy gains `memory.saved`, the ADR-013/016 standing pattern, D7); `12_API.md` §10 (a dated note naming the six operations this slice actually builds and the ones it does not, D3); `config/defaults/memory.toml` (new file, one key, D8); `config/defaults/permissions.toml` (new principal `kernel:memory`, new grants, D2)
+**Cites:** 06_MEMORY Part IV in full (4.1 the writers table, 4.2 the gate pipeline and its required metadata, 4.3 the approval queue's UX contract and the 14-day silence-is-a-veto rule), **M-003** (AI proposals never auto-commit, at any confidence — the decision this ADR exists to make mechanical), M-002 (the lifecycle machine), §8.1 (missing provenance is a schema violation), §12.1/§12.2 (sensitivity levels; `memory.propose:{types}` scopes), Appendix A (`memory.toml`'s `[gate]` shape); 07_DATABASE DB-001 ("the write gate additionally wraps memory-record commits with an event-log entry **before** the DB write... This pairing is normative"), §5.1 (the tables, as migrated by ADR-048/0020-0021), Part XVI; 05_AGENTS §8 (scope grammar; the pairing constraints already linted), AG-010 (agents propose, never write); 12_API §10 ("the API physically has no operation that writes an active memory except `memory.approve` of an existing candidate by a first-party session, or Kang-principal explicit saves which auto-pass the gate"), §4 (`candidate` is a named resource), API-003 (authorization is entirely the engine's); 13_TESTING §2.8 (the memory-integrity suite this slice's tests open); 15_EVENT_BUS EB-004 (the five-step write order; `commit_state` runs only inside `publish`), EB-003 (recovery-grade payload sufficiency), §6.1 (`memory.saved` already named in the taxonomy); 18 §4 Phase 2 row ("the gate (M-003) is built before retrieval is wired to any agent — **policy before power**"); 03_ROADMAP §3 ("no gate bypass 'for bootstrapping'"); ADR-048 D1 (a candidate lives only in `memory_candidate_queue`; the queue row's id becomes the record's id on approval — implemented here), ADR-027 (`scope=None` is a decision, not a default), ADR-016 (the standing `.created` event pattern), ADR-022/047 (the job → mechanical-agent-envelope pattern reused for candidate expiry), ADR-002 (`first_party_only` as a channel control, not a scope)
+**Related:** [[048-memory-truth-schema.md]], [[049-synthetic-corpus-generator.md]], [[047-conversation-retention-purge.md]]
+
+---
+
+## Context
+
+ADR-048 landed the tables; ADR-049 landed the corpus that fills them. Nothing writes a memory record. This slice builds the component 06_MEMORY calls "the single most safety-critical component" and that 18 §4 orders before retrieval on the principle *policy before power*.
+
+Confirmed against the real repository on 2026-09-21, not assumed: `domain/memory/` is still an empty `__init__.py` stub; no memory port, store, fake, operation, or event exists; `config/defaults/` has no `memory.toml`; `kernel/permissions/pairing.py` already bans `memory.propose:rule|profile` as ungrantable and `web.fetch × memory.read:sensitive` as a forbidden pairing, built at M3 "so it is there before the first grant that would violate it"; `memory_steward.toml` already declares `scopes = ["memory.propose:lesson", "memory.propose:preference", "memory.propose:observation"]`, which no code has ever read.
+
+Five things the documents leave open or state two ways, each found by reading code rather than prose:
+
+**Finding 1 — the scope vocabulary is stated two ways, and only one of them is live.** 04 D013 §14.1 lists `memory.write:{types}`. Every other source — 05 §8, 06 §12.2, the pairing lint, `memory_steward.toml`'s own declared scopes — uses `memory.propose:{types}`. Nothing anywhere uses `memory.write`. D1.
+
+**Finding 2 — the obvious coarse-then-fine authorization design does not work against the real engine.** `kernel/permissions/scope.py::Scope.covers` reads: a grant covers a request iff the grant is `*`, or the families match **and** the grant's qualifier is `*` or exactly the requested qualifier. So a principal granted `memory.propose:lesson` is **denied** a bare `memory.propose` request — qualifier `"lesson"` does not equal `None`. If `memory.propose` declared a coarse scope at the registry and relied on per-type grants, `memory_steward` would be refused at the dispatcher before the handler ever ran. And the fine-grained scope cannot be declared statically at the registry at all, because the type is request data, not operation identity. D2.
+
+**Finding 3 — the gate's two semantic probes cannot exist yet, and 18 §4 says build the gate anyway.** 06 §4.2 specifies duplicate detection at `cosine ≥ 0.90` and a contradiction check via a cheap NLI model. Both need embeddings, which are a later slice (no `vec_*` tables, no embedding provider, `ModelProvider.call` returns text or a schema instance and never a vector). 18 §4 nonetheless orders the gate before embeddings, explicitly: *policy before power*. D5.
+
+**Finding 4 — two writer classes in 06 §4.1's table have no possible caller.** `rule:{id}` writers require a registered-rule concept that does not exist in any form (no registry, no table, no loader, and the first real rule — project-archived → retrospective, or the evening review's episode writes — is slices away). `plugin:{id}` writers are Phase 4. D6.
+
+**Finding 5 — the 14-day expiry is a safety property with no mechanism.** 06 §4.3: "Items expire to `rejected` at 14 days — silence is a veto, not consent." That bound is *why* M-003's approval cost is bounded and why an unattended KANG cannot accumulate an unbounded queue (NFR-008, 06 XIV-8). `memory_candidate_queue.expires_at` is a column ADR-048 migrated; nothing computes it and nothing sweeps it. D9.
+
+**What is settled and not re-decided here:** M-003 itself (no confidence threshold bypasses the human valve — this ADR makes it mechanical, it does not revisit it); the taxonomy and the schema (ADR-048, migrations 0020/0021); that a candidate lives only in `memory_candidate_queue` and its id becomes the record's id on approval (ADR-048 D1); EB-004's write order and DB-001's event-before-commit pairing; that authorization is the engine's job (API-003); the pairing constraints already linted.
+
+---
+
+## Options
+
+### Option 1 — How a per-type proposal is authorized (Finding 2)
+
+**1A — Declare `scope=None` on `memory.propose` and let the handler perform the only engine check, `check(principal, f"memory.propose:{type}")`.**
+- *For:* one check, in the only place the type is known; no grant duplication.
+- *Against:* it extends ADR-027's deliberately-closed set of unscoped operations, and it does so for **the most safety-critical write path in the system**. `Dispatcher._authorize` skips the engine entirely for an unscoped operation, so default-deny would never run for `memory.propose`; a future refactor that dropped the handler's check would silently open the gate to any authenticated principal. ADR-027 closed the unscoped set precisely to stop that shape from spreading.
+
+**1B — Declare a coarse `memory.propose` scope and grant every proposing principal both the coarse family and its per-type qualifiers; the handler additionally checks the per-type scope. (Recommended.)**
+- *For:* two independent engine checks, and losing either still leaves one standing — the dispatcher's default-deny gates *may this principal propose at all*, the handler's gates *may it propose this type*. Both speak the engine's own vocabulary, so no second authorization language appears (API-003 holds). It is not redundant in effect: `covers()` means the coarse grant does **not** authorize a qualified request and a qualified grant does **not** authorize the bare one, so the two grants genuinely express two different permissions. The pairing lint's existing ban on `memory.propose:rule|profile` keeps biting at the fine level, unchanged.
+- *Against:* every proposing principal carries one extra grant line, and a reader of `permissions.toml` must understand that the bare family and the qualified forms mean different things. Mitigated by a comment at the grant and by D1's dated correction making the vocabulary single.
+
+**1C — Grant `memory.propose:*` to proposing principals.** Rejected outright: `Scope.is_wildcard` is what the pairing lint restricts to `kang` (05 §8), and a wildcard would defeat the per-type allowlist that is the entire point of 06 §4.1's writers table.
+
+### Option 2 — What the gate does without its semantic probes (Finding 3)
+
+**2A — Defer the gate until embeddings exist, inverting 18 §4's order.** *For:* the gate ships whole, as 06 §4.2 describes it. *Against:* it inverts an explicit constitutional ordering whose stated reason is *policy before power*, and it would mean embeddings — a slice that computes vectors over records — lands before any rule governs which records may exist. It also misreads what the probes are for: they set **queue presentation and flags**, not admission authority. The safety property M-003 names is the human valve, and the human valve needs no vector.
+
+**2B — Ship the gate with exact-hash duplicate detection only; cosine and NLI arrive with embeddings, as flags on the same queue rows. (Recommended.)** *For:* 06 §4.2's own pipeline already specifies two duplicate probes, and the first — "normalized-content hash (case/whitespace-folded) for exact dupes → silent merge with provenance append" — needs nothing but the store; the `flags`/`flag_context` columns ADR-048 migrated stay empty until the semantic probes fill them, which is exactly what they are for. No admission decision changes when the probes arrive: a flagged candidate is still a queued candidate. *Against:* the gate is genuinely weaker than 06 §4.2 describes for the duration, and a near-duplicate or a contradiction will reach the queue unflagged and may be approved by a Kang who was not shown the counterpart. Named in the document, not silently shipped.
+
+### Option 3 — Whether Kang's own save passes through the queue
+
+**3A — Kang's proposal writes a queue row and immediately resolves it `approved`.** *For:* one physical path to `memory_record`. *Against:* it manufactures a row whose entire lifetime is one transaction, and 06 §4.1 calls Kang's writes "auto-approved", not "queued then approved".
+
+**3B — The gate returns `admit` for a first-party `kang` proposal and the record is inserted directly; no queue row. (Recommended.)** *For:* matches 06 §4.1 and 12 §10's own wording ("Kang-principal explicit saves which auto-pass the gate"); the queue stays what it is — the quarantine for writes that are *not* Kang's. The record-insert step is one shared function called by both this path and `memory.approve`, so there is still one way a `memory_record` row comes into existence. *Against:* two admission routes to read when auditing. Mitigated: both emit the same audited gate decision, distinguishable by its `outcome`.
+
+---
+
+## Decision
+
+### D1 — `memory.propose:{type}` is the vocabulary; 04 D013's `memory.write` is corrected
+
+A dated correction lands on 04 D013 §14.1's scope list: `memory.write:{types}` was never implemented and is superseded by `memory.propose:{types}`, which 05 §8, 06 §12.2, the pairing lint, and `memory_steward.toml` already use. No behavior changes — this makes one concept have one name (11 §3).
+
+### D2 — Two engine checks: a coarse operation scope and a per-type check in the handler (Option 1B)
+
+`memory.propose` declares `scope="memory.propose"`. Every principal that may propose is granted, in `permissions.toml`, both the bare `memory.propose` and its per-type qualifiers. The handler then calls the engine a second time with `memory.propose:{proposal.type}` and maps `PermissionDenied` to the standard `permission_denied` envelope. Both checks are the engine's; no authorization logic lives in `api/`.
+
+`memory_steward`'s existing three qualified scopes move from its agent definition's advisory `scopes` field into real `permissions.toml` grants alongside a bare `memory.propose` — its first memory grants, mirroring how ADR-047 gave it `conversations.purge`.
+
+### D3 — Six operations, and the ones deliberately not built
+
+| Operation | Kind | Scope | Channel | Notes |
+|---|---|---|---|---|
+| `memory.propose` | command | `memory.propose` (+ per-type check, D2) | — | Always a candidate, except D4 |
+| `memory.approve` | command | `memory.approve` | `first_party_only` | Queue row → `memory_record` |
+| `memory.edit_approve` | command | `memory.approve` | `first_party_only` | Approve with edited content; the edit is recorded as the resolution, not a revision (revision 1 is what lands) |
+| `memory.reject` | command | `memory.approve` | `first_party_only` | Resolution `rejected`; row kept 30 days for "why was this rejected?" |
+| `candidate.list` | query | `memory.approve` | `first_party_only` | The approval queue (12 §4 names `candidate` a resource); pending first, oldest first |
+| `candidate.expire` | command | `candidates.expire` | — | The 14-day sweep, D9 |
+
+`memory.approve` is the scope for all four Kang-facing resolutions and the queue read: they are one authority ("resolve the approval queue"), and no principal but `kang` will ever hold it. `first_party_only` (ADR-002, a channel control, not a scope) is what structurally prevents a plugin or agent session from draining Kang's queue — the same defense Appendix D already gives `held_action.approve`.
+
+**Not built, named:** `memory.get`, `memory.search`, `memory.update`, `memory.pin`, `memory.archive`, `memory.restore`, `memory.delete`, `explain.memory`, `private.unlock`, `knowledge.ask`. None has a consumer this slice (retrieval is S8, the browser's record view rides it, deletion is its own slice with the 30-day recovery covenant). 12 §10 gets a dated note listing what exists.
+
+### D4 — Kang's first-party proposal auto-passes; every other writer queues (Option 3B)
+
+The gate returns `admit` only when the session is `first_party=True` **and** the principal is exactly `kang`. Every other writer — every agent, without exception and regardless of any confidence value in the proposal — returns `queue`. There is no configuration key, no threshold, and no argument that produces `admit` for a non-Kang principal: **M-003 made structural.** The confidence field is carried, stored, and used for queue ordering only.
+
+### D5 — Exact-hash duplicate detection ships; the semantic probes are a named, dated absence (Option 2B)
+
+The gate computes a normalized-content hash (case- and whitespace-folded) and, on an exact match against an `active` record of the same type, performs 06 §4.2's specified silent merge: no new record, the incumbent's provenance appended, revision bumped, and the merge audited. Cosine near-duplicate flagging and NLI contradiction detection are **not implemented**; `flags`/`flag_context` stay empty, and 06 §4.2 gets a dated note saying so and naming the embeddings slice as where they arrive. No admission outcome changes when they do.
+
+### D6 — Writers the gate refuses outright, until their slice exists
+
+A proposal whose `created_by` names a `rule:` or `plugin:` principal is rejected with a typed error, because neither a rule registry nor the plugin system exists and a writer that cannot be held to account must not be able to write (06 §4.1's whole point). A proposal with `sensitivity='private'` is likewise rejected: ADR-048's CHECK requires `content='[encrypted]'` with real ciphertext in `content_enc`, and no encryptor exists until the private-records slice. `type` of `rule` or `profile` is refused for every principal except first-party `kang`, matching 06 §4.1's hard prohibition and the pairing lint's existing ban, enforced here a second time (defense in depth, exactly as 05 §8 describes it).
+
+### D7 — One event: `memory.saved`, recovery-grade, full-row payload
+
+Registered per the ADR-013/016 standing pattern: category Domain, `recovery_grade=True`, full-row payload, a re-application applier in `adapters/sqlite/recovery.py`, and a payload-sufficiency fixture (13 §16.2 makes this obligatory for a recovery-grade type). Published under a new principal `kernel:memory` granted `events.publish:kang`; the record row commits **only inside** `bus.publish` (EB-004), which is also how 07 DB-001's normative "event-log entry before the DB write" pairing is satisfied for memory.
+
+**A real tension, decided rather than stepped over:** a recovery-grade payload must reconstruct the row (EB-003), so `memory.saved` carries full content into `events/eventlog.db` — while 06 §12.1 says `sensitive` records are "redacted in logs/manifests (ids only)". Decided: the event log is truth infrastructure inside `%KANG_HOME%`, the same trust and backup boundary as `kang.db`, not one of the "logs" §12.1 means (which are the structured debug logs and context manifests, both of which genuinely leave the record's own storage domain). Full content is carried. `private` content never appears regardless, because private proposals are refused (D6) and, when they are allowed, the row itself holds only ciphertext. A dated note records this reading at 06 §12.1.
+
+No `memory.proposed`, `memory.rejected`, or `memory.expired` event is registered: no consumer exists, and ADR-026 already established that registering an event without one is the thing not to do. Every one of those transitions is audited.
+
+### D8 — `config/defaults/memory.toml`, with exactly its one real key
+
+The file 06 Appendix A specifies and ADR-047 named, created with `[gate] candidate_expiry_days = 14` and nothing else — the one key this slice actually reads (to compute `expires_at` at propose time). `duplicate_cosine` is not shipped, because D5 means nothing would read it; `[retention]` is not shipped, because its readers are the janitor slice. Loader mirrors `permissions_loader`/`providers_loader`; **fails closed** — an absent or malformed `memory.toml` does not fall back to a built-in 14, it refuses to build the gate, because a gate whose expiry window silently defaults is a gate whose silence-is-a-veto contract is unverifiable.
+
+ADR-047's `CONVERSATION_RETENTION_DAYS = 90` is **not** migrated into this file in this slice. It is a trivial follow-up and the named trigger is now satisfied, but bundling an unrelated retention change into the most safety-critical commit in Phase 2 dilutes exactly the review attention that commit needs. Named here so the loop is not lost.
+
+### D9 — `candidate.expire`: the 14-day sweep, through `memory_steward`'s existing envelope
+
+A new operation `candidate.expire` (scope `candidates.expire`, idempotent) sets `resolved='expired'` on every pending candidate past `expires_at` and returns the ids, mirroring `conversation.purge`'s shape exactly (ADR-047 D2). Wired as a second `memory_steward` job on the existing `AGENT_ROUTED_JOBS` path, daily, `run_once_latest` — the agent's second real tool, its second real grant. Without this, `expires_at` is a column nothing honors and 06 §4.3's "silence is a veto" is fiction.
+
+Purging `rejected`/`expired` rows after 30 days (06 §7.1) is **not** built: that is the janitor's, and a row that lingers is inert, whereas a candidate that never expires is a broken safety property.
+
+### D10 — Shape: pure domain policy, ports, fakes, one composition point
+
+`domain/memory/write_gate.py` is a pure function — proposal + writer identity + probe results in, a typed `GateDecision` (`admit | queue | merge | reject` with a reason) out. Zero I/O, so every rule in 06 §4.1/§4.2 is unit-testable against fakes without a database. New ports `MemoryStore` (insert, get-by-id, hash lookup, merge-provenance) and `CandidateQueueStore` (enqueue, list pending, resolve, expire due), each with a fake and a SQLite adapter, contract-paired per 13 §2.3. Handlers orchestrate: authorize, build the proposal, call the gate, act on the decision. **ADR-048's owed claim lands here:** a store test proves no port dataclass or API response carries the integer rowid.
+
+---
+
+## Consequences
+
+**What becomes true.** The first memory record can exist, and it cannot exist any other way: there is no code path from an agent to an `active` row that does not pass a first-party `kang` action, and that is provable by construction rather than by inspection (13 §2.8's first claim). `memory_steward` gains its first real memory authority. The queue is bounded in time, so an unattended KANG degrades to "nothing was approved" rather than "the queue grew forever".
+
+**What becomes harder, or costs something.** The gate is genuinely weaker than 06 §4.2 describes until embeddings land — a near-duplicate or a contradiction reaches Kang unflagged, and he may approve both halves of a contradiction without being shown the pair. That is the price of *policy before power* and it is dated in the document rather than left for a reader to discover. Every proposing principal now carries two grant shapes for one capability, which a permission-screen reader must understand. Sensitive record content lives in the event log, argued in D7 and worth re-reading if the sync design ever ships event log contents off-machine. And four writer classes from 06 §4.1's table (rules, plugins, private-sensitivity, and `rule`/`profile` types from non-Kang) are refused rather than supported, so the table describes more than the code does until their slices land.
+
+**Named, not decided here:** the rule registry; plugin memory (Phase 4); private records and their encryptor; the 30-day purge of resolved candidates; `memory.toml`'s `[retention]` section and ADR-047's constant migrating into it; every read path (retrieval, search, the browser's record view, `explain.memory`); revision history on edits of *active* records, which only becomes reachable when `memory.update` exists.
+
+## Verification
+
+**Not yet implemented.** What would prove this ADR: the 13 §2.8 memory-integrity suite's opening claims — a proposal with absent or malformed provenance is refused at the gate *and* at the schema; an agent proposal never reaches `active` by any operation, proved by exhausting the registry rather than by asserting one handler; `rule`/`profile` from a non-Kang principal refused; `rule:`/`plugin:` writers and `private` sensitivity refused; the per-type scope check denying a type the principal lacks while permitting one it holds; an exact-hash duplicate merging rather than inserting, with provenance appended and revision bumped; a first-party `kang` proposal landing `active` with no queue row; `memory.approve` producing a record whose id is the queue row's id (ADR-048 D1); a non-first-party session refused on all five Kang-facing operations; `candidate.expire` expiring only rows past `expires_at` and being idempotent; a malformed `memory.toml` refusing to build rather than defaulting; `memory.saved`'s payload-sufficiency fixture reconstructing the row on an empty store; and the owed ADR-048 claim that no port or API response exposes the integer rowid.
