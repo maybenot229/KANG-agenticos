@@ -67,6 +67,8 @@ Tables filled, in dependency order: `goal`, `project`, `competition`, `milestone
 | `year5` | 22,000 | 22,000 | 175,000 | 140,000 | nightly |
 | `year10` | 45,000 | 45,000 | 350,000 | 275,000 | nightly |
 
+> **Corrected by ADR-050 (2026-09-21).** This table's tier column named "merge (integration)" for `year1`. That was already false when written and is false now: `year1` runs at the **commit** tier, because the suites live under `tests/suites/` (D5) and CI's commit job runs `tests/unit tests/suites`. The placement does not change (commit tier, ~41-46 s measured); only the words do. Nothing else in this ADR is touched. See ADR-050 D4.
+
 Structured-store, queue, revision, and note counts are derived from these by fixed ratios in `profiles.py` (each with its one-line reason). `fraction` (default 1.0) scales every count for fast local runs; the determinism contract holds per `(profile, seed, fraction)`. Distributions are starting hypotheses in the sense 06 Appendix A uses the phrase — types weighted so `fact`/`observation` dominate and `rule`/`profile` are rare; statuses mostly `active` with `under_review`/`superseded`/`archived` minorities; `superseded` records carry a matching `supersedes`/`superseded_by` link pair; `lesson` records carry `derived_from` links to episodes; episodes follow their cadence (`plan` daily, `review` weekly, `retrospective` per completed project). The generator's own test asserts each table's count lands inside its 06 §13.1 band at `fraction=1.0`.
 
 ### D4 — Determinism: `(profile, seed, fraction)` ⇒ identical row content; a pinned golden for `year1`

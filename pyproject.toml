@@ -118,4 +118,10 @@ select = ["E", "F", "I", "T20", "BLE"]
 testpaths = ["tests"]
 # ADR-049 D5: a typo in a marker must not silently un-mark a nightly test.
 addopts = "--strict-markers"
-markers = ["nightly: decade-scale corpus suites; scheduled tier only"]
+# ADR-050 D1: the marker is the cadence authority (the directory stays the
+# suite-class authority). Registering a marker is vocabulary, not a tier (D3).
+markers = [
+  "nightly: decade-scale corpus suites; scheduled nightly tier only (ADR-050 D1)",
+  "weekly: weekly-tier suites (RESERVED - no CI job yet, ADR-050 D1/D3)",
+  "monthly: monthly-tier suites (RESERVED - no CI job yet, ADR-050 D1/D3)",
+]

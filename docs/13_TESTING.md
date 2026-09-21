@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Normative — defines what must be proven before software is trusted; changes require an ADR
-**Last updated:** 2026-07-11
+**Last updated:** 2026-09-21 (ADR-050: §3 chain-on-corpus moved to Nightly, Weekly/Monthly noted RESERVED; §4 gate 1 dated qualifier)
 **Upstream (binding):** all prior documents. This document unifies the suites already mandated by `07_DATABASE.md` Part 16, `05_AGENTS.md` §16, `08_PLUGIN_SYSTEM.md` §10, `12_API.md` §16, and `11_CODING_STANDARDS.md` §7 — and adds the classes they don't cover.
 **Role:** the constitutional documents make claims. **This document exists to keep those claims true for ten years.** Every MUST in docs 00–12 either has a test class here or is explicitly noted as untestable-by-tooling (and therefore review-guarded).
 
@@ -135,17 +135,19 @@ For outputs whose *shape* is the contract: morning plan structure, evaluation br
 |---|---|---|---|
 | Commit | every push | format · architectural lints · unit · fast contract | < 5 min |
 | Merge | every PR merge | + integration · API/plugin conformance · determinism · permission property suite | < 20 min |
-| Nightly | daily | + performance budgets on 10-yr corpus · replay scenario · memory integrity full | < 2 h |
-| Weekly | weekly | + injection red-team · corruption drills · migration chain on corpus | — |
+| Nightly | daily | + performance budgets on 10-yr corpus · migration chain on corpus · replay scenario · memory integrity full | < 2 h |
+| Weekly | weekly | + injection red-team · corruption drills | — |
 | Monthly | monthly | + stress suite · live restore-verification (on the real machine, via the backup_monitor) | — |
 
 Red at any tier blocks its scope (commit-tier blocks merge; nightly red blocks release and pages the health panel). CI definitions are code, reviewed like code (11_CODING §24).
+
+**Dated notes (2026-09-21, ADR-050).** (1) "Migration chain on corpus" moved from Weekly to Nightly (D2): the nightly tier already builds the `year10` corpus for the performance budgets, so the chain assertion rides a fixture that exists rather than forcing a weekly rebuild of a multi-minute fixture; running it daily is strictly stricter, and its `year1` form runs at the commit tier. No test moved — the document caught up to a placement that was already the stricter one. (2) The Weekly and Monthly tiers are **RESERVED, not built** (D3; 03_ROADMAP §8): no CI job exists for either, their suites (injection red-team, corruption drills, stress) are Phase 3+ work, and a scheduled job that runs nothing is PS-006's anti-pattern one layer up. The `weekly` and `monthly` markers are registered as vocabulary so the first such test can declare itself (D1). (3) Tier selection is by pytest marker, not path — 17 §11.2.
 
 ---
 
 ## 4. Release Gates (all MUST be green to tag a version)
 
-1. All tiers green, including the most recent weekly.
+1. All tiers green, including the most recent weekly. *(Dated qualifier, 2026-09-21, ADR-050 D3: all tiers **that exist**; the Weekly clause activates with the weekly tier, which is RESERVED — 03_ROADMAP §8. A real, dated weakening of this gate's wording while no weekly tier exists; re-read it at every version boundary, 03 §9.)*
 2. Zero-hard-dependency plugin gate (2.10).
 3. The Planner's zero-model deterministic path (release-blocking per 05_AGENTS §16).
 4. Migration chain from the previous release's schema, on the corpus.

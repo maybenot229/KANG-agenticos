@@ -48,7 +48,9 @@ jobs:
 
       # 3 — unit + architecture suite (13 §2.1 runs on every commit)
       - name: Unit tests
-        run: pytest tests/unit tests/suites -m "not nightly" -q
+        # ADR-050 D1: deselect every scheduled cadence, not just nightly, so a
+        # future weekly/monthly-marked test cannot run on every push.
+        run: pytest tests/unit tests/suites -m "not (nightly or weekly or monthly)" -q
 
   integration:
     runs-on: windows-latest
@@ -61,7 +63,9 @@ jobs:
       - name: Install
         run: pip install -e ".[dev]"
       - name: Integration tests (real SQLite in temp dirs — 13 §2.3)
-        run: pytest tests/integration -m "not nightly" -q
+        # ADR-050 D1: deselect every scheduled cadence, not just nightly, so a
+        # future weekly/monthly-marked test cannot run on every push.
+        run: pytest tests/integration -m "not (nightly or weekly or monthly)" -q
 
   # Nightly tier — the only job that runs the `nightly`-marked suites
   # (performance budgets and the migration chain on the 10-year synthetic

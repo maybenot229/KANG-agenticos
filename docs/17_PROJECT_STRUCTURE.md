@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Normative — RFC-2119 throughout; changes require an ADR; RESERVED items carry activation triggers
-**Last updated:** 2026-09-21 (ADR-049: dated correction at §2 — the corpus generator's home is `tests/fixtures/corpus/`, not `tools/`)
+**Last updated:** 2026-09-21 (ADR-050: dated amendment at §11.2 — the marker is the cadence authority; ADR-049: dated correction at §2 — the corpus generator's home is `tests/fixtures/corpus/`, not `tools/`)
 **Upstream (binding):** `01_PRINCIPLES.md` (E1–E10, AR1–AR8), `04_ARCHITECTURE.md` (D001, D002, D003, D005, D012), `05_AGENTS.md` (AG-002 registered definitions, AR5), `07_DATABASE.md` (Part I data directory), `08_PLUGIN_SYSTEM.md` (§4, §5), `10_SECURITY.md` (SEC-005, SEC-011), `11_CODING_STANDARDS.md` (§1, §2, §3, §5, §25), `12_API.md` (API-002, §16), `13_TESTING.md` (§2 taxonomy), `15_EVENT_BUS.md` (§6.3 registry)
 **Role:** 11_CODING §1 froze the repository's top level and D005 froze the core's layer packages. This document is their authoritative expansion: the complete physical map, the dependency constitution in full, and the growth rules that keep the map true for a decade. Where 11_CODING §1 is the summary, this document is the detail; **they MUST never disagree** — if they do, file the ADR.
 
@@ -414,6 +414,8 @@ tests/
 ### 11.2 Why this split (and not test-type folders like `e2e/`)
 
 Because CI cadence and release gates are already defined **per 13's classes** (13 §3's tiers name them; §4's gates require them). A structure keyed to anything else (speed, "e2e", author whim) would need a mapping table back to the classes; keying the folders to the classes makes the CI configuration read directly off the tree. Unit tests mirror source because that is what makes "this package's tests" a deterministic path — the same discoverability rule as everything else (§1.2). Suite membership is by directory, cadence markers by CI config — the tree states *what is proven*, CI states *when*.
+
+**Dated amendment (2026-09-21, ADR-050 D1).** Made precise: a *class* is its directory; a *cadence* is a registered pytest marker (`nightly`, `weekly`, `monthly`) on the test, the module, or a single parameter, and CI selects on the marker, never on the path, for every scheduled tier — an unmarked test runs at its path's default tier (commit for `tests/unit` and `tests/suites`, merge for `tests/integration`). So the tree states *what is proven **and how expensive it is***; CI states *when*. This is a real widening of what the tree carries, forced by `tests/suites/migration/` being the first directory whose contents span two cadences (a path cannot separate them); the tree still never invents structure of its own (§11.1).
 
 ---
 
