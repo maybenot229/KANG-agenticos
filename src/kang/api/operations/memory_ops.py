@@ -1,5 +1,6 @@
 """memory.propose / .approve / .edit_approve / .reject, candidate.list /
-.expire handlers — the write gate's API surface (ADR-051 D2-D4, D7, D9).
+.expire handlers — the write gate's API surface (ADR-051 D2-D4, D7, D9;
+ADR-052 D1-D3).
 
 Layer: api. Handlers orchestrate: authorize, build the proposal, call the pure
 gate (`domain/memory/write_gate.py`), act on its decision. No admission
@@ -66,7 +67,12 @@ __all__ = [
 MEMORY_PRINCIPAL = "kernel:memory"  # owns memory truth (EB-010)
 
 # Gate codes that are a caller's authority problem vs. a malformed request.
-_AUTHORITY_CODES = ("writer_refused", "type_restricted", "approval_restricted")
+_AUTHORITY_CODES = (
+    "writer_refused",
+    "type_restricted",
+    "approval_restricted",
+    "tier_restricted",  # ADR-052 D2
+)
 
 
 @dataclass(frozen=True)
@@ -114,10 +120,17 @@ def _audit(
 
 def _refuse(deps: MemoryOpsDeps, context: HandlerContext, decision: GateDecision):
     _audit(deps, context, "memory.gate.rejected", code=decision.code)
-    code = (
-        "permission_denied" if decision.code in _AUTHORITY_CODES else "invalid_request"
-    )
-    raise ApiError(code, decision.reason, details={"code": decision.code})
+    if decision.code == "duplicate":
+        # ADR-052 D1: an existing-resource conflict, not an authority
+        # problem — reuses the existing `conflict` code (CLAUDE.md §4: no
+        # new error code without an ADR); its message names neither the
+        # incumbent's id nor its content.
+        api_code = "conflict"
+    elif decision.code in _AUTHORITY_CODES:
+        api_code = "permission_denied"
+    else:
+        api_code = "invalid_request"
+    raise ApiError(api_code, decision.reason, details={"code": decision.code})
 
 
 def _saved_envelope(
@@ -272,11 +285,17 @@ def _promote(
     context: HandlerContext,
     candidate: Candidate,
     edited_content: str | None,
+    trust_tier: int | None = None,
 ) -> dict[str, Any]:
     """`memory.approve` / `.edit_approve`: the queue row's id becomes the
-    record's id (ADR-048 D1). The stored proposal is re-run through the gate
-    as its own proposer — so a candidate that could never have been queued
-    cannot be approved either."""
+    record's id (ADR-048 D1). The stored proposal (with any edited content,
+    but NOT yet Kang's `trust_tier` override) is re-run through the gate as
+    its own proposer — so a candidate that could never have been queued
+    cannot be approved either. `trust_tier`, when given, is applied only
+    AFTER that recheck: it is this first-party Kang action's own explicit
+    override (ADR-052 D3, 06 §1.4's "confirmed so"), not a re-assertion of
+    the original writer's claim — re-running it as the proposer would wrongly
+    trip D2's `tier_restricted` refusal on Kang's own promotion."""
     _require_config(deps)
     proposal, proposer, _device = candidate_to_proposal(candidate)
     if edited_content is not None:
@@ -284,6 +303,8 @@ def _promote(
     recheck = decide(proposal, Writer(proposer, False), GateProbes())
     if recheck.outcome != "queue":
         _refuse(deps, context, recheck)
+    if trust_tier is not None:
+        proposal = replace(proposal, trust_tier=trust_tier)
     resolution = "edited" if edited_content is not None else "approved"
     now = deps.clock.now().isoformat()
     record = build_record(proposal, candidate.id, proposer, now, deps.device_id)
@@ -329,7 +350,9 @@ def make_memory_handlers(deps: MemoryOpsDeps) -> dict[str, Handler]:
 
     def edit_approve(context: HandlerContext, params: dict[str, Any]) -> dict[str, Any]:
         candidate = _pending_candidate(deps, context, params["candidate_id"])
-        return _promote(deps, context, candidate, params["content"])
+        return _promote(
+            deps, context, candidate, params["content"], params.get("trust_tier")
+        )
 
     def reject(context: HandlerContext, params: dict[str, Any]) -> dict[str, Any]:
         candidate = _pending_candidate(deps, context, params["candidate_id"])

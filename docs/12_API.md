@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Normative — the definitive contract between the Core and every client, forever; changes require an ADR
-**Last updated:** 2026-09-21 (ADR-051: dated note at §10 — which memory operations exist)
+**Last updated:** 2026-09-22 (ADR-052: dated note at §10 — `memory.edit_approve` may set `trust_tier`; ADR-051: dated note at §10 — which memory operations exist)
 **Upstream (binding):** all prior documents; especially `04_ARCHITECTURE.md` (D002), `05_AGENTS.md`, `06_MEMORY.md`, `07_DATABASE.md`, `08_PLUGIN_SYSTEM.md`, `09_UI_DESIGN.md` (UI-P1), `10_SECURITY.md`
 **Downstream:** every frontend, CLI, plugin SDK, sidecar, and future client ever written.
 
@@ -171,7 +171,7 @@ Streaming output (chat tokens, invocation progress, log tails) rides the event c
 ## 10. Memory & Knowledge APIs (contract highlights)
 
 - `memory.propose` → always creates a *candidate* (gate semantics, M-003 — the API physically has no operation that writes an active memory except `memory.approve` of an existing candidate by a first-party session, or Kang-principal explicit saves which auto-pass the gate).
-- `memory.approve | reject | edit_approve` — first-party sessions only; single-keystroke UX contract (06_MEMORY §4.3) is backed by these being one command each.
+- `memory.approve | reject | edit_approve` — first-party sessions only; single-keystroke UX contract (06_MEMORY §4.3) is backed by these being one command each. *Dated note (2026-09-22, ADR-052 D3):* `memory.edit_approve` additionally accepts an optional `trust_tier`; present, the landed record carries it (the one path by which a non-Kang-originated record reaches Tier 2 — an explicit Kang act, 06 §1.4); absent, the proposal's own tier lands unchanged.
 - `memory.update` (revision-checked; creates revision history), `memory.pin`, `memory.archive`, `memory.restore`, `memory.delete` (consequential; response includes the 30-day recovery note as data).
 - `memory.search` (modes: default | deep | structured), `memory.explain_retrieval {correlation_id}` → the manifest with per-term scores (§12).
 - **Private unlock:** `private.unlock {record_id}` — first-party only, consequential-style explicit action, returns decrypted content once, never cached by the Core in plaintext, audited (06_MEMORY §12.1; DB-005).

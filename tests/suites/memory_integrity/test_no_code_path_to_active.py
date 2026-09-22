@@ -29,6 +29,7 @@ import pytest
 from kang.adapters.sqlite.connection import open_connection
 from kang.api.dispatch import ApiRequest
 from kang.api.registry import OPERATIONS
+from kang.domain.memory import MEMORY_EVENT_FIELDS
 from kang.domain.ports.memory_store import MEMORY_TYPES
 from kang.domain.ports.session import Session
 from kang.kernel.runtime.composition import build_core
@@ -139,11 +140,20 @@ def _agent_proposal(core, content=AGENT_CONTENT, mtype="lesson"):
 
 
 def _records(home: Path):
+    """Every real column of `memory_record` (`MEMORY_EVENT_FIELDS`, the same
+    vocabulary `memory.saved`'s payload uses — 11 §3, one concept one name),
+    not a hand-picked subset. The sweep's own original SELECT here omitted
+    `source_detail`/`revision`/`updated_at`/`device_id` — exactly the four
+    columns a silent merge writes — which is one of the two independent
+    reasons the sweep passed while the D1 hole was open (ADR-052). `id`
+    stays column 0, so existing `r[0]`/`[1:]` indexing below is unchanged;
+    the storage-local rowid (ADR-048 D2) is deliberately excluded — it
+    never crosses adapters/sqlite, not even for a raw test comparison."""
     conn = open_connection(home / "kang.db")
     try:
+        columns = ", ".join(MEMORY_EVENT_FIELDS)
         return conn.execute(
-            "SELECT id, type, status, content, trust_tier, sensitivity, reason, "
-            "created_by, source_kind FROM memory_record ORDER BY id"
+            f"SELECT {columns} FROM memory_record ORDER BY id"
         ).fetchall()
     finally:
         conn.close()
@@ -173,7 +183,21 @@ def _adversarial_params(entry, candidate_id: str) -> list[dict]:
             {**base, "sensitivity": "private"},
             {**base, "type": "lesson", "confidence": 0.0},
         ]
-        variants.append({**base, "content": KANG_CONTENT})  # a merge attempt
+        # ADR-052 D1: the exact content of Kang's seeded record, at a
+        # writer-legal tier (1, never 2 — a tier-2 claim would be refused as
+        # `tier_restricted` before the duplicate probe even runs, per D2's
+        # ordering, and would prove nothing about D1 in isolation). This is
+        # the variant that actually exercises the duplicate/merge branch —
+        # the sweep's second independent blind spot before ADR-052: every
+        # OTHER variant here proposes AGENT_CONTENT, which never equals a
+        # seeded record's content, so without this one the duplicate probe
+        # never fires anywhere in the sweep at all.
+        variants.append({**base, "content": KANG_CONTENT, "trust_tier": 1})
+        # The same attack via the case/whitespace-folded fingerprint, not
+        # byte-identical text — the exact-hash probe folds both.
+        variants.append(
+            {**base, "content": f"  {KANG_CONTENT.upper()}  ", "trust_tier": 1}
+        )
     if name in ("memory.approve", "memory.reject"):
         variants.append({"candidate_id": candidate_id})
     if name == "memory.edit_approve":

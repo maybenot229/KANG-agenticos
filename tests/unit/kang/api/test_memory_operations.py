@@ -305,15 +305,14 @@ def test_absent_or_malformed_provenance_is_refused_and_writes_nothing(
 # ------------------------------------------------ exact-hash merge (D5)
 
 
-def test_an_exact_duplicate_merges_instead_of_inserting_or_queueing():
-    grants = {**GRANTS, STEWARD: (*GRANTS[STEWARD], "memory.propose:fact")}
-    harness = Harness(grants=grants)
+def test_kangs_own_exact_duplicate_still_merges_and_bumps_revision():
+    harness = Harness()
     first = harness.propose(type="fact", trust_tier=2, source_kind="stated")
     result = harness.propose(
-        context=STEWARD_CTX,
         type="fact",
         content="  I UNDERESTIMATE report time   by about two TIMES ",
         source_detail="log-line-9",
+        trust_tier=2,
     )
     assert result["outcome"] == "merged"
     assert result["id"] == first["id"]
@@ -329,14 +328,92 @@ def test_an_exact_duplicate_merges_instead_of_inserting_or_queueing():
 
 
 def test_the_same_source_is_not_appended_twice():
-    grants = {**GRANTS, STEWARD: (*GRANTS[STEWARD], "memory.propose:fact")}
-    harness = Harness(grants=grants)
+    harness = Harness()
     harness.propose(type="fact", trust_tier=2, source_kind="stated")
     for _ in range(2):
-        harness.propose(context=STEWARD_CTX, type="fact", source_detail="same-source")
+        harness.propose(type="fact", trust_tier=2, source_detail="same-source")
     record = next(iter(_all_records(harness)))
     assert record.source_detail.count("same-source") == 1
     assert record.revision == 3
+
+
+# ------------------------------------------------- ADR-052 D1: duplicate hole
+
+
+def test_a_non_kang_exact_duplicate_is_rejected_and_the_incumbent_is_untouched():
+    grants = {**GRANTS, STEWARD: (*GRANTS[STEWARD], "memory.propose:fact")}
+    harness = Harness(grants=grants)
+    first = harness.propose(type="fact", trust_tier=2, source_kind="stated")
+    before = harness.memory.get(first["id"])
+
+    with pytest.raises(ApiError) as refused:
+        harness.propose(
+            context=STEWARD_CTX,
+            type="fact",
+            content="  I UNDERESTIMATE report time   by about two TIMES ",
+            source_detail="log-line-9",
+        )
+    assert refused.value.code == "conflict"
+    assert refused.value.details == {"code": "duplicate"}
+    # ADR-052 D1's side-channel narrowing: no incumbent id, no content.
+    assert first["id"] not in refused.value.message
+    assert "log-line-9" not in refused.value.message
+
+    after = harness.memory.get(first["id"])
+    assert after == before  # byte-identical: the whole row, not just content
+    assert len(_all_records(harness)) == 1
+    assert harness.queue.list_queue(10) == ()
+    assert len(harness.saved_events()) == 1  # no second memory.saved
+    assert harness.audit_actions().count("memory.gate.rejected") == 1
+
+
+def test_a_non_kang_duplicate_is_rejected_regardless_of_confidence():
+    """Not queued, not merged, at any stated confidence (M-003's own
+    reasoning applied to the duplicate branch)."""
+    grants = {**GRANTS, STEWARD: (*GRANTS[STEWARD], "memory.propose:fact")}
+    harness = Harness(grants=grants)
+    harness.propose(type="fact", trust_tier=2, source_kind="stated")
+    for confidence in (0.0, 0.5, 1.0):
+        with pytest.raises(ApiError) as refused:
+            harness.propose(context=STEWARD_CTX, type="fact", confidence=confidence)
+        assert refused.value.details == {"code": "duplicate"}
+    assert len(_all_records(harness)) == 1
+
+
+# ---------------------------------------------------- ADR-052 D2: Tier 2 hole
+
+
+def test_a_non_kang_tier_2_proposal_is_refused_and_creates_nothing(h):
+    with pytest.raises(ApiError) as refused:
+        h.propose(context=STEWARD_CTX, trust_tier=2)
+    assert refused.value.code == "permission_denied"
+    assert refused.value.details == {"code": "tier_restricted"}
+    assert _all_records(h) == [] and h.queue.list_queue(10) == ()
+
+
+def test_kang_may_still_propose_tier_2(h):
+    result = h.propose(trust_tier=2, type="fact", source_kind="stated")
+    assert result["outcome"] == "admitted"
+    assert h.memory.get(result["id"]).trust_tier == 2
+
+
+def test_tier_restricted_wins_even_when_the_content_duplicates_kangs_record():
+    """ADR-052 D2's placement proof at the handler level: a false Tier-2
+    claim is refused as `tier_restricted`, not `duplicate`, even though the
+    content would otherwise have hit the duplicate branch."""
+    grants = {**GRANTS, STEWARD: (*GRANTS[STEWARD], "memory.propose:fact")}
+    harness = Harness(grants=grants)
+    harness.propose(type="fact", trust_tier=2, source_kind="stated")
+    with pytest.raises(ApiError) as refused:
+        harness.propose(context=STEWARD_CTX, type="fact", trust_tier=2)
+    assert refused.value.details == {"code": "tier_restricted"}
+    assert len(_all_records(harness)) == 1  # Kang's own row, untouched
+
+
+@pytest.mark.parametrize("tier", [0, 1])
+def test_a_non_kang_writer_may_still_propose_tier_0_or_1(h, tier):
+    result = h.propose(context=STEWARD_CTX, trust_tier=tier)
+    assert result["outcome"] == "queued"
 
 
 # -------------------------------------------- memory.approve and friends
@@ -372,6 +449,79 @@ def test_edit_approve_refuses_empty_content_and_changes_nothing(h):
     with pytest.raises(ApiError):
         h.call("memory.edit_approve", KANG, candidate_id=candidate_id, content="  ")
     assert h.queue.get(candidate_id).pending and _all_records(h) == []
+
+
+# --------------------------------------------- ADR-052 D3: edit_approve tier
+
+
+def test_edit_approve_with_an_explicit_tier_lands_that_tier(h):
+    """The one path by which a non-Kang-originated record reaches Tier 2:
+    an explicit, audited Kang action (06 §1.4's "confirmed so")."""
+    candidate_id = _queued(h)  # queued at PARAMS' trust_tier=1
+    h.call(
+        "memory.edit_approve",
+        KANG,
+        candidate_id=candidate_id,
+        content=PARAMS["content"],
+        trust_tier=2,
+    )
+    record = h.memory.get(candidate_id)
+    assert (record.trust_tier, record.revision) == (2, 1)
+
+
+def test_edit_approve_without_a_tier_keeps_the_proposals_own_tier(h):
+    candidate_id = _queued(h)  # queued at PARAMS' trust_tier=1
+    h.call(
+        "memory.edit_approve",
+        KANG,
+        candidate_id=candidate_id,
+        content="Edited by Kang",
+    )
+    assert h.memory.get(candidate_id).trust_tier == 1
+
+
+def test_edit_approve_promoting_to_tier_2_does_not_trip_tier_restricted(h):
+    """The Kang-only override must not be re-run through the gate as the
+    original (non-Kang) proposer — that would wrongly refuse Kang's own
+    promotion with `tier_restricted`."""
+    candidate_id = _queued(h)
+    result = h.call(
+        "memory.edit_approve",
+        KANG,
+        candidate_id=candidate_id,
+        content=PARAMS["content"],
+        trust_tier=2,
+    )
+    assert result == {"id": candidate_id, "revision": 1}
+
+
+def test_edit_approve_cannot_promote_a_candidate_that_could_never_have_queued(h):
+    """The recheck runs on the STORED proposal, before Kang's `trust_tier`
+    override is applied — edit_approve+tier cannot land a candidate that was
+    never legitimately queueable to begin with (here: `private`, D6)."""
+    from kang.domain.memory import Proposal, proposal_payload
+    from kang.domain.ports.candidate_queue_store import Candidate
+
+    planted = Proposal(
+        "fact", "[encrypted]", 1, "stated", "x", "why", sensitivity="private"
+    )
+    h.queue.enqueue(
+        Candidate(
+            id="planted",
+            payload=proposal_payload(planted, STEWARD, DEVICE),
+            proposed_at="2026-01-01T00:00:00+00:00",
+            expires_at="2026-01-15T00:00:00+00:00",
+        )
+    )
+    with pytest.raises(ApiError):
+        h.call(
+            "memory.edit_approve",
+            KANG,
+            candidate_id="planted",
+            content="[encrypted]",
+            trust_tier=2,
+        )
+    assert _all_records(h) == []
 
 
 def test_reject_resolves_the_row_and_creates_no_record(h):

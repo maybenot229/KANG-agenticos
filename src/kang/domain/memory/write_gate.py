@@ -124,9 +124,20 @@ def validate_proposal(proposal: Proposal) -> str | None:
 
 
 def decide(proposal: Proposal, writer: Writer, probes: GateProbes) -> GateDecision:
-    """06 §4.2's pipeline, in order: valid -> writer accountable -> not
-    `private` -> type permitted -> exact duplicate (merge) -> Kang admits,
-    everyone else queues."""
+    """06 §4.2's pipeline, in order (ADR-052 D1/D2 corrected the last two
+    steps' order): valid -> writer accountable -> not `private` -> type
+    permitted -> Tier 2 permitted -> exact duplicate (Kang: merge; anyone
+    else: reject) -> Kang admits, everyone else queues.
+
+    The duplicate branch sits BELOW every writer-class refusal, including
+    Tier 2 (ADR-052 D2), so a disallowed claim is refused whether or not the
+    content happens to duplicate something — and below the writer branch
+    itself (ADR-052 D1), so only Kang's own duplicate ever reaches
+    `merge_provenance`. A non-Kang duplicate is REJECTED, never merged: no
+    agent-supplied byte reaches an active row by this path. Its rejection
+    message names neither the incumbent's id nor its content (ADR-052 D1's
+    deliberate side-channel narrowing — the caller learns "duplicate", never
+    which record)."""
     violation = validate_proposal(proposal)
     if violation is not None:
         return _reject("invalid", violation)
@@ -149,11 +160,28 @@ def decide(proposal: Proposal, writer: Writer, probes: GateProbes) -> GateDecisi
             "type_restricted",
             f"only Kang may write {proposal.type!r} records (06 §4.1)",
         )
+    if proposal.trust_tier == 2 and not writer.is_kang:
+        # ADR-052 D2: 06 §1.4 — "Only Kang can create Tier 2" — made
+        # mechanical. Placed with the other writer-class refusals, before
+        # the duplicate probe: a false sanction claim is refused whether or
+        # not it duplicates.
+        return _reject(
+            "tier_restricted",
+            "only Kang may propose a Tier 2 (sanctioned) record (06 §1.4)",
+        )
     if probes.exact_duplicate_id is not None:
-        return GateDecision(
-            "merge",
-            "exact duplicate of an active record: provenance merged",
-            merge_into=probes.exact_duplicate_id,
+        if writer.is_kang:
+            return GateDecision(
+                "merge",
+                "exact duplicate of an active record: provenance merged",
+                merge_into=probes.exact_duplicate_id,
+            )
+        # ADR-052 D1: a non-Kang exact duplicate never touches an active
+        # row. No incumbent id, no content — see the docstring above.
+        return _reject(
+            "duplicate",
+            "an active record with this exact content already exists; "
+            "only Kang's own proposals may merge a duplicate",
         )
     if writer.is_kang:
         return GateDecision("admit", "first-party Kang save auto-passes (06 §4.1)")

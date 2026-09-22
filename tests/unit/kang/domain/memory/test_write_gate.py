@@ -34,10 +34,14 @@ NO_PROBES = GateProbes()
 
 
 def proposal(**overrides) -> Proposal:
+    # trust_tier=1: a typical AI-observed default (06 §2.1). Tests that
+    # specifically exercise Tier 2 (ADR-052 D2) pass trust_tier=2 explicitly
+    # — a proposal() default of 2 would silently shadow every other AGENT
+    # test behind tier_restricted.
     base = dict(
         type="fact",
         content="School term ends June 12",
-        trust_tier=2,
+        trust_tier=1,
         source_kind="stated",
         source_detail="conversation",
         reason="Kang said so",
@@ -94,6 +98,34 @@ def test_only_first_party_kang_can_ever_be_admitted():
         if decision.outcome == "admit":
             admitted.add((writer.principal, writer.first_party))
     assert admitted == {("kang", True)}
+
+
+def test_merge_is_reachable_only_by_kang():
+    """ADR-052 D1's own exhaustive proof, mirroring the admit-set sweep
+    above: `merge` is never returned for anyone but principal exactly
+    `kang` on a first-party session, regardless of type, sensitivity,
+    confidence, or tier."""
+    merged = set()
+    for writer, mtype, sensitivity, confidence, tier in itertools.product(
+        WRITERS,
+        MEMORY_TYPES,
+        SENSITIVITIES,
+        (0.0, 0.5, 0.9, 0.99, 1.0),
+        TRUST_TIERS,
+    ):
+        decision = decide(
+            proposal(
+                type=mtype,
+                sensitivity=sensitivity,
+                confidence=confidence,
+                trust_tier=tier,
+            ),
+            writer,
+            GateProbes(exact_duplicate_id="mem-1"),
+        )
+        if decision.outcome == "merge":
+            merged.add((writer.principal, writer.first_party))
+    assert merged == {("kang", True)}
 
 
 @pytest.mark.parametrize("confidence", [0.0, 0.5, 0.95, 0.999, 1.0])
@@ -196,9 +228,42 @@ def test_first_party_kang_may_write_rule_and_profile(mtype):
 # ------------------------------------------------------------- D5 duplicates
 
 
-def test_an_exact_duplicate_merges_for_an_agent_instead_of_queueing():
+def test_an_exact_duplicate_from_an_agent_is_rejected_never_merged():
+    """ADR-052 D1: only Kang's own exact duplicate ever reaches
+    `merge_provenance` — every other writer's duplicate is a plain
+    rejection, never a mutation of the active row."""
     decision = decide(proposal(), AGENT, GateProbes(exact_duplicate_id="mem-1"))
-    assert (decision.outcome, decision.merge_into) == ("merge", "mem-1")
+    assert (decision.outcome, decision.code, decision.merge_into) == (
+        "reject",
+        "duplicate",
+        None,
+    )
+
+
+def test_the_duplicate_rejection_names_neither_the_incumbent_nor_its_content():
+    """ADR-052 D1's deliberate side-channel narrowing: the caller learns
+    "duplicate", never which record or what it says."""
+    decision = decide(
+        proposal(content="a very distinctive sentence"),
+        AGENT,
+        GateProbes(exact_duplicate_id="mem-secret-id"),
+    )
+    assert "mem-secret-id" not in decision.reason
+    assert "a very distinctive sentence" not in decision.reason
+
+
+@pytest.mark.parametrize(
+    "writer",
+    [
+        AGENT,
+        Writer("agent:chat", False),
+        Writer("agent:memory_steward", True),  # first-party ≠ kang
+        Writer("kang", first_party=False),  # principal "kang", not is_kang
+    ],
+)
+def test_no_non_kang_writer_ever_reaches_merge(writer):
+    decision = decide(proposal(), writer, GateProbes(exact_duplicate_id="mem-1"))
+    assert decision.outcome != "merge"
 
 
 def test_an_exact_duplicate_merges_for_kang_instead_of_inserting():
@@ -211,6 +276,7 @@ def test_a_refused_writer_never_reaches_the_merge_branch():
         proposal(), Writer("rule:x", True), GateProbes(exact_duplicate_id="mem-1")
     )
     assert decision.outcome == "reject"
+    assert decision.code == "writer_refused"  # caught before the duplicate probe
 
 
 def test_a_restricted_type_never_merges_for_an_agent():
@@ -218,6 +284,50 @@ def test_a_restricted_type_never_merges_for_an_agent():
         proposal(type="rule"), AGENT, GateProbes(exact_duplicate_id="mem-1")
     )
     assert decision.outcome == "reject"
+    assert decision.code == "type_restricted"  # caught before the duplicate probe
+
+
+# ------------------------------------------------------- D2 Tier 2 restriction
+
+
+@pytest.mark.parametrize("writer", [AGENT, Writer("kang", first_party=False)])
+def test_a_non_kang_tier_2_proposal_is_refused(writer):
+    decision = decide(proposal(trust_tier=2), writer, NO_PROBES)
+    assert (decision.outcome, decision.code) == ("reject", "tier_restricted")
+
+
+def test_first_party_kang_may_propose_tier_2():
+    decision = decide(proposal(trust_tier=2), KANG, NO_PROBES)
+    assert decision.outcome == "admit"
+
+
+@pytest.mark.parametrize("tier", [0, 1])
+def test_a_non_kang_writer_may_propose_tier_0_or_1(tier):
+    decision = decide(proposal(trust_tier=tier), AGENT, NO_PROBES)
+    assert decision.outcome == "queue"
+
+
+def test_tier_restricted_is_refused_before_the_duplicate_probe_fires():
+    """ADR-052 D2: placed with the writer-class refusals — a false sanction
+    claim is refused whether or not the content happens to duplicate
+    something. Proven by giving it a duplicate probe that WOULD merge if the
+    tier check were skipped or came later, and asserting the code is still
+    `tier_restricted`, not `duplicate`."""
+    decision = decide(
+        proposal(trust_tier=2), AGENT, GateProbes(exact_duplicate_id="mem-1")
+    )
+    assert (decision.outcome, decision.code) == ("reject", "tier_restricted")
+
+
+def test_tier_restricted_is_refused_before_a_kang_would_have_merged_too():
+    """Same proof from the other side: a non-Kang tier-2 duplicate never
+    even reaches the branch that decides Kang-vs-not for merging."""
+    decision = decide(
+        proposal(trust_tier=2),
+        Writer("kang", first_party=False),
+        GateProbes(exact_duplicate_id="mem-1"),
+    )
+    assert decision.code == "tier_restricted"
 
 
 def test_the_fingerprint_folds_case_and_whitespace():

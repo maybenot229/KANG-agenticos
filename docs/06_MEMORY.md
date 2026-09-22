@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Living — changes require an ADR; this document is normative for all memory behavior
-**Last updated:** 2026-09-21 (ADR-051: dated notes at §4.1, §4.2, §12.1 — what the gate builds and refuses, the absent semantic probes, the event-log reading; ADR-048: §2.1D/M-002 —
+**Last updated:** 2026-09-22 (ADR-052: dated notes at §1.4 — Tier 2 enforced at the gate — and §4.2 — the pipeline flowchart's node order corrected, the merge edge Kang-only; ADR-051: dated notes at §4.1, §4.2, §12.1 — what the gate builds and refuses, the absent semantic probes, the event-log reading; ADR-048: §2.1D/M-002 —
 candidate/rejected are quarantine-table states, not `memory_record` states)
 **Upstream (immutable):** `00_VISION.md`, `01_PRINCIPLES.md`, `02_PRODUCT_REQUIREMENTS.md`, `04_ARCHITECTURE.md` (esp. Decision 007)
 **Downstream (will depend on this):** `07_DATABASE.md`, `05_AGENTS.md`, `08_PLUGIN_SYSTEM.md`, `12_API.md`
@@ -69,6 +69,8 @@ Tier 2 — SANCTIONED  : Kang said so, confirmed so, or wrote so (vault).
 ```
 
 Every record carries its tier. Retrieval exposes it. Agents MUST phrase Tier-0-derived content as attributed claims ("according to the competition page…"), Tier-1 as observations, Tier-2 as facts.
+
+**Dated note (2026-09-22, ADR-052 D2).** "Only Kang can create Tier 2" is now enforced at the gate, not merely stated: a proposal carrying `trust_tier=2` from any writer but a first-party `kang` session is refused with a typed error (`tier_restricted`), checked before the duplicate probe so a false sanction claim cannot be laundered through a duplicate match either. The one path by which a non-Kang-originated record reaches Tier 2 is `memory.edit_approve`'s optional `trust_tier` field — an explicit, audited Kang action, not an automatic promotion (ADR-052 D3; §2.1's per-type tier column and whether plain `memory.approve` should promote automatically both stay open, triggered by the retrieval slice's scorer).
 
 ### 1.5 Ownership, explainability, deletion, forgetting — the four covenants
 
@@ -243,10 +245,11 @@ The single most safety-critical component. **All writes — no exceptions, inclu
 flowchart TB
     P["Proposal(record, provenance, writer)"] --> V1{"Schema valid?<br/>type ∈ catalog · provenance complete"}
     V1 -- no --> REJ["reject: invalid<br/>(bug-level event, alerted)"]
-    V1 -- yes --> V2{"Writer authorized<br/>for this type?"}
+    V1 -- yes --> V2{"Writer authorized?<br/>accountable · type permitted · Tier 2 permitted"}
     V2 -- no --> REJ2["reject: permission<br/>(audit + surface)"]
     V2 -- yes --> D{"Duplicate?<br/>cosine ≥ 0.90 vs active, same type<br/>OR normalized-content hash match"}
-    D -- exact --> MRG["merge: bump revision,<br/>append provenance, done"]
+    D -- exact, writer = Kang --> MRG["merge: bump revision,<br/>append provenance, done"]
+    D -- exact, writer ≠ Kang --> REJ3["reject: duplicate<br/>(audited; incumbent untouched)"]
     D -- near --> Q1["flag as possible duplicate<br/>→ approval queue w/ diff view"]
     D -- no --> C{"Contradiction?<br/>top-k semantic neighbors, NLI check<br/>vs active records"}
     C -- yes --> Q2["flag as conflict<br/>→ queue w/ both records shown"]
@@ -254,6 +257,8 @@ flowchart TB
     A -- yes --> ACT["→ active<br/>embed · index · link · audit"]
     A -- no --> Q3["→ approval queue<br/>(AI proposal path)"]
 ```
+
+**Dated amendment (2026-09-22, ADR-052 D1).** The diagram above is corrected, not merely re-explained: as originally drawn, `D -- exact --> MRG` fired before `V2`'s writer-authorization branch was ever reached by a reader tracing the exact-duplicate path — the diagram itself let a non-Kang writer's exact duplicate reach `merge_provenance` and mutate an `active` row. This was a hole in *this document*, faithfully implemented by ADR-051, not a coding defect. Fixed structurally: writer authorization — accountable, type permitted, and (ADR-052 D2) Tier 2 permitted — now gates entry to the duplicate check, and the duplicate check's own exact-match edge branches on writer identity: Kang's own duplicate merges; every other writer's is rejected (code `duplicate`), audited (§12.3), and never touches the incumbent row. The near-duplicate/contradiction branches are unaffected and remain unbuilt (the dated note below, ADR-051 D5).
 
 **Required metadata at the gate (schema-enforced, rejection on absence):**
 

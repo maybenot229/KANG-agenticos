@@ -1,5 +1,5 @@
 """Request/response schemas for `memory.*` and `candidate.*` operations
-(ADR-051 D3; ADR-010 Ruling 1).
+(ADR-051 D3; ADR-052 D3; ADR-010 Ruling 1).
 
 Layer: api.
 Constitutional home: 12_API §2/§10, 06_MEMORY §4.2 (the gate's required
@@ -76,10 +76,14 @@ class MemoryApproveResponse(BaseModel):
 
 class MemoryEditApproveRequest(BaseModel):
     """Approve with Kang's edited content; the edit is the resolution, not a
-    revision (revision 1 is what lands)."""
+    revision (revision 1 is what lands). `trust_tier` is optional (ADR-052
+    D3): present, the landed record carries it — the one path by which a
+    non-Kang-originated record reaches Tier 2, an explicit Kang act; absent,
+    the proposal's own tier lands unchanged, exactly as before this ADR."""
 
     candidate_id: str
     content: str
+    trust_tier: int | None = None
 
 
 class MemoryRejectRequest(BaseModel):

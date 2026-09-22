@@ -94,9 +94,13 @@ The gate returns `admit` only when the session is `first_party=True` **and** the
 
 The gate computes a normalized-content hash (case- and whitespace-folded) and, on an exact match against an `active` record of the same type, performs 06 §4.2's specified silent merge: no new record, the incumbent's provenance appended, revision bumped, and the merge audited. Cosine near-duplicate flagging and NLI contradiction detection are **not implemented**; `flags`/`flag_context` stay empty, and 06 §4.2 gets a dated note saying so and naming the embeddings slice as where they arrive. No admission outcome changes when they do.
 
+> **Amended by ADR-052 (2026-09-22).** This decision described the merge for "an exact match" without naming which writers reach it — which let a non-Kang writer's exact duplicate merge into an `active` row (ADR-052 Finding 1). ADR-052 D1 narrows this: the merge above happens **only** for a first-party `kang` proposal; every other writer's exact duplicate is rejected (code `duplicate`), audited, and never touches the incumbent row. `merge_provenance` itself is unchanged and stays reachable — only who reaches it narrowed. See ADR-052 for the full decision.
+
 ### D6 — Writers the gate refuses outright, until their slice exists
 
 A proposal whose `created_by` names a `rule:` or `plugin:` principal is rejected with a typed error, because neither a rule registry nor the plugin system exists and a writer that cannot be held to account must not be able to write (06 §4.1's whole point). A proposal with `sensitivity='private'` is likewise rejected: ADR-048's CHECK requires `content='[encrypted]'` with real ciphertext in `content_enc`, and no encryptor exists until the private-records slice. `type` of `rule` or `profile` is refused for every principal except first-party `kang`, matching 06 §4.1's hard prohibition and the pairing lint's existing ban, enforced here a second time (defense in depth, exactly as 05 §8 describes it).
+
+> **Extended by ADR-052 (2026-09-22).** This list omitted one refusal 06 §1.4 already required: a proposal carrying `trust_tier=2` from any writer but first-party `kang` (ADR-052 Finding 2/D2, code `tier_restricted`) — placed with these same writer-class refusals, before the duplicate probe. See ADR-052 for the full decision.
 
 ### D7 — One event: `memory.saved`, recovery-grade, full-row payload
 
