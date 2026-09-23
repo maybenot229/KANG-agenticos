@@ -500,6 +500,10 @@ _APPLIERS = {
     # or a silent merge (the update branch), full row, idempotent by
     # id + revision.
     "memory.saved": _apply_memory_upsert,
+    # ADR-053 D3/Consequences: memory.updated's own obligation — update/
+    # pin/archive/restore, always the update branch (the row already
+    # exists), same applier, same idempotency contract.
+    "memory.updated": _apply_memory_upsert,
 }
 
 

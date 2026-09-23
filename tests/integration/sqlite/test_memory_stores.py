@@ -14,6 +14,7 @@ from kang.adapters.sqlite.connection import open_connection
 from kang.adapters.sqlite.memory_store import SqliteMemoryStore
 from kang.adapters.sqlite.migrations import apply_migrations
 from kang.adapters.sqlite.transaction import SqliteUnitOfWork
+from kang.domain.ports.memory_store import MemoryConflict
 from tests.fixtures.candidate_queue_store_contract import (
     CandidateQueueStoreContract,
     candidate,
@@ -57,6 +58,56 @@ class TestSqliteMemoryStore(MemoryStoreContract):
         an empty reason (07 §5.1 CHECK, 06 §8.1)."""
         with pytest.raises(sqlite3.IntegrityError):
             store.insert_record(record(reason=""))
+
+    # ---- ADR-053 D4: delete_and_tombstone_in_txn, called the way
+    # held_action.approve's transactional driver actually calls it — inside
+    # an already-open transaction, never its own.
+
+    def test_delete_and_tombstone_removes_an_archived_record_and_cascades(
+        self, conn, store
+    ):
+        store.insert_record(record(status="archived"))
+        conn.execute(
+            "INSERT INTO memory_revision (record_id, revision, content, "
+            "edited_by, edited_at, device_id) VALUES (?, ?, ?, ?, ?, ?)",
+            ("mem-1", 1, "old content", "kang", "2026-09-24T09:00:00+00:00", "dev-1"),
+        )
+        conn.execute("BEGIN IMMEDIATE")
+        store.delete_and_tombstone_in_txn("mem-1", "kang", "2026-09-24T10:00:00+00:00")
+        conn.execute("COMMIT")
+
+        assert store.get("mem-1") is None
+        revisions = conn.execute(
+            "SELECT COUNT(*) FROM memory_revision WHERE record_id = 'mem-1'"
+        ).fetchone()[0]
+        assert revisions == 0  # ON DELETE CASCADE
+        fts_hits = conn.execute(
+            "SELECT COUNT(*) FROM fts_memory WHERE rowid IN "
+            "(SELECT rowid FROM memory_record WHERE id = 'mem-1')"
+        ).fetchone()[0]
+        assert fts_hits == 0
+        delete_ops = conn.execute(
+            "SELECT COUNT(*) FROM change_log WHERE entity = 'memory_record' "
+            "AND entity_id = 'mem-1' AND op = 'delete'"
+        ).fetchone()[0]
+        assert delete_ops == 1
+        tombstone = conn.execute(
+            "SELECT entity, deleted_by, policy_ref FROM tombstone WHERE id = 'mem-1'"
+        ).fetchone()
+        assert tombstone == ("memory_record", "kang", "kang:explicit")
+
+    def test_delete_and_tombstone_refuses_an_active_record(self, conn, store):
+        """M-002 has no `active -> deleted` edge (ADR-053 D3) — enforced by
+        the store itself, not only by the handler that requests
+        confirmation."""
+        store.insert_record(record(status="active"))
+        conn.execute("BEGIN IMMEDIATE")
+        with pytest.raises(MemoryConflict):
+            store.delete_and_tombstone_in_txn(
+                "mem-1", "kang", "2026-09-24T10:00:00+00:00"
+            )
+        conn.execute("ROLLBACK")
+        assert store.get("mem-1") is not None
 
 
 class TestSqliteCandidateQueueStore(CandidateQueueStoreContract):

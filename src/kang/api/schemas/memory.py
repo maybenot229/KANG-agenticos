@@ -27,11 +27,22 @@ __all__ = [
     "CandidateListResponse",
     "MemoryApproveRequest",
     "MemoryApproveResponse",
+    "MemoryArchiveRequest",
+    "MemoryArchiveResponse",
+    "MemoryDeleteRequest",
     "MemoryEditApproveRequest",
+    "MemoryPinRequest",
+    "MemoryPinResponse",
     "MemoryProposeRequest",
     "MemoryProposeResponse",
     "MemoryRejectRequest",
     "MemoryRejectResponse",
+    "MemoryRestoreFromSnapshotRequest",
+    "MemoryRestoreFromSnapshotResponse",
+    "MemoryRestoreRequest",
+    "MemoryRestoreResponse",
+    "MemoryUpdateRequest",
+    "MemoryUpdateResponse",
 ]
 
 
@@ -132,3 +143,81 @@ class CandidateExpireResponse(BaseModel):
 
     expired: list[str]
     count: int
+
+
+# ---- the lifecycle operations (ADR-053 D3) --------------------------------
+
+
+class MemoryUpdateRequest(BaseModel):
+    """`memory.update`: edits `content`/`reason` of an `active` record.
+    `expected_revision` is the optimistic-concurrency guard (06 §8.2) — a
+    stale value refuses with `conflict`."""
+
+    id: str
+    content: str
+    reason: str
+    expected_revision: int
+
+
+class MemoryUpdateResponse(BaseModel):
+    id: str
+    revision: int
+
+
+class MemoryPinRequest(BaseModel):
+    """`memory.pin`: states the desired end state directly, so it is its
+    own inverse and idempotent (06 §5.2) — no `expected_revision`."""
+
+    id: str
+    pinned: bool
+
+
+class MemoryPinResponse(BaseModel):
+    id: str
+    revision: int
+    pinned: bool
+
+
+class MemoryArchiveRequest(BaseModel):
+    id: str
+
+
+class MemoryArchiveResponse(BaseModel):
+    id: str
+    revision: int
+    status: str
+
+
+class MemoryRestoreRequest(BaseModel):
+    """`memory.restore`: `archived` → `active` (ADR-053 D1 — distinct from
+    `memory.restore_from_snapshot`, the undelete)."""
+
+    id: str
+
+
+class MemoryRestoreResponse(BaseModel):
+    id: str
+    revision: int
+    status: str
+
+
+class MemoryDeleteRequest(BaseModel):
+    """`memory.delete`: consequential (ADR-053 D4) — this request only
+    ever produces a `confirmation_required` envelope; there is no success
+    response shape for the gating call itself (mirrors `job.disable`'s own
+    schema, `schemas/job.py`)."""
+
+    id: str
+    reason: str
+
+
+class MemoryRestoreFromSnapshotRequest(BaseModel):
+    """`memory.restore_from_snapshot`: the undelete (ADR-053 D5)."""
+
+    id: str
+
+
+class MemoryRestoreFromSnapshotResponse(BaseModel):
+    id: str
+    revision: int
+    snapshot: str

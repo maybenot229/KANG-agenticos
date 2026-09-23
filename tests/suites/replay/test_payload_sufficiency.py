@@ -331,6 +331,17 @@ _FIXTURES = {
     "goal.created": Fixture(_goal_envelope(), "goal", _GOAL_COLUMNS),
     # ADR-051 D7: memory.saved reconstructs the full memory_record row.
     "memory.saved": Fixture(_memory_envelope(), "memory_record", _MEMORY_COLUMNS),
+    # ADR-053 D3/Consequences: memory.updated (update/pin/archive/restore)
+    # — same full-row shape, same applier, proven separately since it is
+    # its own registered type (not merely memory.saved replayed again).
+    "memory.updated": Fixture(
+        _memory_envelope(
+            type="memory.updated",
+            payload=memory_payload(0, content="edited content", revision=2),
+        ),
+        "memory_record",
+        _MEMORY_COLUMNS,
+    ),
     # ADR-018: each entity's first status-transition mutation — the one
     # a crash must not lose, same reasoning as deadline.updated above.
     "milestone.updated": Fixture(

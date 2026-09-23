@@ -17,6 +17,7 @@ import sqlite3
 
 from kang.adapters.sqlite.transaction import writing
 from kang.domain.ports.memory_store import (
+    ContentEdit,
     MemoryConflict,
     MemoryRecord,
     content_fingerprint,
@@ -162,3 +163,97 @@ class SqliteMemoryStore:
                 raise MemoryConflict(
                     f"memory record {merged.id} is not at revision {expected_revision}"
                 )
+
+    def update_content(self, edit: ContentEdit) -> MemoryRecord:
+        with writing(self._conn):
+            current = self._conn.execute(
+                "SELECT content FROM memory_record WHERE id = ? AND revision = ?",
+                (edit.record_id, edit.expected_revision),
+            ).fetchone()
+            if current is None:
+                raise MemoryConflict(
+                    f"memory record {edit.record_id} is not at revision "
+                    f"{edit.expected_revision}"
+                )
+            self._conn.execute(
+                "INSERT INTO memory_revision "
+                "(record_id, revision, content, edited_by, edited_at, device_id) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    edit.record_id,
+                    edit.expected_revision,
+                    current[0],
+                    edit.edited_by,
+                    edit.now,
+                    edit.device_id,
+                ),
+            )
+            self._conn.execute(
+                "UPDATE memory_record SET content = ?, reason = ?, "
+                "revision = revision + 1, updated_at = ?, device_id = ? "
+                "WHERE id = ? AND revision = ?",
+                (
+                    edit.content,
+                    edit.reason,
+                    edit.now,
+                    edit.device_id,
+                    edit.record_id,
+                    edit.expected_revision,
+                ),
+            )
+        return self.get(edit.record_id)  # type: ignore[return-value]
+
+    def set_pinned(
+        self, record_id: str, pinned: bool, device_id: str, now: str
+    ) -> MemoryRecord:
+        with writing(self._conn):
+            cursor = self._conn.execute(
+                "UPDATE memory_record SET pinned = ?, revision = revision + 1, "
+                "updated_at = ?, device_id = ? WHERE id = ?",
+                (int(pinned), now, device_id, record_id),
+            )
+            if cursor.rowcount == 0:
+                raise MemoryConflict(f"no memory record {record_id}")
+        return self.get(record_id)  # type: ignore[return-value]
+
+    def transition_status(
+        self,
+        record_id: str,
+        expected_status: str,
+        new_status: str,
+        device_id: str,
+        now: str,
+    ) -> MemoryRecord:
+        with writing(self._conn):
+            cursor = self._conn.execute(
+                "UPDATE memory_record SET status = ?, revision = revision + 1, "
+                "updated_at = ?, device_id = ? WHERE id = ? AND status = ?",
+                (new_status, now, device_id, record_id, expected_status),
+            )
+            if cursor.rowcount == 0:
+                raise MemoryConflict(
+                    f"memory record {record_id} is not {expected_status!r}"
+                )
+        return self.get(record_id)  # type: ignore[return-value]
+
+    def delete_and_tombstone_in_txn(
+        self, record_id: str, deleted_by: str, now: str
+    ) -> None:
+        # No `writing()` wrapper (no transaction of its own — see the port's
+        # docstring): the caller (`held_action.approve`'s transactional
+        # driver) already holds `BEGIN IMMEDIATE`.
+        cursor = self._conn.execute(
+            "DELETE FROM memory_record WHERE id = ? AND status = 'archived'",
+            (record_id,),
+        )
+        if cursor.rowcount == 0:
+            raise MemoryConflict(
+                f"memory record {record_id} is not 'archived' (or does not "
+                "exist) — memory.delete refuses every edge but archived -> "
+                "deleted (M-002)"
+            )
+        self._conn.execute(
+            "INSERT INTO tombstone (id, entity, deleted_at, deleted_by, policy_ref) "
+            "VALUES (?, 'memory_record', ?, ?, 'kang:explicit')",
+            (record_id, now, deleted_by),
+        )

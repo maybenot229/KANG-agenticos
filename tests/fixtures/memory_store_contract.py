@@ -11,6 +11,7 @@ from dataclasses import fields, replace
 import pytest
 
 from kang.domain.ports.memory_store import (
+    ContentEdit,
     MemoryConflict,
     MemoryRecord,
     content_fingerprint,
@@ -105,3 +106,100 @@ class MemoryStoreContract:
     def test_merge_provenance_refuses_an_unknown_record(self, store):
         with pytest.raises(MemoryConflict):
             store.merge_provenance(record(id="ghost", revision=2), expected_revision=1)
+
+    # ---- ADR-053 D3: the lifecycle operations' store surface -------------
+
+    def test_update_content_bumps_revision_and_stamps_the_editing_device(self, store):
+        store.insert_record(record())
+        updated = store.update_content(
+            ContentEdit(
+                record_id="mem-1",
+                content="School term ends June 13",
+                reason="corrected the date",
+                expected_revision=1,
+                edited_by="kang",
+                device_id="dev-editor",
+                now="2026-09-24T10:00:00+00:00",
+            )
+        )
+        assert updated.content == "School term ends June 13"
+        assert updated.reason == "corrected the date"
+        assert updated.revision == 2
+        assert updated.device_id == "dev-editor"
+        assert updated.updated_at == "2026-09-24T10:00:00+00:00"
+        assert store.get("mem-1") == updated
+
+    def test_update_content_leaves_type_tier_sensitivity_status_untouched(self, store):
+        store.insert_record(record(type="lesson", trust_tier=2, sensitivity="normal"))
+        updated = store.update_content(
+            ContentEdit(
+                record_id="mem-1",
+                content="new content",
+                reason="edit",
+                expected_revision=1,
+                edited_by="kang",
+                device_id="dev-1",
+                now="2026-09-24T10:00:00+00:00",
+            )
+        )
+        assert updated.type == "lesson"
+        assert updated.trust_tier == 2
+        assert updated.sensitivity == "normal"
+        assert updated.status == "active"
+
+    def test_update_content_refuses_a_stale_expected_revision(self, store):
+        store.insert_record(record())
+        with pytest.raises(MemoryConflict):
+            store.update_content(
+                ContentEdit(
+                    record_id="mem-1",
+                    content="x",
+                    reason="y",
+                    expected_revision=5,
+                    edited_by="kang",
+                    device_id="dev-1",
+                    now="2026-09-24T10:00:00+00:00",
+                )
+            )
+        assert store.get("mem-1") == record()  # untouched
+
+    def test_set_pinned_bumps_revision_even_when_the_value_is_unchanged(self, store):
+        store.insert_record(record(pinned=False))
+        first = store.set_pinned("mem-1", True, "dev-1", "2026-09-24T10:00:00+00:00")
+        assert first.pinned is True
+        assert first.revision == 2
+        second = store.set_pinned("mem-1", True, "dev-1", "2026-09-24T10:05:00+00:00")
+        assert second.pinned is True
+        assert second.revision == 3  # idempotent in effect, not in revision
+
+    def test_set_pinned_refuses_an_unknown_record(self, store):
+        with pytest.raises(MemoryConflict):
+            store.set_pinned("ghost", True, "dev-1", "2026-09-24T10:00:00+00:00")
+
+    def test_transition_status_moves_active_to_archived(self, store):
+        store.insert_record(record(status="active"))
+        moved = store.transition_status(
+            "mem-1", "active", "archived", "dev-1", "2026-09-24T10:00:00+00:00"
+        )
+        assert moved.status == "archived"
+        assert moved.revision == 2
+
+    def test_transition_status_moves_archived_to_active(self, store):
+        store.insert_record(record(status="archived"))
+        moved = store.transition_status(
+            "mem-1", "archived", "active", "dev-1", "2026-09-24T10:00:00+00:00"
+        )
+        assert moved.status == "active"
+
+    def test_transition_status_refuses_when_not_at_the_expected_status(self, store):
+        store.insert_record(record(status="archived"))
+        with pytest.raises(MemoryConflict):
+            store.transition_status(
+                "mem-1", "active", "archived", "dev-1", "2026-09-24T10:00:00+00:00"
+            )
+
+    # `delete_and_tombstone_in_txn` has no transaction of its own (it must
+    # be called inside one already open, by contract — see the port's own
+    # docstring), so its tests are adapter-specific (each opens/commits its
+    # own way): `test_memory_stores.py::TestSqliteMemoryStore` and
+    # `test_memory_stores_fake.py::TestFakeMemoryStore`, not here.

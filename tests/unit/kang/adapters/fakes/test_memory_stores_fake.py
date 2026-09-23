@@ -8,6 +8,7 @@ import pytest
 from kang.adapters.fakes.candidate_queue_store import FakeCandidateQueueStore
 from kang.adapters.fakes.memory_store import FakeMemoryStore
 from kang.adapters.fakes.unit_of_work import FakeUnitOfWork
+from kang.domain.ports.memory_store import MemoryConflict
 from tests.fixtures.candidate_queue_store_contract import (
     CandidateQueueStoreContract,
     candidate,
@@ -19,6 +20,19 @@ class TestFakeMemoryStore(MemoryStoreContract):
     @pytest.fixture
     def store(self):
         return FakeMemoryStore()
+
+    def test_delete_and_tombstone_removes_an_archived_record(self, store):
+        store.insert_record(record(status="archived"))
+        store.delete_and_tombstone_in_txn("mem-1", "kang", "2026-09-24T10:00:00+00:00")
+        assert store.get("mem-1") is None
+
+    def test_delete_and_tombstone_refuses_an_active_record(self, store):
+        store.insert_record(record(status="active"))
+        with pytest.raises(MemoryConflict):
+            store.delete_and_tombstone_in_txn(
+                "mem-1", "kang", "2026-09-24T10:00:00+00:00"
+            )
+        assert store.get("mem-1") is not None
 
 
 class TestFakeCandidateQueueStore(CandidateQueueStoreContract):

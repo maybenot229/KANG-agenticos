@@ -63,11 +63,22 @@ from kang.api.schemas.memory import (
     CandidateListResponse,
     MemoryApproveRequest,
     MemoryApproveResponse,
+    MemoryArchiveRequest,
+    MemoryArchiveResponse,
+    MemoryDeleteRequest,
     MemoryEditApproveRequest,
+    MemoryPinRequest,
+    MemoryPinResponse,
     MemoryProposeRequest,
     MemoryProposeResponse,
     MemoryRejectRequest,
     MemoryRejectResponse,
+    MemoryRestoreFromSnapshotRequest,
+    MemoryRestoreFromSnapshotResponse,
+    MemoryRestoreRequest,
+    MemoryRestoreResponse,
+    MemoryUpdateRequest,
+    MemoryUpdateResponse,
 )
 from kang.api.schemas.milestone import (
     MilestoneCreateRequest,
@@ -562,6 +573,87 @@ EXTRA_OPERATIONS: tuple[dict[str, Any], ...] = (
         "Expire pending candidates past their veto window.",
         schemas=OperationSchemas(
             request=CandidateExpireRequest, response=CandidateExpireResponse
+        ),
+    ),
+    # ---- the record lifecycle and the deletion covenant (ADR-053) --------
+    # `memory.curate` is one authority ("manage records Kang already has")
+    # covering update/pin/archive/restore (D7); `memory.delete` and
+    # `memory.restore_snapshot` each get their own scope, separately
+    # visible and grantable, because the first is irreversible and the
+    # second reaches into the backup subsystem. All six are additionally
+    # `first_party_only` (ADR-002) — the channel control that actually
+    # keeps an agent session out, same shape as memory.approve's own family.
+    _op(
+        "memory.update",
+        "command",
+        "memory.curate",
+        True,
+        "Edit an active memory record's content and reason.",
+        channel=OperationChannel(first_party_only=True),
+        schemas=OperationSchemas(
+            request=MemoryUpdateRequest, response=MemoryUpdateResponse
+        ),
+    ),
+    _op(
+        "memory.pin",
+        "command",
+        "memory.curate",
+        True,
+        "Set a memory record's pinned state.",
+        channel=OperationChannel(first_party_only=True),
+        schemas=OperationSchemas(request=MemoryPinRequest, response=MemoryPinResponse),
+    ),
+    _op(
+        "memory.archive",
+        "command",
+        "memory.curate",
+        True,
+        "Archive an active memory record.",
+        channel=OperationChannel(first_party_only=True),
+        schemas=OperationSchemas(
+            request=MemoryArchiveRequest, response=MemoryArchiveResponse
+        ),
+    ),
+    _op(
+        "memory.restore",
+        "command",
+        "memory.curate",
+        True,
+        "Restore an archived memory record to active.",
+        channel=OperationChannel(first_party_only=True),
+        schemas=OperationSchemas(
+            request=MemoryRestoreRequest, response=MemoryRestoreResponse
+        ),
+    ),
+    # memory.delete (D4): the only irreversible operation in the memory
+    # system. Requires the record to be `archived` first (M-002 has no
+    # `active` -> `deleted` edge); consequential, driven to `executed` by
+    # `held_action.approve`'s transactional path
+    # (`kernel.runtime.memory_wiring.TRANSACTIONAL_EFFECTS`). No
+    # response_schema: like job.disable/.enable, the handler's only real
+    # return is the `confirmation_required` envelope.
+    _op(
+        "memory.delete",
+        "command",
+        "memory.delete",
+        True,
+        "Delete an archived memory record (requires confirmation).",
+        channel=OperationChannel(first_party_only=True, commit_mode="transactional"),
+        schemas=OperationSchemas(request=MemoryDeleteRequest),
+    ),
+    # memory.restore_from_snapshot (D5): the undelete — distinct from
+    # memory.restore (D1), its own scope, not consequential (no held
+    # action; the 30-day window is what actually bounds it).
+    _op(
+        "memory.restore_from_snapshot",
+        "command",
+        "memory.restore_snapshot",
+        True,
+        "Restore a deleted memory record from a daily backup snapshot.",
+        channel=OperationChannel(first_party_only=True),
+        schemas=OperationSchemas(
+            request=MemoryRestoreFromSnapshotRequest,
+            response=MemoryRestoreFromSnapshotResponse,
         ),
     ),
 )

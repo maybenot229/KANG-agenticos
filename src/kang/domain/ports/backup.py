@@ -34,6 +34,16 @@ snapshot succeed," but "has Kang ever moved a copy off this machine" (07
 Part XII.5 — "KANG's own duty ends at `backups/`"). The marker path is
 bound at construction, like the backups directory itself, not passed per
 call — it never changes within a Core's lifetime.
+
+`restore_memory_record` (ADR-053 D5) is a genuinely different kind of
+capability from the four above: 07 Part XII.4's single-record restore
+(ATTACH the snapshot → copy the row and its revisions → detach), the
+mechanism behind `memory.restore_from_snapshot`. It is the one place this
+port's implementation reaches into another entity's schema on purpose
+(ADR-053's own Consequences name the cost: a change to `memory_record`'s
+shape now has a second consumer to check) — 06 §7.2's window is enforced
+by which daily snapshots still exist, never by comparing dates, and never
+by falling back to a monthly.
 """
 
 from __future__ import annotations
@@ -48,6 +58,7 @@ __all__ = [
     "BackupStatus",
     "EXTERNAL_BACKUP_STALE_AFTER",
     "ExternalBackupStatus",
+    "MemoryRestoreOutcome",
     "SnapshotRecord",
     "VerifyRecord",
     "external_backup_is_stale",
@@ -165,6 +176,24 @@ class ExternalBackupStatus:
     stale: bool
 
 
+@dataclass(frozen=True)
+class MemoryRestoreOutcome:
+    """The result of `restore_memory_record` (ADR-053 D5/D6): a returned
+    result, not an exception, on every honest path — mirroring
+    `VerifyRecord`'s own reasoning. `outcome` is one of:
+    `"restored"` (`id`/`revision`/`snapshot` all set — `snapshot` is which
+    daily snapshot supplied the row, newest-first), `"conflict"` (a live
+    record with this id already exists — nothing was touched), or
+    `"not_found"` (no remaining daily snapshot has the row; 06 §7.2: past
+    the 30-day window, or never deleted, single-record restore is simply
+    not offered — the honest outcome, not an invented cutoff)."""
+
+    outcome: str
+    id: str | None = None
+    revision: int | None = None
+    snapshot: str | None = None
+
+
 class BackupService(Protocol):
     """Takes, records, and verifies snapshots per 07_DATABASE Part XII."""
 
@@ -185,6 +214,21 @@ class BackupService(Protocol):
         Raises `BackupError` only when there is no daily snapshot to
         verify at all — a failed check is a returned `VerifyRecord`, not
         an exception (see that dataclass's own docstring)."""
+        ...
+
+    def restore_memory_record(
+        self, record_id: str, now: str, device_id: str
+    ) -> MemoryRestoreOutcome:
+        """07 Part XII.4 / ADR-053 D5: single-record undelete. Searches the
+        daily snapshots that still exist, newest first, for `record_id`;
+        the first one that has it supplies the row and its `memory_revision`
+        history, copied back in one transaction, with the copied row's
+        `revision` bumped by one past what the snapshot held (07 Part X §5:
+        so a future sync merge orders the restoration after the deletion)
+        and its `device_id`/`updated_at` stamped to this restore, not the
+        snapshot's own. Removes the matching `tombstone` row in the same
+        transaction. Never raises for "not found" or "already exists" —
+        see `MemoryRestoreOutcome`."""
         ...
 
     def latest_status(self) -> BackupStatus:

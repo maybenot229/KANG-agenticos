@@ -68,6 +68,12 @@ from kang.api.operations.job_ops import (
     make_job_disable_handler,
     make_job_enable_handler,
 )
+from kang.api.operations.memory_lifecycle_ops import (
+    DELETE_REVERSIBILITY,
+    MemoryLifecycleDeps,
+    make_memory_delete_effect,
+    make_memory_lifecycle_handlers,
+)
 from kang.api.operations.memory_ops import (
     MEMORY_PRINCIPAL,
     MemoryOpsDeps,
@@ -127,10 +133,14 @@ __all__ = [
     "make_chat_send_handler",
     "make_competition_create_handler",
     "make_competition_list_handler",
+    "DELETE_REVERSIBILITY",
     "MEMORY_PRINCIPAL",
+    "MemoryLifecycleDeps",
     "MemoryOpsDeps",
     "make_candidate_list_handler",
+    "make_memory_delete_effect",
     "make_memory_handlers",
+    "make_memory_lifecycle_handlers",
     "make_conversation_list_handler",
     "make_conversation_purge_handler",
     "make_deadline_create_handler",

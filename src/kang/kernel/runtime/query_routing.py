@@ -67,8 +67,8 @@ def _build_query_handlers(w: "_HandlerWiring") -> dict:
     (resumed) routes to the read pool: `name -> Callable[[connection],
     Handler]`, built fresh against whichever read-pool connection is
     checked out for that call — never against `w.connection` (the write
-    connection `composition.py`'s `_build_handlers` uses). `w.audit` and
-    `w.permission_engine` ARE shared, boot-time instances, reused as-is:
+    connection `composition.py`'s `_build_handlers` uses). `w.wiring.audit`
+    and `w.wiring.engine` ARE shared, boot-time instances, reused as-is:
     `AuditService` is file-backed (`JsonlAuditLog`), not sqlite, and its
     read paths (`records`/`chain_head`) open their own file handle per
     call, so concurrent read-pool callers are already safe without
@@ -82,21 +82,19 @@ def _build_query_handlers(w: "_HandlerWiring") -> dict:
     per worker today — a gap named, not silently worked around."""
     return {
         "registry.get": lambda conn: make_registry_get_handler(),
-        "permission.list": lambda conn: make_permission_list_handler(
-            w.permission_engine
-        ),
+        "permission.list": lambda conn: make_permission_list_handler(w.wiring.engine),
         "task.get": lambda conn: make_task_get_handler(SqliteTaskStore(conn, w.clock)),
         "deadline.list": lambda conn: make_deadline_list_handler(
             SqliteDeadlineStore(conn, w.clock)
         ),
         "explain.invocation": lambda conn: make_explain_invocation_handler(
-            SqliteInvocationStore(conn), w.audit
+            SqliteInvocationStore(conn), w.wiring.audit
         ),
         "explain.plan_item": lambda conn: make_explain_stub_handler("plan item"),
         "explain.notification": lambda conn: make_explain_stub_handler("notification"),
         "explain.suggestion": lambda conn: make_explain_stub_handler("suggestion"),
         "explain.memory": lambda conn: make_explain_stub_handler("memory record"),
-        "audit.list": lambda conn: make_audit_list_handler(w.audit, w.clock),
+        "audit.list": lambda conn: make_audit_list_handler(w.wiring.audit, w.clock),
         "invocation.list": lambda conn: make_invocation_list_handler(
             SqliteInvocationStore(conn)
         ),

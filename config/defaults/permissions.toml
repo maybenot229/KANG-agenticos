@@ -8,6 +8,13 @@
 
 [grants]
 # Kang acting through the UI holds all authority — the one exempt principal.
+# ADR-053 (2026-09-24): three new scopes join the surface this wildcard
+# covers — `memory.curate` (update/pin/archive/restore), `memory.delete`
+# (the one irreversible operation in the memory system), and
+# `memory.restore_snapshot` (the undelete, distinct from `memory.curate`'s
+# `restore` — D1/D7). No non-`kang` principal holds any of the three; all
+# six operations are additionally `first_party_only` (ADR-002), which is
+# what actually keeps an agent session out.
 "kang" = ["*"]
 
 # The kernel bus publishes core-namespace facts on the truth the kernel owns

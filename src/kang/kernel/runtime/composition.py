@@ -4,21 +4,15 @@ Layer: kernel/runtime, but exempt from the import matrix: this module MAY
 import adapters and the api, because something must instantiate
 concretions and inject them (17 §4.3 composition-root exception). It
 contains wiring only — no branching beyond config, no domain logic.
-`kernel.runtime.scheduler_wiring` (ADR-023, agents added ADR-043),
-`kernel.runtime.query_routing` (ADR-037), and `kernel.runtime.
-model_wiring` (ADR-044, adapters+agents) carry the same exemption —
-all three split out when their own slice pushed this file past the
-size lint's hard limits; all four files together are one conceptual
-composition root, not four. `composition.py` itself reaches `kang.
-agents` only indirectly, through `model_wiring.py`'s own plain
-functions — an ordinary kernel-to-kernel import, no exemption needed.
-Registered by exact name in tools/importlinter.toml; the exemption
-MUST NOT spread beyond those four without its own justification.
+`scheduler_wiring` (ADR-023), `query_routing` (ADR-037), `model_wiring`
+(ADR-044), and `memory_wiring` (ADR-053, this file's own 799/800 forcing
+the split a fourth time) carry the same exemption — five files, one
+composition root, not five roles. Named in tools/importlinter.toml; the
+exemption MUST NOT spread further without its own justification.
 
-Constitutional home: 11_CODING §11 (composition root, plain constructor
-calls, readable top to bottom), 17 §4.3, 12_API §5 (it assembles the
-request pipeline), 07 F8 (fail-closed to Kang-only grants if permissions.toml
-is missing/invalid).
+Constitutional home: 11_CODING §11 (composition root), 17 §4.3, 12_API §5
+(assembles the request pipeline), 07 F8 (fail-closed to Kang-only grants
+if permissions.toml is missing/invalid).
 """
 
 from __future__ import annotations
@@ -35,7 +29,6 @@ from aiohttp import web
 
 from kang.adapters.config.agent_definitions_loader import discover_agent_definitions
 from kang.adapters.config.backup_config import load_external_backup_marker
-from kang.adapters.config.memory_loader import MemoryConfigError, load_memory_config
 from kang.adapters.config.permissions_loader import (
     KANG_ONLY_GRANTS,
     GrantLoadError,
@@ -49,7 +42,6 @@ from kang.adapters.os_windows.clock import SystemClock
 from kang.adapters.os_windows.startup_lock import FileStartupLock
 from kang.adapters.sqlite.backup_service import SqliteBackupService
 from kang.adapters.sqlite.calendar_store import SqliteCalendarStore
-from kang.adapters.sqlite.candidate_queue_store import SqliteCandidateQueueStore
 from kang.adapters.sqlite.competition_store import SqliteCompetitionStore
 from kang.adapters.sqlite.connection import open_connection, open_read_only_connection
 from kang.adapters.sqlite.connection_pool import ReadPool, WriteExecutor
@@ -60,7 +52,6 @@ from kang.adapters.sqlite.held_action_store import SqliteHeldActionStore
 from kang.adapters.sqlite.idempotency_store import SqliteIdempotencyStore
 from kang.adapters.sqlite.invocation_store import SqliteInvocationStore
 from kang.adapters.sqlite.job_store import SqliteJobStore, SqliteKillSwitch
-from kang.adapters.sqlite.memory_store import SqliteMemoryStore
 from kang.adapters.sqlite.migrations import apply_migrations
 from kang.adapters.sqlite.milestone_store import SqliteMilestoneStore
 from kang.adapters.sqlite.notification_store import SqliteNotificationStore
@@ -68,7 +59,6 @@ from kang.adapters.sqlite.project_store import SqliteProjectStore
 from kang.adapters.sqlite.recovery import SqliteRecoveryApplier
 from kang.adapters.sqlite.session_store import SqliteSessionStore
 from kang.adapters.sqlite.task_store import SqliteTaskStore
-from kang.adapters.sqlite.transaction import SqliteUnitOfWork
 from kang.api.dispatch import ApiRequest, Dispatcher, DispatcherDeps
 from kang.api.http_binding import make_app
 from kang.api.operations import (
@@ -103,7 +93,7 @@ from kang.api.operations import (
     make_task_complete_handler,
     make_task_create_handler,
 )
-from kang.api.operations.memory_ops import MemoryOpsDeps, make_memory_handlers
+from kang.api.operations.memory_ops import make_memory_handlers
 from kang.api.registry import OPERATIONS
 from kang.domain.notifications import (
     make_backup_offsite_enqueue_handler,
@@ -123,6 +113,13 @@ from kang.kernel.orchestrator.registry import AgentRegistry, build_checked_regis
 from kang.kernel.permissions.engine import build_checked_engine
 from kang.kernel.router.router import Router
 from kang.kernel.runtime.ids import uuid7
+from kang.kernel.runtime.memory_wiring import (
+    MemoryDeps,
+    MemoryWiringInputs,
+    build_memory_deps,
+    memory_lifecycle_handlers,
+    memory_transactional_effects,
+)
 from kang.kernel.runtime.model_wiring import ChatWiringDeps, build_router, make_chat_run
 from kang.kernel.runtime.query_routing import _build_query_handlers, _dispatch_query
 from kang.kernel.runtime.scheduler_wiring import (
@@ -258,29 +255,17 @@ class _HandlerWiring:
     """Everything the operation handlers are built from (11 §4)."""
 
     connection: object
-    bus: EventBus
     clock: object
     new_id: object
     device_id: str
-    audit: AuditService
-    task_store: object
-    deadline_store: object
-    notification_store: object
-    invocations: object
-    held_action_store: object
-    permission_engine: object
-    job_store: object
-    kill_switch: object
-    project_store: object
-    competition_store: object
-    milestone_store: object
-    goal_store: object
+    stores: _Stores  # ADR-053: nested, not flattened (11 §4's size lint)
+    wiring: _BusWiring  # ADR-053: same reasoning, same fix
     backups: object
     agent_registry: AgentRegistry  # ADR-044: chat.send's own agent lookup
     router: Router  # ADR-044: chat.send's own model-call path
     sessions: object  # ADR-044: chat.send's own agent:chat session mint
     conversations: ConversationStore  # ADR-046: chat.send's own history
-    memory: MemoryOpsDeps  # ADR-051: the write gate's operations
+    memory: MemoryDeps  # ADR-051 (.ops)/ADR-053 D3 (.lifecycle)
 
 
 def _build_handlers(w: _HandlerWiring) -> dict:
@@ -292,26 +277,26 @@ def _build_handlers(w: _HandlerWiring) -> dict:
     `query_routing._build_query_handlers` instead (ADR-036 D4, resumed)."""
     return {
         "task.create": make_task_create_handler(
-            w.bus, w.task_store, w.clock, w.new_id, w.device_id
+            w.wiring.bus, w.stores.task_store, w.clock, w.new_id, w.device_id
         ),
         "task.complete": make_task_complete_handler(
-            w.bus, w.task_store, w.clock, w.new_id, w.device_id
+            w.wiring.bus, w.stores.task_store, w.clock, w.new_id, w.device_id
         ),
         "deadline.create": make_deadline_create_handler(
-            w.bus, w.deadline_store, w.clock, w.new_id, w.device_id
+            w.wiring.bus, w.stores.deadline_store, w.clock, w.new_id, w.device_id
         ),
         "deadline.sweep": make_deadline_sweep_handler(
-            w.bus, w.deadline_store, w.clock, w.new_id, w.device_id
+            w.wiring.bus, w.stores.deadline_store, w.clock, w.new_id, w.device_id
         ),
         "conversation.purge": make_conversation_purge_handler(w.conversations, w.clock),
         "notification.ack": make_notification_ack_handler(
-            w.notification_store, w.clock
+            w.wiring.notification_store, w.clock
         ),
         "plan.generate": make_plan_generate_handler(
             PlannerDeps(
-                bus=w.bus,
-                tasks=w.task_store,
-                deadlines=w.deadline_store,
+                bus=w.wiring.bus,
+                tasks=w.stores.task_store,
+                deadlines=w.stores.deadline_store,
                 calendar=SqliteCalendarStore(w.connection),
                 clock=w.clock,
                 new_id=w.new_id,
@@ -319,12 +304,12 @@ def _build_handlers(w: _HandlerWiring) -> dict:
             )
         ),
         "system.health": make_system_health_handler(
-            w.job_store, w.kill_switch, w.backups, w.clock
+            w.stores.job_store, w.stores.kill_switch, w.backups, w.clock
         ),
         "backup.snapshot": make_backup_snapshot_handler(w.backups, w.clock),
         "backup.verify": make_backup_verify_handler(w.backups, w.clock),
         "backup.offsite_check": make_backup_offsite_check_handler(
-            w.backups, w.bus, w.clock, w.new_id, w.device_id
+            w.backups, w.wiring.bus, w.clock, w.new_id, w.device_id
         ),
         "chat.send": make_chat_send_handler(
             make_chat_run(
@@ -339,7 +324,8 @@ def _build_handlers(w: _HandlerWiring) -> dict:
                 )
             )
         ),
-        **make_memory_handlers(w.memory),
+        **make_memory_handlers(w.memory.ops),
+        **memory_lifecycle_handlers(w.memory.lifecycle),
         **_build_project_cluster_handlers(w),
         **_build_consequential_handlers(w),
     }
@@ -390,10 +376,11 @@ def _build_consequential_handlers(w: _HandlerWiring) -> dict:
     `_build_project_cluster_handlers`'s own extraction (11 §4's size lint).
     `transactional_effects` keys by operation name (JOB_OPERATIONS' shape,
     ADR-006 ruling 4) — held_action.approve looks itself up here."""
-    js, ha = w.job_store, w.held_action_store
+    js, ha = w.stores.job_store, w.stores.held_action_store
     transactional_effects = {
         "job.disable": lambda p: js.set_enabled_in_txn(p["job_id"], False),
         "job.enable": lambda p: js.set_enabled_in_txn(p["job_id"], True),
+        **memory_transactional_effects(w.memory.lifecycle),
     }
     _check_transactional_effects_registered(transactional_effects)
     confirmation = ConfirmationDeps(ha, w.clock, w.new_id)
@@ -425,37 +412,37 @@ def _build_project_cluster_handlers(w: _HandlerWiring) -> dict:
     (ADR-037), not here."""
     return {
         "project.create": make_project_create_handler(
-            w.bus, w.project_store, w.clock, w.new_id, w.device_id
+            w.wiring.bus, w.stores.project_store, w.clock, w.new_id, w.device_id
         ),
         "project.complete": make_project_complete_handler(
-            w.bus, w.project_store, w.clock, w.new_id, w.device_id
+            w.wiring.bus, w.stores.project_store, w.clock, w.new_id, w.device_id
         ),
         "competition.create": make_competition_create_handler(
-            w.bus, w.competition_store, w.clock, w.new_id, w.device_id
+            w.wiring.bus, w.stores.competition_store, w.clock, w.new_id, w.device_id
         ),
         "milestone.create": make_milestone_create_handler(
-            w.bus, w.milestone_store, w.clock, w.new_id, w.device_id
+            w.wiring.bus, w.stores.milestone_store, w.clock, w.new_id, w.device_id
         ),
         "milestone.reach": make_milestone_reach_handler(
-            w.bus, w.milestone_store, w.clock, w.new_id, w.device_id
+            w.wiring.bus, w.stores.milestone_store, w.clock, w.new_id, w.device_id
         ),
         "milestone.miss": make_milestone_miss_handler(
-            w.bus, w.milestone_store, w.clock, w.new_id, w.device_id
+            w.wiring.bus, w.stores.milestone_store, w.clock, w.new_id, w.device_id
         ),
         "milestone.drop": make_milestone_drop_handler(
-            w.bus, w.milestone_store, w.clock, w.new_id, w.device_id
+            w.wiring.bus, w.stores.milestone_store, w.clock, w.new_id, w.device_id
         ),
         "goal.create": make_goal_create_handler(
-            w.bus, w.goal_store, w.clock, w.new_id, w.device_id
+            w.wiring.bus, w.stores.goal_store, w.clock, w.new_id, w.device_id
         ),
         "goal.achieve": make_goal_achieve_handler(
-            w.bus, w.goal_store, w.clock, w.new_id, w.device_id
+            w.wiring.bus, w.stores.goal_store, w.clock, w.new_id, w.device_id
         ),
         "goal.revise": make_goal_revise_handler(
-            w.bus, w.goal_store, w.clock, w.new_id, w.device_id
+            w.wiring.bus, w.stores.goal_store, w.clock, w.new_id, w.device_id
         ),
         "goal.retire": make_goal_retire_handler(
-            w.bus, w.goal_store, w.clock, w.new_id, w.device_id
+            w.wiring.bus, w.stores.goal_store, w.clock, w.new_id, w.device_id
         ),
     }
 
@@ -540,11 +527,27 @@ def _build_backup_service(kang, events, kang_home: Path, clock) -> SqliteBackupS
     )
 
 
-def _build_core_locked(
-    kang_home: Path, device_id: str, startup_lock: FileStartupLock
-) -> Core:
-    """The rest of `build_core`, run only once the startup lock is held —
-    split out so its own exceptions can be caught by name in one place."""
+@dataclass(frozen=True)
+class _CoreMaterials:
+    """Raw concretions `_build_core_locked` assembles into `_HandlerWiring`/
+    `Core`, bundled (11 §4) — same reasoning `_build_stores` was split for."""
+
+    clock: object
+    new_id: object
+    kang: object
+    events: object
+    agent_registry: AgentRegistry
+    router: Router
+    sessions: SqliteSessionStore
+    conversations: ConversationStore
+    wiring: _BusWiring
+    stores: _Stores
+    backup_service: SqliteBackupService
+
+
+def _build_core_materials(kang_home: Path, device_id: str) -> _CoreMaterials:
+    """What `_build_core_locked` used to build inline — split out purely
+    to keep that function under the size lint's line limit (11 §4)."""
     clock = SystemClock()
 
     def new_id() -> str:
@@ -553,90 +556,87 @@ def _build_core_locked(
     kang = open_connection(kang_home / "kang.db")
     apply_migrations(kang, MIGRATIONS_DIR, clock)
     events = open_eventlog(kang_home / "events" / "eventlog.db")
-    agent_registry = _build_agent_registry()
-    router = build_router(kang_home, kang, clock)
-    sessions = SqliteSessionStore(kang)
-    conversations = SqliteConversationStore(kang)
-    wiring = _build_bus_wiring(kang_home, kang, events, clock, new_id, device_id)
-    stores = _build_stores(kang, clock)
-    handler_wiring = _HandlerWiring(
-        connection=kang,
-        bus=wiring.bus,
+    return _CoreMaterials(
         clock=clock,
         new_id=new_id,
+        kang=kang,
+        events=events,
+        agent_registry=_build_agent_registry(),
+        router=build_router(kang_home, kang, clock),
+        sessions=SqliteSessionStore(kang),
+        conversations=SqliteConversationStore(kang),
+        wiring=_build_bus_wiring(kang_home, kang, events, clock, new_id, device_id),
+        stores=_build_stores(kang, clock),
+        backup_service=_build_backup_service(kang, events, kang_home, clock),
+    )
+
+
+def _build_core_locked(
+    kang_home: Path, device_id: str, startup_lock: FileStartupLock
+) -> Core:
+    """The rest of `build_core`, run only once the startup lock is held —
+    split out so its own exceptions can be caught by name in one place."""
+    m = _build_core_materials(kang_home, device_id)
+    memory_deps = build_memory_deps(
+        MemoryWiringInputs(
+            kang_home=kang_home,
+            kang=m.kang,
+            bus=m.wiring.bus,
+            permission_engine=m.wiring.engine,
+            audit=m.wiring.audit,
+            backups=m.backup_service,
+            held_action_store=m.stores.held_action_store,
+            clock=m.clock,
+            new_id=m.new_id,
+            device_id=device_id,
+        )
+    )
+    handler_wiring = _HandlerWiring(
+        connection=m.kang,
+        clock=m.clock,
+        new_id=m.new_id,
         device_id=device_id,
-        audit=wiring.audit,
-        task_store=stores.task_store,
-        deadline_store=stores.deadline_store,
-        notification_store=wiring.notification_store,
-        invocations=stores.invocations,
-        held_action_store=stores.held_action_store,
-        permission_engine=wiring.engine,
-        job_store=stores.job_store,
-        kill_switch=stores.kill_switch,
-        project_store=stores.project_store,
-        competition_store=stores.competition_store,
-        milestone_store=stores.milestone_store,
-        goal_store=stores.goal_store,
-        backups=_build_backup_service(kang, events, kang_home, clock),
-        agent_registry=agent_registry,
-        router=router,
-        sessions=sessions,
-        conversations=conversations,
-        memory=_memory_ops_deps(kang_home, kang, wiring, clock, new_id, device_id),
+        stores=m.stores,
+        wiring=m.wiring,
+        backups=m.backup_service,
+        agent_registry=m.agent_registry,
+        router=m.router,
+        sessions=m.sessions,
+        conversations=m.conversations,
+        memory=memory_deps,
     )
     handlers = _build_handlers(handler_wiring)
     query_handlers = _build_query_handlers(handler_wiring)
     dispatcher = Dispatcher(
         handlers,
-        _build_dispatcher_deps(kang, wiring, stores, sessions, clock, new_id),
+        _build_dispatcher_deps(
+            m.kang, m.wiring, m.stores, m.sessions, m.clock, m.new_id
+        ),
         query_handlers=query_handlers,
     )
     return Core(
         dispatcher=dispatcher,
-        sessions=sessions,
-        new_id=new_id,
-        _connections=[kang, events],
-        agent_registry=agent_registry,
-        router=router,
+        sessions=m.sessions,
+        new_id=m.new_id,
+        _connections=[m.kang, m.events],
+        agent_registry=m.agent_registry,
+        router=m.router,
         scheduler=_wire_scheduler(
             _SchedulerWiring(
                 kang_home=kang_home,
-                connection=kang,
-                clock=clock,
-                audit=wiring.audit,
+                connection=m.kang,
+                clock=m.clock,
+                audit=m.wiring.audit,
                 dispatcher=dispatcher,
-                sessions=sessions,
-                new_id=new_id,
-                job_store=stores.job_store,
-                kill_switch=stores.kill_switch,
-                agent_registry=agent_registry,
+                sessions=m.sessions,
+                new_id=m.new_id,
+                job_store=m.stores.job_store,
+                kill_switch=m.stores.kill_switch,
+                agent_registry=m.agent_registry,
             )
         ),
         startup_lock=startup_lock,
-        clock=clock,
-    )
-
-
-def _memory_ops_deps(kang_home, kang, wiring, clock, new_id, device_id):
-    """ADR-051: the write gate's wiring. `memory.toml` is read here, fail-
-    closed (D8): absent or malformed leaves `config=None`, so the record-
-    creating operations refuse rather than default an expiry window."""
-    try:
-        config = load_memory_config(kang_home / "config" / "memory.toml")
-    except MemoryConfigError:
-        config = None
-    return MemoryOpsDeps(
-        bus=wiring.bus,
-        memory=SqliteMemoryStore(kang),
-        queue=SqliteCandidateQueueStore(kang),
-        unit_of_work=SqliteUnitOfWork(kang),
-        permissions=wiring.engine,
-        audit=wiring.audit,
-        clock=clock,
-        new_id=new_id,
-        device_id=device_id,
-        config=config,
+        clock=m.clock,
     )
 
 

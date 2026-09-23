@@ -34,6 +34,7 @@ from kang.domain.ports.backup import (
     BackupError,
     BackupStatus,
     ExternalBackupStatus,
+    MemoryRestoreOutcome,
     SnapshotRecord,
     VerifyRecord,
     external_backup_is_stale,
@@ -66,6 +67,19 @@ ROW_COUNT_TABLES = (
 # there is nothing to run yet; reported as not-built, never silently
 # skipped.
 _READ_SHAPES_NOT_BUILT = ("v_project_memory", "v_contested_records")
+
+# ADR-053 D5: the full `memory_record` column list (07 §5.1 / ADR-048 D2,
+# minus the storage-local rowid), in the order `restore_memory_record`'s
+# cross-database copy reads them from the attached snapshot. `updated_at`,
+# `device_id`, and `revision` are deliberately NOT copied verbatim — the
+# SELECT overrides them (this restore's own stamp, and the snapshot's
+# revision + 1) rather than resurrecting the snapshot's own values.
+_MEMORY_RECORD_COPY_COLUMNS = (
+    "id, type, status, content, trust_tier, confidence, sensitivity, "
+    "content_enc, source_kind, source_detail, source_quote, reason, "
+    "created_by, created_at, importance, pinned, last_accessed, "
+    "access_count, embedding_ver"
+)
 
 
 class SqliteBackupService:
@@ -237,6 +251,89 @@ class SqliteBackupService:
         return ExternalBackupStatus(
             last_marker_at=last_marker_at,
             stale=external_backup_is_stale(last_marker_at, now),
+        )
+
+    def restore_memory_record(
+        self, record_id: str, now: str, device_id: str
+    ) -> MemoryRestoreOutcome:
+        """ADR-053 D5: see the port's own docstring. `ATTACH`/`DETACH`
+        cannot run inside an open transaction (SQLite's own restriction),
+        so each candidate snapshot is attached read-only in autocommit
+        mode, probed, and — only if it actually has the row — the copy
+        runs inside its own `BEGIN IMMEDIATE`/`COMMIT`, after which the
+        snapshot is detached again before the next candidate (if any)."""
+        live = self._conn.execute(
+            "SELECT 1 FROM memory_record WHERE id = ?", (record_id,)
+        ).fetchone()
+        if live is not None:
+            return MemoryRestoreOutcome(outcome="conflict", id=record_id)
+        daily = self._root / "daily"
+        candidates = sorted(
+            (p for p in daily.glob("kang-*.db") if p.name.startswith("kang-")),
+            reverse=True,  # newest first — lexical order is date order
+        )
+        for snapshot in candidates:
+            restored = self._restore_from_one(snapshot, record_id, now, device_id)
+            if restored is not None:
+                return restored
+        return MemoryRestoreOutcome(outcome="not_found", id=record_id)
+
+    def _restore_from_one(
+        self, snapshot: Path, record_id: str, now: str, device_id: str
+    ) -> MemoryRestoreOutcome | None:
+        """One candidate snapshot: attach, probe, copy-if-present, detach.
+        Returns None (not this snapshot) or the `"restored"` outcome.
+
+        Plain-path ATTACH, not a `file:...?mode=ro` URI: `self._conn` (the
+        one long-lived write connection, DB-001's single-writer discipline
+        — never a second one, per this module's own header) was opened
+        without `SQLITE_OPEN_URI` (`connection.py::open_connection`), so
+        ATTACH would treat a `file:` URI as a literal, nonexistent
+        filename. Read-only-ness here is structural instead: every
+        statement below reads `snap.*`, never writes it — no `mode=ro` is
+        needed to make that true, unlike `verify_latest`'s own dedicated,
+        disposable connection (which has no such guarantee to lean on)."""
+        self._conn.execute("ATTACH DATABASE ? AS snap", (str(snapshot),))
+        try:
+            present = self._conn.execute(
+                "SELECT 1 FROM snap.memory_record WHERE id = ?", (record_id,)
+            ).fetchone()
+            if present is None:
+                return None
+            self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                self._conn.execute(
+                    "INSERT INTO memory_record "
+                    f"({_MEMORY_RECORD_COPY_COLUMNS}, updated_at, device_id, "
+                    "revision) SELECT "
+                    f"{_MEMORY_RECORD_COPY_COLUMNS}, ?, ?, revision + 1 "
+                    "FROM snap.memory_record WHERE id = ?",
+                    (now, device_id, record_id),
+                )
+                self._conn.execute(
+                    "INSERT INTO memory_revision "
+                    "(record_id, revision, content, edited_by, edited_at, "
+                    "device_id) SELECT record_id, revision, content, "
+                    "edited_by, edited_at, device_id FROM snap.memory_revision "
+                    "WHERE record_id = ?",
+                    (record_id,),
+                )
+                self._conn.execute("DELETE FROM tombstone WHERE id = ?", (record_id,))
+                self._conn.execute("COMMIT")
+            except sqlite3.Error:
+                if self._conn.in_transaction:
+                    self._conn.execute("ROLLBACK")
+                raise
+        finally:
+            self._conn.execute("DETACH DATABASE snap")
+        revision = self._conn.execute(
+            "SELECT revision FROM memory_record WHERE id = ?", (record_id,)
+        ).fetchone()[0]
+        return MemoryRestoreOutcome(
+            outcome="restored",
+            id=record_id,
+            revision=revision,
+            snapshot=str(snapshot),
         )
 
     def _check_read_shapes(

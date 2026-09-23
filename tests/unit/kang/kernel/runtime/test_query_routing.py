@@ -49,10 +49,19 @@ EXPECTED_QUERY_HANDLER_NAMES = frozenset(
 
 
 @dataclass
+class _FakeBusWiring:
+    audit: object = None
+    engine: object = None
+
+
+@dataclass
 class _FakeHandlerWiring:
     clock: object = None
-    audit: object = None
-    permission_engine: object = None
+    wiring: object = None
+
+    def __post_init__(self) -> None:
+        if self.wiring is None:
+            self.wiring = _FakeBusWiring()
 
 
 def test_build_query_handlers_covers_exactly_the_19_read_pool_operations():

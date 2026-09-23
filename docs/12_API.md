@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Normative — the definitive contract between the Core and every client, forever; changes require an ADR
-**Last updated:** 2026-09-22 (ADR-052: dated note at §10 — `memory.edit_approve` may set `trust_tier`; ADR-051: dated note at §10 — which memory operations exist)
+**Last updated:** 2026-09-24 (ADR-053: dated note at §10 — the record lifecycle and deletion covenant, and `memory.restore` vs. `memory.restore_from_snapshot`; ADR-052: dated note at §10 — `memory.edit_approve` may set `trust_tier`; ADR-051: dated note at §10 — which memory operations exist)
 **Upstream (binding):** all prior documents; especially `04_ARCHITECTURE.md` (D002), `05_AGENTS.md`, `06_MEMORY.md`, `07_DATABASE.md`, `08_PLUGIN_SYSTEM.md`, `09_UI_DESIGN.md` (UI-P1), `10_SECURITY.md`
 **Downstream:** every frontend, CLI, plugin SDK, sidecar, and future client ever written.
 
@@ -178,6 +178,8 @@ Streaming output (chat tokens, invocation progress, log tails) rides the event c
 - `knowledge.ask {question}` → invocation resource implementing FR-064 ("what do I know about X?") with citations.
 
 **Dated note (2026-09-21, ADR-051 D3).** Built so far: `memory.propose` (scope `memory.propose`, plus a per-type `memory.propose:{type}` check by the handler — ADR-051 D2), `memory.approve`, `memory.edit_approve`, `memory.reject` (scope `memory.approve`, `first_party_only`, and the gate refuses any principal but first-party `kang`), `candidate.list` (the approval queue, `first_party_only`), and `candidate.expire` (scope `candidates.expire`, the 14-day sweep, run by `memory_steward`). **Not built yet, named:** `memory.update`, `memory.pin`, `memory.archive`, `memory.restore`, `memory.delete`, `memory.search`, `memory.explain_retrieval`, `private.unlock`, `knowledge.ask` (`explain.memory` remains a stub). The "one command each" UX line above holds for the four Kang-facing resolutions; `memory.propose` for anyone but first-party Kang always creates a candidate.
+
+**Dated note (2026-09-24, ADR-053 D1/D3/D7).** `memory.update`, `memory.pin`, `memory.archive`, `memory.restore` are now built — scope `memory.curate`, `first_party_only`. `memory.delete` is now built — scope `memory.delete`, `first_party_only`, consequential (the response the line above already promised: the 30-day recovery note as data, on approval). **`memory.restore` is not the same operation `06_MEMORY §7.2` and `07_DATABASE Part XII.4` describe as "restore from snapshot"** — that is a distinct, separately-scoped operation, `memory.restore_from_snapshot` (scope `memory.restore_snapshot`, `first_party_only`, not consequential — the 30-day window is what bounds it, enforced by which daily snapshots still exist, never by a date comparison). `memory.restore` alone means M-002's `archived → active`; conflating the two names one operation to mean would have put the more dangerous one behind the shorter, more casual-sounding name (D1's own reasoning). Still not built: `memory.search`, `memory.explain_retrieval`, `private.unlock`, `knowledge.ask`.
 
 ## 11. Planning, Agent, Plugin APIs (contract highlights)
 

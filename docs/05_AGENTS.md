@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Normative — every agent-related component MUST conform; changes require an ADR
-**Last updated:** 2026-09-16 (Appendix A: added `chat` as agent #16, ADR-044)
+**Last updated:** 2026-09-24 (Appendix D: dated note — `memory.delete` is now live, ADR-053; Appendix A: added `chat` as agent #16, ADR-044)
 **Upstream (binding):** `00_VISION.md`, `01_PRINCIPLES.md`, `02_PRODUCT_REQUIREMENTS.md`, `04_ARCHITECTURE.md` (D010, D011, D013, D014, D015), `06_MEMORY.md`, `07_DATABASE.md`
 **Downstream:** `08_PLUGIN_SYSTEM.md`, `12_API.md`, `16_SYNC.md`
 
@@ -474,6 +474,8 @@ stateDiagram-v2
 `calendar.write` · `vault.delete` · `email.draft→(send does not exist)` · `projects.delete` · `memory.delete` · `plugin.install/enable` · `grant.modify` · any `fs.write` outside staging/vault-granted · `job.enable`/`job.disable` (core jobs) · `restore.run` · `export.key_backup` · `private.unlock` · `held_action.approve` · `held_action.cancel`. Each requires live per-action confirmation; each is audited with full context; none is grantable as auto-approved.
 
 `held_action.approve` and `held_action.cancel` are additionally **`first_party_only`** (ADR 002): out-of-band confirmation for every other item in this list is enforced by requiring a `held_action` record and a distinct approval step; for these two items specifically, the *approval step itself* is the consequential action, so the first-party channel check (not a permission scope — §8) is what stands in for that second layer. A plugin session cannot approve, decline, or drain Kang's approval queue regardless of its grants.
+
+**Dated note (2026-09-24, ADR-053 D4).** `memory.delete` is now a live entry on this list, not an anticipated one: `archived → active` state required first (M-002 has no `active → deleted` edge), scope `memory.delete`, `first_party_only`, `commit_mode="transactional"` — the held action's `reversibility` field carries both of 06 §7.2's facts (the 30-day snapshot-restore window, and the honest limit that deleted content still persists inside backup snapshots for up to twelve months). Kang-only; no `agent:{id}` principal holds this scope.
 
 ## Appendix E — Scheduling table
 

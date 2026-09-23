@@ -438,6 +438,141 @@ def test_a_marker_touched_moments_ago_is_fresh(tmp_path):
         events.close()
 
 
+# ---- ADR-053 D5: restore_memory_record (the undelete) --------------------
+
+
+def _insert_memory_record(conn, record_id="mem-1", status="archived"):
+    conn.execute(
+        "INSERT INTO memory_record (id, type, status, content, trust_tier, "
+        "confidence, sensitivity, source_kind, source_detail, reason, "
+        "created_by, created_at, updated_at, device_id, revision) VALUES "
+        "(?, 'fact', ?, 'term ends june 12', 1, 1.0, 'normal', 'stated', "
+        "'conversation', 'kang said so', 'kang', '2026-09-01T00:00:00+00:00', "
+        "'2026-09-01T00:00:00+00:00', 'dev-1', 3)",
+        (record_id, status),
+    )
+    conn.execute(
+        "INSERT INTO memory_revision (record_id, revision, content, "
+        "edited_by, edited_at, device_id) VALUES (?, 2, 'prior content', "
+        "'kang', '2026-08-30T00:00:00+00:00', 'dev-1')",
+        (record_id,),
+    )
+    conn.commit()
+
+
+def _delete_live_and_tombstone(conn, record_id="mem-1"):
+    conn.execute("DELETE FROM memory_record WHERE id = ?", (record_id,))
+    conn.execute(
+        "INSERT INTO tombstone (id, entity, deleted_at, deleted_by, policy_ref) "
+        "VALUES (?, 'memory_record', '2026-09-24T09:00:00+00:00', 'kang', "
+        "'kang:explicit')",
+        (record_id,),
+    )
+    conn.commit()
+
+
+def test_restore_memory_record_revives_a_deleted_record_with_its_revisions(home):
+    root, service = home
+    conn = open_connection(root / "kang.db")
+    try:
+        _insert_memory_record(conn)
+        service.take_snapshot(NOW)  # the record is still live in this snapshot
+        _delete_live_and_tombstone(conn)
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM memory_record WHERE id = 'mem-1'"
+            ).fetchone()[0]
+            == 0
+        )
+    finally:
+        conn.close()
+
+    outcome = service.restore_memory_record(
+        "mem-1", "2026-09-24T10:00:00+00:00", "dev-restore"
+    )
+    assert outcome.outcome == "restored"
+    assert outcome.id == "mem-1"
+    assert outcome.revision == 4  # snapshot's 3, bumped by one (07 Part X §5)
+    assert outcome.snapshot.endswith("kang-20260817.db")
+
+    conn = open_connection(root / "kang.db")
+    try:
+        row = conn.execute(
+            "SELECT status, content, revision, device_id, updated_at FROM "
+            "memory_record WHERE id = 'mem-1'"
+        ).fetchone()
+        assert row == (
+            "archived",
+            "term ends june 12",
+            4,
+            "dev-restore",
+            "2026-09-24T10:00:00+00:00",
+        )
+        revisions = conn.execute(
+            "SELECT revision, content FROM memory_revision WHERE record_id = "
+            "'mem-1' ORDER BY revision"
+        ).fetchall()
+        assert revisions == [(2, "prior content")]
+        tombstoned = conn.execute(
+            "SELECT COUNT(*) FROM tombstone WHERE id = 'mem-1'"
+        ).fetchone()[0]
+        assert tombstoned == 0
+        fts_hits = conn.execute(
+            "SELECT rowid FROM fts_memory WHERE fts_memory MATCH 'term'"
+        ).fetchall()
+        assert len(fts_hits) == 1  # re-indexed by the schema's own trigger
+    finally:
+        conn.close()
+
+
+def test_restore_memory_record_refuses_when_a_live_record_already_exists(home):
+    root, service = home
+    conn = open_connection(root / "kang.db")
+    try:
+        _insert_memory_record(conn, status="active")
+    finally:
+        conn.close()
+    outcome = service.restore_memory_record(
+        "mem-1", "2026-09-24T10:00:00+00:00", "dev-restore"
+    )
+    assert outcome.outcome == "conflict"
+
+
+def test_restore_memory_record_reports_not_found_past_the_daily_window(home):
+    """06 §7.2: no cutoff comparison and no monthly fallback — a record
+    absent from every remaining daily snapshot is simply not offered."""
+    root, service = home
+    service.take_snapshot(NOW)  # a daily snapshot exists, but never had the row
+    outcome = service.restore_memory_record(
+        "never-existed", "2026-09-24T10:00:00+00:00", "dev-restore"
+    )
+    assert outcome.outcome == "not_found"
+
+
+def test_restore_memory_record_searches_snapshots_newest_first(home):
+    """Deleted between two snapshots: the newer one (which still has the
+    row) is used, not the older one."""
+    root, service = home
+    conn = open_connection(root / "kang.db")
+    try:
+        _insert_memory_record(conn)
+    finally:
+        conn.close()
+    service.take_snapshot("2026-08-15T02:30:00+00:00")
+    service.take_snapshot("2026-08-17T02:30:00+00:00")
+    conn = open_connection(root / "kang.db")
+    try:
+        _delete_live_and_tombstone(conn)
+    finally:
+        conn.close()
+
+    outcome = service.restore_memory_record(
+        "mem-1", "2026-09-24T10:00:00+00:00", "dev-restore"
+    )
+    assert outcome.outcome == "restored"
+    assert outcome.snapshot.endswith("kang-20260817.db")  # the newer one
+
+
 def test_a_marker_older_than_seven_days_is_stale(tmp_path):
     marker = tmp_path / "kang-marker"
     marker.write_text("touched long ago", encoding="utf-8")

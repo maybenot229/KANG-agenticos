@@ -10,11 +10,13 @@ permission engine are out of this handler's scope entirely — ADR-002).
 
 Deliberately NOT under test here: driving an approved action to
 `executed` for `commit_mode="transactional"` (ADR-021) — every held
-action this file seeds names an unregistered operation, so the handler's
-flip-only fallback is what's exercised. The transactional effect-driving
-path (BEGIN/approve_in_txn/effect/mark_executed_in_txn/COMMIT, sharing
-one real transaction) needs a real connection to mean anything and is
-proven in
+action this file seeds names an unregistered operation
+(`test.unregistered_operation` — deliberately not a real operation name,
+since `memory.delete` became one for real under ADR-053), so the
+handler's flip-only fallback is what's exercised. The transactional
+effect-driving path (BEGIN/approve_in_txn/effect/mark_executed_in_txn/
+COMMIT, sharing one real transaction) needs a real connection to mean
+anything and is proven in
 `tests/integration/sqlite/test_held_action_transactional_effect.py`
 instead.
 """
@@ -65,7 +67,7 @@ def _seed_pending(wiring, *, expires_in_hours: float = 24, **overrides) -> HeldA
     created = wiring["clock"].now()
     action = HeldAction(
         id=overrides.pop("id", wiring["new_id"]()),
-        operation=overrides.pop("operation", "memory.delete"),
+        operation=overrides.pop("operation", "test.unregistered_operation"),
         action=overrides.pop("action", "delete memory record mem-1"),
         principal=overrides.pop("principal", "kang"),
         reason=overrides.pop("reason", "duplicate of mem-2"),
@@ -83,7 +85,7 @@ def _approve(wiring, held_action_id: str) -> dict:
     # `connection`/`transactional_effects` are only touched by the
     # commit_mode="transactional" branch (ADR-021) — every held action
     # this file seeds names an operation with no registry entry
-    # (`memory.delete` isn't registered yet), so `commit_mode` resolves to
+    # (`test.unregistered_operation`), so `commit_mode` resolves to
     # None and the flip-only fallback runs, never touching either. The
     # transactional path is proven by
     # tests/integration/sqlite/test_held_action_transactional_effect.py

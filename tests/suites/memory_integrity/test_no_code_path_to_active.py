@@ -238,8 +238,9 @@ def test_no_registered_operation_lets_a_non_kang_principal_reach_active(core):
                 _dispatch(built, token, entry["name"], params)
                 calls += 1
         after = _records(home)
-        # Nothing was added, and Kang's row's identity and content are intact
-        # (a silent merge may bump its provenance/revision — never its words).
+        # Nothing was added, and Kang's row is untouched down to every column
+        # (ADR-052 D1: a non-Kang exact duplicate is rejected, never merged —
+        # no agent/plugin session may bump so much as its provenance/revision).
         assert [r[0] for r in after] == [kang_record["id"]], entry["name"]
         assert after[0][1:] == baseline[0][1:], entry["name"]
     assert calls > 350, "the sweep must actually exercise the surface"
@@ -385,16 +386,24 @@ def test_the_record_insert_function_has_exactly_one_caller():
 
 
 def test_only_the_sanctioned_files_write_the_memory_record_table():
-    """SQL that creates a `memory_record` row exists in exactly two files:
-    the store's `insert_record`, and the recovery applier's redo of a
-    gate-published `memory.saved` event (EB-003) — which can only exist
-    because the gate published it."""
+    """SQL that creates a `memory_record` row exists in exactly three files:
+    the store's `insert_record`/`delete_and_tombstone_in_txn`'s own DELETE
+    (not a create, but the same file), the recovery applier's redo of a
+    gate-published `memory.saved`/`memory.updated` event (EB-003) — which
+    can only exist because the gate or a lifecycle operation published it
+    — and, since ADR-053 D5, the backup adapter's own cross-database copy
+    for `memory.restore_from_snapshot` (a deliberately separate mechanism,
+    never `insert_record` — see that port method's own docstring)."""
     writers = set()
     for path in _python_sources():
         text = path.read_text(encoding="utf-8")
         if re.search(r"INSERT\s+INTO\s+memory_record", text, re.IGNORECASE):
             writers.add(path.relative_to(SRC).as_posix())
-    assert writers == {"adapters/sqlite/memory_store.py", "adapters/sqlite/recovery.py"}
+    assert writers == {
+        "adapters/sqlite/memory_store.py",
+        "adapters/sqlite/recovery.py",
+        "adapters/sqlite/backup_service.py",
+    }
 
 
 def test_build_record_has_no_caller_but_the_two_gate_paths():
@@ -419,7 +428,10 @@ def test_every_operation_that_can_resolve_the_queue_is_first_party_only():
     assert all(e["first_party_only"] for e in resolving)
 
 
-def test_memory_and_candidate_operations_are_exactly_the_six_built():
+def test_memory_and_candidate_operations_are_exactly_the_twelve_built():
+    """ADR-051's original six, plus ADR-053's own six lifecycle operations
+    (update/pin/archive/restore/delete/restore_from_snapshot) — a closed
+    list, extended deliberately, not silently."""
     names = {
         e["name"] for e in OPERATIONS if e["name"].startswith(("memory.", "candidate."))
     }
@@ -430,4 +442,10 @@ def test_memory_and_candidate_operations_are_exactly_the_six_built():
         "memory.reject",
         "candidate.list",
         "candidate.expire",
+        "memory.update",
+        "memory.pin",
+        "memory.archive",
+        "memory.restore",
+        "memory.delete",
+        "memory.restore_from_snapshot",
     }

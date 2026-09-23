@@ -27,14 +27,16 @@ forbidden_modules = [
 # 17 §4.3 rules 3, 4 — kernel executes agent *definitions* (data), never agent
 # code; kernel receives adapter instances by injection, never imports them.
 # The exemption (17 §4.3): the composition root MAY import adapters + api,
-# because something must instantiate concretions and inject them. Four
+# because something must instantiate concretions and inject them. Five
 # files carry it — kang.kernel.runtime.composition and, since ADR-023,
 # kang.kernel.runtime.scheduler_wiring (split out of composition.py when a
 # third scheduled job pushed that file past the size lint's hard limits),
 # since ADR-037, kang.kernel.runtime.query_routing (same trigger, the
-# ADR-036 D4 read-pool-routing slice), and since ADR-044, kang.kernel.
-# runtime.model_wiring (same trigger again, the Router/chat wiring slice)
-# — four files together are one conceptual composition root, not four
+# ADR-036 D4 read-pool-routing slice), since ADR-044, kang.kernel.
+# runtime.model_wiring (same trigger again, the Router/chat wiring slice),
+# and since ADR-053, kang.kernel.runtime.memory_wiring (same trigger a
+# fourth time — the record lifecycle and deletion covenant slice) — five
+# files together are one conceptual composition root, not five
 # roles. Named here, by exact module, so the exemption cannot spread
 # further without its own line and its own justification.
 [[tool.importlinter.contracts]]
@@ -69,6 +71,13 @@ ignore_imports = [
     # out of composition.py in the first place.
     "kang.kernel.runtime.model_wiring -> kang.adapters.**",
     "kang.kernel.runtime.model_wiring -> kang.agents.**",
+    # ADR-053 (2026-09-24): memory_wiring.py builds the real
+    # SqliteMemoryStore/SqliteCandidateQueueStore/SqliteUnitOfWork
+    # (adapters) and returns MemoryOpsDeps/MemoryLifecycleDeps plus the
+    # six lifecycle handlers (api) — the exact reason it was split out of
+    # composition.py, same shape as model_wiring.py's own two lines above.
+    "kang.kernel.runtime.memory_wiring -> kang.adapters.**",
+    "kang.kernel.runtime.memory_wiring -> kang.api.**",
 ]
 
 # 17 §4.3 rule 5 — adapters translate at the port line; importing a domain

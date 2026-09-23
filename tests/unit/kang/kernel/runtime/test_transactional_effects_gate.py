@@ -22,13 +22,17 @@ from kang.kernel.runtime.composition import _check_transactional_effects_registe
 
 
 def test_the_real_transactional_effects_table_passes():
-    """job.disable/job.enable are the only two operations that need an
-    entry — held_action.approve/.cancel also declare commit_mode=
-    "transactional" but describe their own effect, never a lookup target
-    (see the checked function's own docstring); they must NOT be required
-    here."""
+    """job.disable/job.enable/memory.delete (ADR-053) are the only
+    operations that need an entry — held_action.approve/.cancel also
+    declare commit_mode="transactional" but describe their own effect,
+    never a lookup target (see the checked function's own docstring);
+    they must NOT be required here."""
     _check_transactional_effects_registered(
-        {"job.disable": lambda p: None, "job.enable": lambda p: None}
+        {
+            "job.disable": lambda p: None,
+            "job.enable": lambda p: None,
+            "memory.delete": lambda p: None,
+        }
     )
 
 
@@ -37,7 +41,9 @@ def test_a_missing_entry_fails_loudly_naming_the_operation():
     transactional with no matching effect fails here — at boot — not
     silently, and not only when someone later tries to approve it."""
     with pytest.raises(NotImplementedError, match="job.enable"):
-        _check_transactional_effects_registered({"job.disable": lambda p: None})
+        _check_transactional_effects_registered(
+            {"job.disable": lambda p: None, "memory.delete": lambda p: None}
+        )
 
 
 def test_an_empty_table_fails_for_every_real_target():

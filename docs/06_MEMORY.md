@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Living — changes require an ADR; this document is normative for all memory behavior
-**Last updated:** 2026-09-22 (ADR-052: dated notes at §1.4 — Tier 2 enforced at the gate — and §4.2 — the pipeline flowchart's node order corrected, the merge edge Kang-only; ADR-051: dated notes at §4.1, §4.2, §12.1 — what the gate builds and refuses, the absent semantic probes, the event-log reading; ADR-048: §2.1D/M-002 —
+**Last updated:** 2026-09-24 (ADR-053: dated note at Part III/M-002 — which transitions are live, `memory.delete`'s `archived → deleted` edge, `memory.restore_from_snapshot` as a separate mechanism; ADR-052: dated notes at §1.4 — Tier 2 enforced at the gate — and §4.2 — the pipeline flowchart's node order corrected, the merge edge Kang-only; ADR-051: dated notes at §4.1, §4.2, §12.1 — what the gate builds and refuses, the absent semantic probes, the event-log reading; ADR-048: §2.1D/M-002 —
 candidate/rejected are quarantine-table states, not `memory_record` states)
 **Upstream (immutable):** `00_VISION.md`, `01_PRINCIPLES.md`, `02_PRODUCT_REQUIREMENTS.md`, `04_ARCHITECTURE.md` (esp. Decision 007)
 **Downstream (will depend on this):** `07_DATABASE.md`, `05_AGENTS.md`, `08_PLUGIN_SYSTEM.md`, `12_API.md`
@@ -194,6 +194,12 @@ store-layer function with exhaustive tests" line originally described —
 the gate's own exhaustive suite is 13_TESTING §2.8; this section's
 transition function covers `active`-and-later only. Named here so the
 gate slice does not try to reunify them.
+
+**Dated note (2026-09-24, ADR-053 D3).** The transition table above is now implemented in part, not in whole — named here so a reader of the diagram knows which edges are live without guessing:
+
+- **Live:** `active → archived`, `archived → active` (`memory.update` also lives here, though it changes no `status` — it edits `content`/`reason` of an `active` row, revision-checked, with history in `memory_revision`), and `archived → deleted` (`memory.delete`, consequential — the only edge into `deleted`; **`active → deleted` does not exist**, in the code or in this diagram, on purpose — deletion is deliberately a two-step act).
+- **Unreachable until their producers exist:** `active → under_review` (needs the staleness probe and contradiction detection — the janitor and the NLI probe ADR-052 confirmed absent), `under_review → superseded`/`archived`, and `active → superseded` (needs the `supersedes` link — the link layer). Building manual Kang-driven operations to reach these would invent a second, chosen path into states this machine designs around automatic detection — deliberately not done (ADR-053 Option 3A, declined).
+- **A separate mechanism, not a table transition:** reviving a `deleted` row from a backup snapshot (§7.2, 07_DATABASE Part XII.4) is `memory.restore_from_snapshot` — undelete, never a `status` flip (the row does not exist to have one), and not the same operation as `archived → active`'s own `memory.restore` above. Two names for two different things (ADR-053 D1, 11_CODING §3).
 
 **Why a strict machine.** Every downstream guarantee (no fabrication, explainability, trustworthy retrieval) depends on knowing exactly which records are "live." Fuzzy liveness = fuzzy truth.
 

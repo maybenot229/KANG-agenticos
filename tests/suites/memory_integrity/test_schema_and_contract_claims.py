@@ -93,6 +93,18 @@ def test_memory_saved_is_registered_recovery_grade():
         assert unbuilt not in EVENT_TYPES  # ADR-051 D7: no consumer, no event
 
 
+def test_memory_updated_is_registered_recovery_grade_and_memory_deleted_is_not():
+    """ADR-053 D3/D6/D9: `memory.updated` joins `memory.saved` with the same
+    full-row shape; `memory.deleted` is deliberately absent — no consumer,
+    and a replayed delete after a snapshot restore would silently re-delete
+    the just-restored record. Deletion is durable through its own
+    transaction, never through the bus."""
+    entry = EVENT_TYPES["memory.updated"]
+    assert (entry.category, entry.recovery_grade) == ("domain", True)
+    assert entry.required_payload_fields == MEMORY_EVENT_FIELDS
+    assert "memory.deleted" not in EVENT_TYPES
+
+
 @pytest.fixture
 def conn(tmp_path):
     connection = open_connection(tmp_path / "kang.db")

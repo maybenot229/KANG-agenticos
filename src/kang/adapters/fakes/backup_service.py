@@ -19,6 +19,7 @@ from kang.domain.ports.backup import (
     BackupError,
     BackupStatus,
     ExternalBackupStatus,
+    MemoryRestoreOutcome,
     SnapshotRecord,
     VerifyRecord,
     external_backup_is_stale,
@@ -43,6 +44,12 @@ class FakeBackupService:
         # ADR-034: set directly to simulate a marker's mtime — no real
         # file, unlike the real adapter's `Path.stat()`.
         self.external_marker_at: str | None = None
+        # ADR-053 D5: set directly by a test to control what
+        # `restore_memory_record` reports — no real snapshot files, unlike
+        # the real adapter's ATTACH/copy/detach (proven against real
+        # snapshot files in `integration/sqlite/test_backup_service.py`).
+        self.restore_result: MemoryRestoreOutcome | None = None
+        self.restore_calls: list[str] = []
 
     def take_snapshot(self, now: str) -> SnapshotRecord:
         if self.fail_with is not None:
@@ -105,3 +112,11 @@ class FakeBackupService:
             last_marker_at=self.external_marker_at,
             stale=external_backup_is_stale(self.external_marker_at, now),
         )
+
+    def restore_memory_record(
+        self, record_id: str, now: str, device_id: str
+    ) -> MemoryRestoreOutcome:
+        self.restore_calls.append(record_id)
+        if self.restore_result is not None:
+            return self.restore_result
+        return MemoryRestoreOutcome(outcome="not_found", id=record_id)

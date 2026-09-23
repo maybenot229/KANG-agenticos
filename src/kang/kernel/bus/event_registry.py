@@ -372,6 +372,24 @@ _TYPES: tuple[EventType, ...] = (
         version_introduced="0.1",
         required_payload_fields=_MEMORY_PAYLOAD_FIELDS,
     ),
+    # ---- memory.updated, per ADR-053 D3/Consequences ---------------------
+    # `memory.update`/`.pin`/`.archive`/`.restore`'s own truth (ADR-018's
+    # standing .updated pattern, applied to memory here): losing an edit on
+    # crash would silently revert Kang's own words (07 DB-001's pairing).
+    # Full-row, recovery-grade, same shape as memory.saved — one applier
+    # serves both (`_apply_memory_upsert`, idempotent by id + revision).
+    # `memory.deleted` is deliberately NOT registered (ADR-053 D6/D9): no
+    # consumer, and a replayed delete after a snapshot restore would
+    # silently re-delete the just-restored record — deletion is durable
+    # through its own transaction, not through the bus.
+    EventType(
+        name="memory.updated",
+        category="domain",
+        recovery_grade=True,
+        plugin_visible=True,
+        version_introduced="0.1",
+        required_payload_fields=_MEMORY_PAYLOAD_FIELDS,
+    ),
     # ---- backup.offsite_stale, per ADR-034 -------------------------------
     # 07 Part XII.5's off-machine warning: a pure fact, never recovery-
     # grade, published only when `backup.offsite_check` finds the
