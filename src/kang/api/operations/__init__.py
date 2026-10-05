@@ -46,6 +46,10 @@ from kang.api.operations.deadline_ops import (
     make_deadline_list_handler,
     make_deadline_sweep_handler,
 )
+from kang.api.operations.embedding_ops import (
+    MemoryEmbedDeps,
+    make_memory_embed_handler,
+)
 from kang.api.operations.explain_ops import (
     make_explain_invocation_handler,
     make_explain_stub_handler,
@@ -135,6 +139,7 @@ __all__ = [
     "make_competition_list_handler",
     "DELETE_REVERSIBILITY",
     "MEMORY_PRINCIPAL",
+    "MemoryEmbedDeps",
     "MemoryLifecycleDeps",
     "MemoryOpsDeps",
     "make_candidate_list_handler",
@@ -160,6 +165,7 @@ __all__ = [
     "make_invocation_list_handler",
     "make_job_disable_handler",
     "make_job_enable_handler",
+    "make_memory_embed_handler",
     "make_message_list_handler",
     "make_milestone_create_handler",
     "make_milestone_drop_handler",

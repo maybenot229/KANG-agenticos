@@ -52,6 +52,7 @@ __all__ = [
     "DEADLINE_SWEEP_JOB",
     "HELD_ACTION_EXPIRE_JOB",
     "JOB_OPERATIONS",
+    "MEMORY_EMBED_JOB",
     "MORNING_PLAN_JOB",
     "SCHEDULER_PRINCIPAL",
     "TICK_INTERVAL_S",
@@ -74,6 +75,9 @@ BACKUP_OFFSITE_CHECK_JOB = "backup_offsite_check"  # ADR-034 — Appendix E
 #   match the existing backup.* family, not invented from nothing.
 CANDIDATE_EXPIRE_JOB = "candidate_expire"  # ADR-051 D9 — memory_steward's
 #   second real job: 06 §4.3's "silence is a veto" sweep of the approval queue.
+MEMORY_EMBED_JOB = "memory_embed"  # ADR-055 D7 — 07 §6.2's kernel
+#   "embedding worker". Not an agent mandate in 05 Appendix A, so it runs
+#   directly under kernel:scheduler, like held_action_expire.
 CONVERSATION_PURGE_JOB = "conversation_purge"  # ADR-047 — fills Appendix
 #   E's `memory_steward.nightly` row (daily, run_once_latest); named
 #   task-shaped like every other row in this table (`deadline_sweep`,
@@ -104,6 +108,7 @@ JOB_OPERATIONS: dict[str, str] = {
     "backup_offsite_check": "backup.offsite_check",  # ADR-034
     "conversation_purge": "conversation.purge",  # ADR-047
     "candidate_expire": "candidate.expire",  # ADR-051 D9
+    "memory_embed": "memory.embed",  # ADR-055 D7
 }
 
 # ADR-043/045: jobs whose real scheduled trigger runs through the
@@ -336,7 +341,7 @@ def _wire_scheduler(wiring: _SchedulerWiring):
 
 
 def _register_scheduled_jobs(job_store, triggers, clock) -> None:
-    """The six job rows `_wire_scheduler` registers on every boot (11 §4
+    """The job rows `_wire_scheduler` registers on every boot (11 §4
     — split into families purely to keep both this function and
     `_wire_scheduler` under the size lint's line limit; neither split is
     a domain concept of its own, same reasoning `_build_stores`/
@@ -344,6 +349,27 @@ def _register_scheduled_jobs(job_store, triggers, clock) -> None:
     _register_planning_jobs(job_store, triggers, clock)
     _register_backup_jobs(job_store, clock)
     _register_memory_steward_jobs(job_store, clock)
+    _register_embedding_job(job_store, clock)
+
+
+def _register_embedding_job(job_store, clock) -> None:
+    """memory_embed (ADR-055 D7): every five minutes, one bounded pass.
+    run_once_latest — a missed hour needs one pass over whatever is pending
+    now, not twelve; each pass is capped (EMBED_BATCH_SIZE), so a backlog
+    drains over successive runs rather than holding the writer."""
+    job_store.register_job(
+        Job(
+            id=MEMORY_EMBED_JOB,
+            name=MEMORY_EMBED_JOB,
+            schedule="every:300",
+            catch_up="run_once_latest",
+            created_at=clock.now(),
+            # Eight texts at the spike's 1.24 chunks/s plus a cold model
+            # load sit well inside a minute; the adapter's own HTTP timeout
+            # is 60 s. Doubled, the margin backup_snapshot uses.
+            timeout_s=120,
+        )
+    )
 
 
 def _register_memory_steward_jobs(job_store, clock) -> None:

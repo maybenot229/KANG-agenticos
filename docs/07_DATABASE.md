@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Database Architect)
 **Status:** Normative — every persistence-related component MUST conform; changes require an ADR
-**Last updated:** 2026-09-17 (ADR-048 amendments: §5.1/§5.3/§5.5 rowid columns
+**Last updated:** 2026-10-05 (ADR-054/055: dated notes at DB-004 and §6.2 — the model named, version 1 by migration, `embedding_ver` not written, invalidation by trigger); 2026-09-17 (ADR-048 amendments: §5.1/§5.3/§5.5 rowid columns
 and the narrowed `memory_record.status` CHECK, DB-003's third-category
 clarification, §5.6/§4.1's D5 note, §6.1's landed-in-0020 note)
 **Upstream (binding):** `00_VISION.md`, `01_PRINCIPLES.md`, `02_PRODUCT_REQUIREMENTS.md`, `04_ARCHITECTURE.md` (D003, D004, D008, D009, D016), `06_MEMORY.md`
@@ -708,6 +708,8 @@ CREATE VIRTUAL TABLE vec_memory USING vec0(
 
 Vector tables are derived (Principle 1.4.1): droppable and rebuildable from content + the embedding provider. They are maintained by the embedding worker (async, batched), not by triggers — embedding is I/O, and triggers doing I/O is forbidden.
 
+**Dated note (2026-10-05, ADR-055 D4).** Read precisely, the sentence above forbids triggers that *create* vectors — creation is the I/O. Vectors are *invalidated* by trigger (migration `0022`): a row's vector is deleted when the row is deleted, when its content or sensitivity changes, or when a `memory_record` leaves the retrievable statuses (`active`, `under_review`). That is a single-row delete in this file, the same thing the `fts_*` triggers already do, and a trigger sees every writer — including the recovery applier's raw replay, which no store method sits in. Every `kang.db` connection loads `sqlite-vec` at open and verifies it (ADR-055 D3), because those triggers touch `vec0`. The tables use `distance_metric=cosine`. One query-shape finding, measured: a correlated per-row lookup into `vec0` costs about 1 ms per row; `rowid NOT IN (SELECT record_rowid FROM vec_...)` materializes once (6 ms against 3.3 s on the year-1 corpus).
+
 ---
 
 ## Part VII — Relationship Layer (graph without a graph DB)
@@ -754,6 +756,8 @@ CREATE TABLE embedding_version (
 **Why 768/float32:** the sweet spot of local-model availability, quality, and size (768 × 4 B ≈ 3 KB/row; ~1.5 GB at the 10-year 500k-chunk ceiling — trivial). **Assumption stated:** if the v0.2 embedding benchmark (Architecture §20.1) selects a different-dimension model, `embedding_version` absorbs it — the *protocol* is the commitment, the dimension is a parameter.
 **Alternatives:** 384-dim (cheaper, meaningfully worse on technical text — Kang's corpus is technical); 1536+ API-only dims (violates local-first trajectory D010); quantized int8 (MAY adopt later via a new version — the protocol handles it).
 **Trade-off:** per-version tables add bookkeeping. Accepted: it is exactly the bookkeeping that makes decade-scale model churn survivable.
+
+**Dated note (2026-10-05, ADR-054 D1; ADR-055 D4/D5/D8).** The 768 default is now benchmark-confirmed for index size (the spike measured 1.55 GB at 500k chunks, on this section's own ~1.5 GB estimate) and the concrete model is named: `nomic-embed-text`, served by a local Ollama. It is not quality-confirmed — at the vault's 2026-09 size the benchmark could not separate candidates — and ADR-054 D4 names the re-benchmark trigger. Version 1 is registered by migration `0022`, not by configuration: a model change is always a migration (new row, new `vec_*_v{n}` tables, new invalidation triggers), and `providers.toml` only says which provider serves it. **One deliberate deviation from the text above:** *"Every embedded row carries `embedding_ver`"* is not implemented. `memory_record.embedding_ver` is change-captured (migration `0020`), so writing it per embed would put derived data on the sync plane, and keeping it true would need every invalidation path to null it too — a second copy of a fact the vector table already holds. "Has a current vector in version *n*" means "has a row in `vec_*_v{n}`"; the column stays NULL (ADR-055 D5). The upgrade protocol runs as written: the worker fills `active` then `migrating`, refuses vectors from any model or dimension but the version's own, and cuts over atomically at full coverage (ADR-055 D6/D8, proven on the year-1 corpus).
 
 ---
 

@@ -25,6 +25,7 @@ import anthropic
 
 from kang.domain.ports.credentials import CredentialNotFound, CredentialStore
 from kang.domain.ports.model_provider import (
+    EmbeddingResult,
     ModelResult,
     ProviderRefused,
     ProviderUnavailable,
@@ -130,4 +131,15 @@ class AnthropicProvider:
             tokens_out=tokens_out,
             cost_usd=_cost_usd(model, tokens_in, tokens_out),
             latency_ms=latency_ms,
+        )
+
+    def embed(
+        self, spec: TaskSpec, model: str, texts: tuple[str, ...]
+    ) -> EmbeddingResult:
+        """ADR-055 D1: Anthropic offers no embedding endpoint. A chain that
+        routes `embedding` here is a configuration bug — refused, so the
+        Router propagates it instead of falling past it silently."""
+        raise ProviderRefused(
+            "AnthropicProvider has no embedding endpoint — check "
+            "providers.toml's [task_class.embedding] chain (ADR-055 D1)"
         )

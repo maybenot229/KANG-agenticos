@@ -187,3 +187,15 @@ def test_response_schema_raises_not_implemented(monkeypatch):
 
     with pytest.raises(NotImplementedError):
         provider.call(SPEC, "claude-haiku-4", "hello", response_schema=object)
+
+
+def test_embed_is_refused_anthropic_has_no_embedding_endpoint():
+    # ADR-055 D1: a chain routing `embedding` here is a configuration bug —
+    # refused, so the Router propagates it rather than falling past it.
+    from kang.adapters.anthropic.provider import AnthropicProvider
+    from kang.adapters.fakes.credentials import FakeCredentialStore
+    from kang.domain.ports.model_provider import ProviderRefused, TaskSpec
+
+    provider = AnthropicProvider(FakeCredentialStore())
+    with pytest.raises(ProviderRefused):
+        provider.embed(TaskSpec("embedding", "normal", 1, "background"), "m", ("a",))

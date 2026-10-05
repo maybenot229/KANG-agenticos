@@ -15,6 +15,7 @@ import subprocess
 import sys
 
 import pytest
+import sqlite_vec
 
 from tests.fixtures.corpus import PROFILES, YEAR1, YEAR5, YEAR10, generate
 from tests.fixtures.corpus.__main__ import main as corpus_main
@@ -298,7 +299,19 @@ def test_no_embedding_is_ever_set(db):
             _scalar(db, f"SELECT COUNT(*) FROM {table} WHERE embedding_ver IS NOT NULL")
             == 0
         )
-    assert _scalar(db, "SELECT COUNT(*) FROM embedding_version") == 0
+    # ADR-055 D4: migration 0022 registers version 1 itself (a model is a
+    # migration, never generator data); the generator adds no version and
+    # embeds nothing — vectors are the embedding worker's alone.
+    assert db.execute("SELECT ver, model FROM embedding_version").fetchall() == [
+        (1, "nomic-embed-text")
+    ]
+    # This fixture opens read-only without the extension on purpose; the vec
+    # tables need it loaded to be counted at all.
+    db.enable_load_extension(True)
+    sqlite_vec.load(db)
+    db.enable_load_extension(False)
+    for table in ("vec_memory_v1", "vec_episode_v1", "vec_chunk_v1"):
+        assert _scalar(db, f"SELECT COUNT(*) FROM {table}") == 0
 
 
 def test_queue_has_a_pending_majority_and_a_14_day_expiry(db):

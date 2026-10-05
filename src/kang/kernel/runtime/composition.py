@@ -27,7 +27,6 @@ from pathlib import Path
 
 from aiohttp import web
 
-from kang.adapters.config.agent_definitions_loader import discover_agent_definitions
 from kang.adapters.config.backup_config import load_external_backup_marker
 from kang.adapters.config.permissions_loader import (
     KANG_ONLY_GRANTS,
@@ -109,7 +108,7 @@ from kang.kernel.audit.service import AuditService
 from kang.kernel.bus.bus import EventBus, Subscriber
 from kang.kernel.bus.delivery import Delivery
 from kang.kernel.bus.reconciliation import Reconciliation
-from kang.kernel.orchestrator.registry import AgentRegistry, build_checked_registry
+from kang.kernel.orchestrator.registry import AgentRegistry
 from kang.kernel.permissions.engine import build_checked_engine
 from kang.kernel.router.router import Router
 from kang.kernel.runtime.ids import uuid7
@@ -117,10 +116,15 @@ from kang.kernel.runtime.memory_wiring import (
     MemoryDeps,
     MemoryWiringInputs,
     build_memory_deps,
-    memory_lifecycle_handlers,
+    memory_handlers,
     memory_transactional_effects,
 )
-from kang.kernel.runtime.model_wiring import ChatWiringDeps, build_router, make_chat_run
+from kang.kernel.runtime.model_wiring import (
+    ChatWiringDeps,
+    build_agent_registry,
+    build_router,
+    make_chat_run,
+)
 from kang.kernel.runtime.query_routing import _build_query_handlers, _dispatch_query
 from kang.kernel.runtime.scheduler_wiring import (
     _SchedulerWiring,
@@ -325,7 +329,7 @@ def _build_handlers(w: _HandlerWiring) -> dict:
             )
         ),
         **make_memory_handlers(w.memory.ops),
-        **memory_lifecycle_handlers(w.memory.lifecycle),
+        **memory_handlers(w.memory),
         **_build_project_cluster_handlers(w),
         **_build_consequential_handlers(w),
     }
@@ -561,7 +565,7 @@ def _build_core_materials(kang_home: Path, device_id: str) -> _CoreMaterials:
         new_id=new_id,
         kang=kang,
         events=events,
-        agent_registry=_build_agent_registry(),
+        agent_registry=build_agent_registry(AGENT_DEFINITIONS_DIR),
         router=build_router(kang_home, kang, clock),
         sessions=SqliteSessionStore(kang),
         conversations=SqliteConversationStore(kang),
@@ -589,6 +593,7 @@ def _build_core_locked(
             clock=m.clock,
             new_id=m.new_id,
             device_id=device_id,
+            router=m.router,
         )
     )
     handler_wiring = _HandlerWiring(
@@ -655,19 +660,6 @@ def _build_dispatcher_deps(
         clock=clock,
         new_id=new_id,
     )
-
-
-def _build_agent_registry() -> AgentRegistry:
-    """ADR-043: the first real wiring of AG-004's `AgentRegistry` into a
-    running `Core`. Deliberately not caught — `agents/definitions/`
-    ships inside the package, never hand-edited (unlike
-    `permissions.toml`), so a bad definition here means the shipped
-    code itself is broken; refusing to boot is the honest signal, not a
-    degraded, dormant registry hiding a real defect (ADR-043 D1's own
-    argument). Split out of `_build_core_locked` purely to keep that
-    function under the size lint's line limit (11 §4), not a domain
-    concept of its own."""
-    return build_checked_registry(discover_agent_definitions(AGENT_DEFINITIONS_DIR))
 
 
 @dataclass(frozen=True)

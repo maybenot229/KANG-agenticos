@@ -106,6 +106,8 @@ Verbatim in substance, from 06 §7.2: *this record can be restored from a daily 
 
 `composition.py` at 799/800 cannot absorb this slice's wiring. Following ADR-023/037/044 exactly: a new `kernel/runtime/memory_wiring.py` holding the memory stores, the gate's dependencies, and this slice's `transactional_effects` entry; its own named entries in `tools/importlinter.toml`; a line in 17 §4.3's composition-root exemption list. **Four files, one conceptual composition root** — the phrasing 17 §4.3 already uses for three.
 
+**Dated note (2026-10-05).** "Fourth" above is wrong: `model_wiring.py` (ADR-044) was already the fourth composition-root file, so `memory_wiring.py` is the **fifth** — five files, one composition root. The implementation got this right (17 §4.3 and `tools/importlinter.toml` name all five, and this ADR's own Verification records the correction); this note puts the correction beside the wrong text, the ADR-038 D3 pattern, so a reader of D8 alone is not misled.
+
 ### D9 — What this slice does not do
 
 No schema change or migration (every column already exists). No read path — `memory.get`, `memory.search`, `explain.memory` and the browser's record view remain the retrieval slice's. No `memory.deleted` event (D6 of ADR-051's reasoning extended: see Consequences). No change to the gate. No embedding or index work beyond what the existing triggers do on their own. No UI.

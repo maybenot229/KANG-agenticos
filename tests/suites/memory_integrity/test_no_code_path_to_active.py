@@ -428,10 +428,13 @@ def test_every_operation_that_can_resolve_the_queue_is_first_party_only():
     assert all(e["first_party_only"] for e in resolving)
 
 
-def test_memory_and_candidate_operations_are_exactly_the_twelve_built():
+def test_memory_and_candidate_operations_are_exactly_the_thirteen_built():
     """ADR-051's original six, plus ADR-053's own six lifecycle operations
-    (update/pin/archive/restore/delete/restore_from_snapshot) — a closed
-    list, extended deliberately, not silently."""
+    (update/pin/archive/restore/delete/restore_from_snapshot), plus ADR-055
+    D7's `memory.embed` (writes derived vec_* rows only, never a
+    memory_record — and the sweep above dispatches it like every other
+    operation, under kernel:scheduler too, which holds its scope) — a
+    closed list, extended deliberately, not silently."""
     names = {
         e["name"] for e in OPERATIONS if e["name"].startswith(("memory.", "candidate."))
     }
@@ -448,4 +451,5 @@ def test_memory_and_candidate_operations_are_exactly_the_twelve_built():
         "memory.restore",
         "memory.delete",
         "memory.restore_from_snapshot",
+        "memory.embed",
     }

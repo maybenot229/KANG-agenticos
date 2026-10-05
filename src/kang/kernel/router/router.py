@@ -16,12 +16,14 @@ ADR-038 D4's own named, deferred gap, not implemented here), ADR-038 D4
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import Callable, TypeVar
 
 from pydantic import BaseModel
 
 from kang.domain.ports.clock import Clock
 from kang.domain.ports.model_call import ModelCall, ModelCallStore
 from kang.domain.ports.model_provider import (
+    EmbeddingResult,
     ModelProvider,
     ModelResult,
     NoProviderAvailable,
@@ -32,6 +34,8 @@ from kang.domain.ports.model_provider import (
 from kang.domain.ports.provider_config import ProviderEntry, ProvidersConfig
 
 __all__ = ["Router"]
+
+_Result = TypeVar("_Result")
 
 
 class Router:
@@ -67,6 +71,36 @@ class Router:
         and refused propagates its own `ProviderUnavailable`/
         `ProviderRefused` instead, since "tried and failed" and "never
         reachable to begin with" are different facts."""
+        entry, result = self._run_chain(
+            spec,
+            lambda provider, entry: provider.call(
+                spec, entry.model, prompt, response_schema
+            ),
+        )
+        self._log(entry, spec, "ok", result.tokens_in, result.tokens_out, result)
+        return result
+
+    def embed(self, spec: TaskSpec, texts: tuple[str, ...]) -> EmbeddingResult:
+        """ADR-055 D1: embed `texts` through `spec`'s chain — the same
+        privacy filter, breaker, fallback and `model_call` ledger as
+        `route`. `spec.task_class` must be `embedding`; anything else is a
+        caller bug, raised as `ValueError` before any provider is tried."""
+        if spec.task_class != "embedding":
+            raise ValueError(
+                f"Router.embed needs task_class='embedding', got {spec.task_class!r}"
+            )
+        entry, result = self._run_chain(
+            spec,
+            lambda provider, entry: provider.embed(spec, entry.model, texts),
+        )
+        self._log(entry, spec, "ok", result.tokens_in, 0, result)
+        return result
+
+    def _run_chain(
+        self,
+        spec: TaskSpec,
+        invoke: Callable[[ModelProvider, ProviderEntry], _Result],
+    ) -> tuple[ProviderEntry, _Result]:
         candidates = self._candidates(spec)
         triable = [c for c in candidates if not self._breaker_is_open(c.name)]
         if not triable:
@@ -84,19 +118,17 @@ class Router:
                 self._providers.get(e.name) is not None for e in triable[index + 1 :]
             )
             try:
-                result = provider.call(spec, entry.model, prompt, response_schema)
+                result = invoke(provider, entry)
             except ProviderUnavailable as exc:
                 last_error = exc
                 self._record_failure(entry.name)
-                outcome = "fallback" if has_next else "error"
-                self._log_failure(entry, spec, outcome=outcome)
+                self._log(entry, spec, "fallback" if has_next else "error", 0, 0)
                 continue
             except ProviderRefused:
-                self._log_failure(entry, spec, outcome="error")
+                self._log(entry, spec, "error", 0, 0)
                 raise
             self._record_success(entry.name)
-            self._log_success(entry, spec, result)
-            return result
+            return entry, result
 
         if last_error is not None:
             raise last_error
@@ -134,33 +166,24 @@ class Router:
     def _record_success(self, name: str) -> None:
         self._consecutive_failures[name] = 0
 
-    def _log_success(
-        self, entry: ProviderEntry, spec: TaskSpec, result: ModelResult
+    def _log(
+        self,
+        entry: ProviderEntry,
+        spec: TaskSpec,
+        outcome: str,
+        tokens_in: int,
+        tokens_out: int,
+        result: ModelResult | EmbeddingResult | None = None,
     ) -> None:
         self._calls.record(
             ModelCall(
                 provider=entry.name,
                 model=entry.model,
                 task_class=spec.task_class,
-                tokens_in=result.tokens_in,
-                tokens_out=result.tokens_out,
-                cost_usd=result.cost_usd,
-                latency_ms=result.latency_ms,
-                outcome="ok",
-                at=self._clock.now().isoformat(),
-            )
-        )
-
-    def _log_failure(self, entry: ProviderEntry, spec: TaskSpec, outcome: str) -> None:
-        self._calls.record(
-            ModelCall(
-                provider=entry.name,
-                model=entry.model,
-                task_class=spec.task_class,
-                tokens_in=0,
-                tokens_out=0,
-                cost_usd=0.0,
-                latency_ms=0,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                cost_usd=result.cost_usd if result is not None else 0.0,
+                latency_ms=result.latency_ms if result is not None else 0,
                 outcome=outcome,
                 at=self._clock.now().isoformat(),
             )

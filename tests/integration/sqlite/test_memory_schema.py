@@ -192,10 +192,12 @@ def test_no_memory_truth_table_is_seeded(conn):
         "link_index",
         "vault_note",
         "vault_chunk",
-        "embedding_version",
     ):
         count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         assert count == 0, f"{table} seeded a row — no gate bypass for bootstrapping"
+    # ADR-055 D4: embedding_version is configuration-of-the-schema, not
+    # memory truth — migration 0022 registers exactly version 1, nothing else.
+    assert conn.execute("SELECT ver FROM embedding_version").fetchall() == [(1,)]
 
 
 # ---------------------------------------------------------------- CHECK / NOT NULL / FK
@@ -314,12 +316,13 @@ def test_memory_record_embedding_ver_referencing_missing_version_is_refused(conn
 
 
 def test_memory_record_embedding_ver_accepts_a_real_version(conn):
-    _embedding_version(conn)
-    _memory_record(conn, embedding_ver=1)
+    # Version 2: migration 0022 already registers version 1 (ADR-055 D4).
+    _embedding_version(conn, ver=2)
+    _memory_record(conn, embedding_ver=2)
     row = conn.execute(
         "SELECT embedding_ver FROM memory_record WHERE id = 'mem-1'"
     ).fetchone()
-    assert row == (1,)
+    assert row == (2,)
 
 
 def test_memory_revision_fk_to_missing_record_is_refused(conn):
@@ -414,7 +417,7 @@ def test_link_composite_unique_is_enforced(conn):
 
 def test_embedding_version_status_rejects_an_unrecognized_value(conn):
     with pytest.raises(sqlite3.IntegrityError):
-        _embedding_version(conn, status="not-a-real-status")
+        _embedding_version(conn, ver=2, status="not-a-real-status")
 
 
 # -------------------------------------------- enum exhaustiveness against 06
@@ -810,9 +813,10 @@ def test_vault_chunk_writes_are_never_captured(conn):
 
 
 def test_embedding_version_writes_are_never_captured(conn):
-    _embedding_version(conn)
-    conn.execute("UPDATE embedding_version SET status = 'retired' WHERE ver = 1")
-    conn.execute("DELETE FROM embedding_version WHERE ver = 1")
+    # Version 2: migration 0022 already registers version 1 (ADR-055 D4).
+    _embedding_version(conn, ver=2)
+    conn.execute("UPDATE embedding_version SET status = 'retired' WHERE ver = 2")
+    conn.execute("DELETE FROM embedding_version WHERE ver = 2")
     count = conn.execute(
         "SELECT COUNT(*) FROM change_log WHERE entity = 'embedding_version'"
     ).fetchone()[0]

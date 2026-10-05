@@ -586,3 +586,41 @@ def test_a_marker_older_than_seven_days_is_stale(tmp_path):
     finally:
         conn.close()
         events.close()
+
+
+def test_restore_memory_record_leaves_every_snapshot_byte_identical(home):
+    """The snapshot is ATTACHed by plain path on the live write connection —
+    read-write by SQLite's rules, read-only only by the convention that every
+    statement reads `snap.*` and never writes it (backup_service.py's own
+    note). Backups are the last line of defence, so the convention gets a
+    test: every snapshot file hashes the same before and after a restore.
+    (Standing item from the 2026-09-24 Build State, closed 2026-10-05.)"""
+    import hashlib
+
+    root, service = home
+    conn = open_connection(root / "kang.db")
+    try:
+        _insert_memory_record(conn)
+    finally:
+        conn.close()
+    service.take_snapshot("2026-08-15T02:30:00+00:00")
+    service.take_snapshot(NOW)
+    conn = open_connection(root / "kang.db")
+    try:
+        _delete_live_and_tombstone(conn)
+    finally:
+        conn.close()
+
+    def digests() -> dict[str, str]:
+        return {
+            str(path): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(root.rglob("kang-*.db"))
+        }
+
+    before = digests()
+    assert len(before) >= 2  # two dailies (plus the promoted monthly)
+    outcome = service.restore_memory_record(
+        "mem-1", "2026-09-24T10:00:00+00:00", "dev-restore"
+    )
+    assert outcome.outcome == "restored"
+    assert digests() == before

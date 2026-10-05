@@ -48,7 +48,18 @@ requires-python = ">=3.12"
 # empirically before adoption: resolves to the real WinVaultKeyring
 # backend on this machine; a real set/get/delete round-trip against the
 # actual Windows Credential Manager succeeded. Approved by Kang 2026-09-14.
-dependencies = ["tzdata", "pydantic", "aiohttp", "anthropic", "keyring"]
+# sqlite-vec: the vector engine 07_DATABASE §1.3 already chose over every
+# vector store (one file, one transaction domain) — ADR-055 D3 does the E10
+# paperwork for a choice the constitution made. Alex Garcia's SQLite
+# extension, MIT/Apache-2.0, prebuilt Windows wheels, no transitive
+# dependencies. Rejected: a BLOB table with cosine computed in Python (no
+# dependency, but a full interpreted scan per query, about two orders of
+# magnitude slower), and a vector server (04 §19). Probed on this machine
+# 2026-10-05: 0.1.9 loads under CPython 3.12.5's own sqlite3 (3.45.3).
+# Approved under Kang's delegated acceptance, 2026-10-05 (ADR-055).
+dependencies = [
+    "tzdata", "pydantic", "aiohttp", "anthropic", "keyring", "sqlite-vec>=0.1.9,<0.2",
+]
 
 [project.optional-dependencies]
 # Dev toolchain named by the constitution itself:

@@ -10,12 +10,28 @@ closely-related state ports.
 
 from __future__ import annotations
 
+import hashlib
+import struct
 from typing import Any
 
 from kang.domain.ports.model_call import ModelCall
-from kang.domain.ports.model_provider import ModelResult, TaskSpec
+from kang.domain.ports.model_provider import EmbeddingResult, ModelResult, TaskSpec
 
-__all__ = ["FakeModelCallStore", "FakeModelProvider"]
+__all__ = ["FakeModelCallStore", "FakeModelProvider", "fake_vector"]
+
+
+def fake_vector(text: str, dim: int) -> tuple[float, ...]:
+    """A deterministic, text-dependent vector in [-1, 1)^dim (ADR-055's
+    tests): identical text, identical vector; different text, a different
+    direction. Built from SHA-256 blocks, never from an RNG (11 §14)."""
+    values: list[float] = []
+    block = 0
+    while len(values) < dim:
+        digest = hashlib.sha256(f"{block}:{text}".encode("utf-8")).digest()
+        for (word,) in struct.iter_unpack("<I", digest):
+            values.append(word / 2**31 - 1.0)
+        block += 1
+    return tuple(values[:dim])
 
 
 class FakeModelProvider:
@@ -36,6 +52,13 @@ class FakeModelProvider:
         self._default_error = error
         self._queue: list[ModelResult | Exception] = []
         self.calls: list[tuple[TaskSpec, str, str, Any]] = []
+        # ADR-055 D1: `embed`'s own knobs — the dimension it answers in, an
+        # optional model to echo instead of the one asked for (a provider
+        # serving the wrong model), and queued failures.
+        self.embed_dim = 768
+        self.embed_echo_model: str | None = None
+        self.embed_errors: list[Exception] = []
+        self.embed_calls: list[tuple[TaskSpec, str, tuple[str, ...]]] = []
 
     def queue(self, outcome: ModelResult | Exception) -> None:
         """Schedule the next call's outcome — consumed in FIFO order."""
@@ -63,6 +86,20 @@ class FakeModelProvider:
         if isinstance(outcome, Exception):
             raise outcome
         return outcome
+
+    def embed(
+        self, spec: TaskSpec, model: str, texts: tuple[str, ...]
+    ) -> EmbeddingResult:
+        self.embed_calls.append((spec, model, texts))
+        if self.embed_errors:
+            raise self.embed_errors.pop(0)
+        return EmbeddingResult(
+            vectors=tuple(fake_vector(text, self.embed_dim) for text in texts),
+            model=self.embed_echo_model or model,
+            tokens_in=sum(len(text.split()) for text in texts),
+            cost_usd=0.0,
+            latency_ms=1,
+        )
 
 
 class FakeModelCallStore:

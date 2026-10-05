@@ -16,6 +16,11 @@ vocabulary (06_MEMORY, 07_DATABASE §5.1) rather than inventing a fifth
 enum — orthogonal to `task_class`, never inferred from it (ADR-038's
 own Context finding: a `routine`-class classification call can still
 carry `privacy_tier="private"` content).
+
+ADR-055 D1 (2026-10-05): the port gains a second method, `embed`, rather
+than a second port beside it — D010's "a kernel-level Model Router behind a
+single `ModelProvider` port" read literally. `ModelResult` cannot carry a
+vector (ADR-054 D2's own finding), so `embed` returns `EmbeddingResult`.
 """
 
 from __future__ import annotations
@@ -29,6 +34,7 @@ __all__ = [
     "LATENCY_TOLERANCES",
     "PRIVACY_TIERS",
     "TASK_CLASSES",
+    "EmbeddingResult",
     "ModelProvider",
     "ModelResult",
     "NoProviderAvailable",
@@ -72,6 +78,22 @@ class ModelResult:
     structured: BaseModel | None
     tokens_in: int
     tokens_out: int
+    cost_usd: float
+    latency_ms: int
+
+
+@dataclass(frozen=True)
+class EmbeddingResult:
+    """One `embed` call's outcome (ADR-055 D1): one vector per input text,
+    in input order. `model` is the model the ADAPTER actually served —
+    echoed so the caller can refuse vectors from a model other than the
+    `embedding_version` it is filling (DB-004: never mix spaces). The
+    `model_call` ledger fields mirror `ModelResult`'s; an embedding has no
+    output tokens."""
+
+    vectors: tuple[tuple[float, ...], ...]
+    model: str
+    tokens_in: int
     cost_usd: float
     latency_ms: int
 
@@ -138,4 +160,14 @@ class ModelProvider(Protocol):
         `ProviderRefused` / `StructuredOutputInvalid` — never a bare
         `Exception` (D010's typed-failure discipline applies at this
         boundary, not just the API's)."""
+        ...
+
+    def embed(
+        self, spec: TaskSpec, model: str, texts: tuple[str, ...]
+    ) -> EmbeddingResult:
+        """ADR-055 D1: embed `texts` with the given concrete `model`, one
+        vector per text, in order. A provider with no embedding endpoint
+        raises `ProviderRefused` (a chain routing `embedding` to it is a
+        configuration bug, never something to fall past silently). Same
+        typed-failure set as `call`."""
         ...

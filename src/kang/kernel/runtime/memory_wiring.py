@@ -9,7 +9,13 @@ own Context: "a known, predicted cost of this slice"), so this is the split
 ADR-023/037/044 each performed, done first per D8/the build brief, not after
 hitting the lint. Registered by exact name in `tools/importlinter.toml`;
 this is the fourth file, still one conceptual composition root, not a fifth
-role.
+role. (Corrected 2026-10-05: it is the FIFTH file — `model_wiring.py`,
+ADR-044, was already the fourth; ADR-053's own Verification records this,
+and its D8 now carries the dated note.)
+
+ADR-055 D7 adds the embedding worker's wiring here: `memory.embed`'s handler
+over a `SqliteEmbeddingIndex` and the Core's one `Router` (its `embed`), so
+`composition.py` — at its size limit — gains only the `router` input.
 
 Constitutional home: 11_CODING §11 (composition root, plain constructor
 calls), 17 §4.3, ADR-051 (the write gate's own wiring, moved here verbatim
@@ -24,13 +30,16 @@ from typing import Any, Callable
 
 from kang.adapters.config.memory_loader import MemoryConfigError, load_memory_config
 from kang.adapters.sqlite.candidate_queue_store import SqliteCandidateQueueStore
+from kang.adapters.sqlite.embedding_index import SqliteEmbeddingIndex
 from kang.adapters.sqlite.memory_store import SqliteMemoryStore
 from kang.adapters.sqlite.transaction import SqliteUnitOfWork
 from kang.api.operations import (
     ConfirmationDeps,
+    MemoryEmbedDeps,
     MemoryLifecycleDeps,
     MemoryOpsDeps,
     make_memory_delete_effect,
+    make_memory_embed_handler,
     make_memory_lifecycle_handlers,
 )
 from kang.domain.ports.backup import BackupService
@@ -38,12 +47,13 @@ from kang.domain.ports.held_action import HeldActionStore
 from kang.kernel.audit.service import AuditService
 from kang.kernel.bus.bus import EventBus
 from kang.kernel.permissions.engine import PermissionEngine
+from kang.kernel.router.router import Router
 
 __all__ = [
     "MemoryDeps",
     "MemoryWiringInputs",
     "build_memory_deps",
-    "memory_lifecycle_handlers",
+    "memory_handlers",
     "memory_transactional_effects",
 ]
 
@@ -65,6 +75,7 @@ class MemoryWiringInputs:
     clock: object
     new_id: Callable[[], str]
     device_id: str
+    router: Router  # ADR-055 D7: the embedding worker's `embed`
 
 
 @dataclass(frozen=True)
@@ -74,6 +85,7 @@ class MemoryDeps:
 
     ops: MemoryOpsDeps
     lifecycle: MemoryLifecycleDeps
+    embed: MemoryEmbedDeps  # ADR-055 D7
 
 
 def build_memory_deps(inputs: MemoryWiringInputs) -> MemoryDeps:
@@ -113,13 +125,21 @@ def build_memory_deps(inputs: MemoryWiringInputs) -> MemoryDeps:
         new_id=inputs.new_id,
         device_id=inputs.device_id,
     )
-    return MemoryDeps(ops=ops, lifecycle=lifecycle)
+    embed = MemoryEmbedDeps(
+        index=SqliteEmbeddingIndex(inputs.kang),
+        embed=inputs.router.embed,
+        audit=inputs.audit,
+    )
+    return MemoryDeps(ops=ops, lifecycle=lifecycle, embed=embed)
 
 
-def memory_lifecycle_handlers(deps: MemoryLifecycleDeps) -> dict[str, Any]:
-    """`composition.py::_build_handlers`'s own entry point into this
-    slice's six operations."""
-    return make_memory_lifecycle_handlers(deps)
+def memory_handlers(deps: MemoryDeps) -> dict[str, Any]:
+    """`composition.py::_build_handlers`'s own entry point into ADR-053's six
+    lifecycle operations and ADR-055's `memory.embed`."""
+    return {
+        **make_memory_lifecycle_handlers(deps.lifecycle),
+        "memory.embed": make_memory_embed_handler(deps.embed),
+    }
 
 
 def memory_transactional_effects(

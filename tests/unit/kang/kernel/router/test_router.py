@@ -328,3 +328,71 @@ def test_a_success_resets_the_consecutive_failure_count():
     )
     result = router.route(SPEC, "hello")
     assert result.text == "still reachable"  # "flaky" tried again, not skipped
+
+
+# ---- Router.embed (ADR-055 D1) -------------------------------------------
+
+EMBED_SPEC = TaskSpec(
+    task_class="embedding",
+    privacy_tier="normal",
+    context_size=10,
+    latency_tolerance="background",
+)
+
+
+def test_embed_routes_through_the_embedding_chain_and_is_ledgered():
+    provider = FakeModelProvider()
+    config = _config(
+        embedding=[
+            ProviderEntry(name="ollama", model="nomic-embed-text", local_only=True)
+        ]
+    )
+    calls = FakeModelCallStore()
+    router = Router(config, {"ollama": provider}, calls, FakeClock())
+
+    result = router.embed(EMBED_SPEC, ("a", "b"))
+
+    assert len(result.vectors) == 2 and result.model == "nomic-embed-text"
+    assert provider.embed_calls == [(EMBED_SPEC, "nomic-embed-text", ("a", "b"))]
+    (row,) = calls.calls
+    assert (row.task_class, row.outcome, row.tokens_out) == ("embedding", "ok", 0)
+
+
+def test_embed_refuses_a_non_embedding_task_class_before_any_provider():
+    provider = FakeModelProvider()
+    router = Router(_config(), {"ollama": provider}, FakeModelCallStore(), FakeClock())
+    with pytest.raises(ValueError):
+        router.embed(SPEC, ("a",))
+    assert provider.embed_calls == []
+
+
+def test_embed_of_private_content_fails_closed_without_a_local_provider():
+    config = _config(embedding=[ProviderEntry(name="cloud", model="m")])
+    router = Router(
+        config, {"cloud": FakeModelProvider()}, FakeModelCallStore(), FakeClock()
+    )
+    private = TaskSpec("embedding", "private", 10, "background")
+    with pytest.raises(NoProviderAvailable):
+        router.embed(private, ("secret",))
+
+
+def test_embed_falls_back_along_the_chain_and_logs_the_fallback():
+    first, second = FakeModelProvider(), FakeModelProvider()
+    first.embed_errors.append(ProviderUnavailable("down"))
+    config = _config(embedding=[ProviderEntry("a", "m"), ProviderEntry("b", "m")])
+    calls = FakeModelCallStore()
+    router = Router(config, {"a": first, "b": second}, calls, FakeClock())
+    router.embed(EMBED_SPEC, ("x",))
+    assert [c.outcome for c in calls.calls] == ["fallback", "ok"]
+
+
+def test_embed_propagates_a_refusal_without_falling_back():
+    first, second = FakeModelProvider(), FakeModelProvider()
+    first.embed_errors.append(ProviderRefused("anthropic has no embeddings"))
+    config = _config(embedding=[ProviderEntry("a", "m"), ProviderEntry("b", "m")])
+    router = Router(
+        config, {"a": first, "b": second}, FakeModelCallStore(), FakeClock()
+    )
+    with pytest.raises(ProviderRefused):
+        router.embed(EMBED_SPEC, ("x",))
+    assert second.embed_calls == []

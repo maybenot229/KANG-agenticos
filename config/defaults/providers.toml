@@ -19,6 +19,13 @@
 # privacy_tier="private" call fails closed (NoProviderAvailable) by
 # construction until one is configured here — never routed to a cloud
 # provider by accident.
+#
+# Dated correction (2026-10-05, ADR-054 D7): "Ollama's adapter is Phase 5,
+# RESERVED" above is true of `private`/`routine` TEXT generation only — the
+# "Local-model migration per task class" trigger (03 §8) has not fired for
+# either. It was never true of `embedding`, which D010 routes local from
+# inception and 03 §3 puts in Phase 2: ADR-055 wires Ollama for embeddings
+# below, and its adapter refuses text calls.
 
 [task_class.deep_reasoning]
 chain = [
@@ -35,8 +42,17 @@ chain = [
   { name = "anthropic", model = "claude-haiku-4" },
 ]
 
+# ADR-054 D1/D2, ADR-055 D2 (2026-10-05): nomic-embed-text at 768, via the
+# local Ollama runtime. Dated correction: this entry used to read
+# "chain = []  # no embedding provider wired yet — RESERVED, its own
+# trigger" — ADR-054 D7 found no RESERVED row gates `embedding`. The model
+# named here must match the active row of kang.db's `embedding_version`
+# (migration 0022); the embedding worker refuses vectors from any other
+# (ADR-055 D6). Changing models is a migration, not an edit here.
 [task_class.embedding]
-chain = []  # no embedding provider wired yet — RESERVED, its own trigger
+chain = [
+  { name = "ollama", model = "nomic-embed-text", local_only = true },
+]
 
 # task_class.private: deliberately absent — see header. Do not add an
 # entry here pointing at a cloud provider; that would defeat the tier.

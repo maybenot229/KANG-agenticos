@@ -84,9 +84,13 @@
 # mechanical-agent envelope under their own agent:{id} principals below,
 # not this one — least privilege following the actual caller, not a
 # second copy of the same grant held by two principals for one operation.
+# ADR-055 D7 (2026-10-05): `memory.embed` — the embedding worker, run by
+# the `memory_embed` job directly under this principal. It writes only
+# derived vec_* rows, never a memory_record, so it is no door to the gate.
 "kernel:scheduler" = [
   "tasks.write",
   "held_actions.expire",
+  "memory.embed",
 ]
 
 # ADR-043 (2026-09-16): deadline_sweep's real scheduled trigger now runs

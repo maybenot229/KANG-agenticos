@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Living — changes require an ADR (see §1.3)
-**Last updated:** 2026-09-21 (ADR-051: dated correction at D013 §14.1 — `memory.write` -> `memory.propose`)
+**Last updated:** 2026-10-05 (ADR-054: §20.1 open question 1 resolved); 2026-09-21 (ADR-051: dated correction at D013 §14.1 — `memory.write` -> `memory.propose`)
 **Upstream:** `00_VISION.md`, `01_PRINCIPLES.md`, `02_PRODUCT_REQUIREMENTS.md`
 
 ---
@@ -691,7 +691,7 @@ This table is the anti-overengineering contract. Each row cites its trigger so f
 
 ## 20. Open Questions (tracked, not forgotten)
 
-1. **Embedding model choice** (local-first candidate vs. API quality) — needs a small evaluation on Kang's real vault before v0.2. Decision by benchmark, not vibes.
+1. ~~**Embedding model choice** (local-first candidate vs. API quality) — needs a small evaluation on Kang's real vault before v0.2. Decision by benchmark, not vibes.~~ — **Resolved 2026-10-05** by ADR-054 (`nomic-embed-text`, 768, via Ollama): the 2026-09-24 benchmark ran on the real vault and could not distinguish candidates on quality at its size, so the choice rests on the settled constraints (no ML stack inside KANG, DB-004's committed dimension), with a named re-benchmark trigger (ADR-054 D4). Built by ADR-055.
 2. **UI shell final call** (Tauri assumed; validate global-hotkey + tray behavior on Windows 11 in a spike before committing v0.1 UI work).
 3. **SQLCipher vs. app-level encryption** for sensitive partitions — decide with `07_DATABASE.md`.
 4. ~~**Kang's actual morning routine**~~ — **Resolved** per `docs/guides/user-profile-intake-2026-07.md` (2026-07-19 intake). Trigger times seeded in `config/defaults/kang.toml` `[planner.triggers]`; plan shape is no longer a guess (05_AGENTS Appendix E).

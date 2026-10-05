@@ -30,6 +30,8 @@ __all__ = [
     "MemoryArchiveRequest",
     "MemoryArchiveResponse",
     "MemoryDeleteRequest",
+    "MemoryEmbedRequest",
+    "MemoryEmbedResponse",
     "MemoryEditApproveRequest",
     "MemoryPinRequest",
     "MemoryPinResponse",
@@ -221,3 +223,25 @@ class MemoryRestoreFromSnapshotResponse(BaseModel):
     id: str
     revision: int
     snapshot: str
+
+
+# ---- the embedding worker (ADR-055 D7) -------------------------------------
+
+
+class MemoryEmbedRequest(BaseModel):
+    """The handler ignores `params`, like `candidate.expire`."""
+
+
+class MemoryEmbedResponse(BaseModel):
+    """One bounded pass. `embedded` is legitimately zero once the backlog is
+    gone. `degraded` is `"provider_unavailable"` when no embedding provider
+    answered (A9 — a declared marker, never an empty success); `mismatch`
+    is set when the served model or dimension fit no version, in which case
+    nothing was stored."""
+
+    embedded: int
+    skipped_stale: int
+    cut_over: list[int]
+    unserved: list[int]
+    degraded: str | None = None
+    mismatch: str | None = None

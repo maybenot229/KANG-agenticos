@@ -8,6 +8,7 @@ revision guard are mirrored here rather than approximated.
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Callable
 
 from kang.domain.ports.memory_store import (
     ContentEdit,
@@ -26,6 +27,19 @@ class FakeMemoryStore:
         # memory_revision's own primary key shape (ADR-053 D3).
         self._revisions: dict[tuple[str, int], dict] = {}
         self._tombstones: dict[str, dict] = {}
+        # Test support (ADR-055): called as (before, after) on every change
+        # to an existing row — after is None on delete. `FakeEmbeddingIndex`
+        # listens here to mirror migration 0022's invalidation triggers.
+        self.listeners: list[Callable[[MemoryRecord, MemoryRecord | None], None]] = []
+
+    def _replace_row(self, record_id: str, after: MemoryRecord | None) -> None:
+        before = self._records[record_id]
+        if after is None:
+            del self._records[record_id]
+        else:
+            self._records[record_id] = after
+        for listener in self.listeners:
+            listener(before, after)
 
     def insert_record(self, record: MemoryRecord) -> None:
         if record.id in self._records:
@@ -53,7 +67,7 @@ class FakeMemoryStore:
             raise MemoryConflict(
                 f"memory record {merged.id} is not at revision {expected_revision}"
             )
-        self._records[merged.id] = merged
+        self._replace_row(merged.id, merged)
 
     def update_content(self, edit: ContentEdit) -> MemoryRecord:
         current = self._records.get(edit.record_id)
@@ -76,7 +90,7 @@ class FakeMemoryStore:
             updated_at=edit.now,
             device_id=edit.device_id,
         )
-        self._records[edit.record_id] = updated
+        self._replace_row(edit.record_id, updated)
         return updated
 
     def set_pinned(
@@ -92,7 +106,7 @@ class FakeMemoryStore:
             updated_at=now,
             device_id=device_id,
         )
-        self._records[record_id] = updated
+        self._replace_row(record_id, updated)
         return updated
 
     def transition_status(
@@ -115,7 +129,7 @@ class FakeMemoryStore:
             updated_at=now,
             device_id=device_id,
         )
-        self._records[record_id] = updated
+        self._replace_row(record_id, updated)
         return updated
 
     def delete_and_tombstone_in_txn(
@@ -128,7 +142,7 @@ class FakeMemoryStore:
                 "exist) — memory.delete refuses every edge but archived -> "
                 "deleted (M-002)"
             )
-        del self._records[record_id]
+        self._replace_row(record_id, None)
         self._tombstones[record_id] = {
             "entity": "memory_record",
             "deleted_at": now,

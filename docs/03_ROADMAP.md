@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Living — the only Phase-0 document *expected* to be revised at every version boundary; revisions follow the review ritual in §9
-**Last updated:** 2026-09-21 (ADR-050: two RESERVED rows at §8 — Weekly and Monthly CI tiers)
+**Last updated:** 2026-10-05 (ADR-054: dated notes at §8 — the Vector DB server trigger has not fired; the local-model migration trigger never gated `embedding`); 2026-09-21 (ADR-050: two RESERVED rows at §8 — Weekly and Monthly CI tiers)
 **Upstream (binding):** the entire constitution (00–18, per docs/INDEX.md). This document sequences it; it never overrides it.
 
 > This is not a feature checklist. It is the plan for how KANG grows from zero lines to potentially several hundred thousand lines over a decade **without becoming a system nobody understands** — including the person who wrote all of it.
@@ -193,6 +193,8 @@ The single lookup table this roadmap promised. Sources cited; between triggers, 
 | Product-state-aware notification ladder (M5 assumes state == Idle) | M6's product-state machine exists | 09_UI §9 / FR-074; `RESERVED(M6 product-state machine)` in `domain/notifications/notification_service.py` |
 | Definition of "unchanged item" for the 24h no-re-notification rule (M5 uses same-entity-refs + same-priority) | Real notification volume to design against, then an ADR | 09_UI §9; `RESERVED(...)` on `is_duplicate` in `domain/notifications/notification_service.py` |
 | Definition of "deadline in danger **today**" — the `critical` escalation threshold. M5 surfaces every approaching deadline at `attention` and does not let deadline urgency reorder plan quests | Kang's ruling (a product decision, not a code one); needed when the Planner or notifier must rank by urgency | 05_AGENTS §13's `critical` row names the concept but never defines it; noted in `domain/planner/plan_service.py::build_plan` and the notifier's `DEADLINE_APPROACHING_PRIORITY` |
+
+**Dated notes (2026-10-05, ADR-054 D5/D7, accepted under Kang's delegated acceptance).** (1) *Vector DB server:* this trigger has **not** fired. The 2026-09-24 spike measured `sqlite-vec`'s default exact, unfiltered, brute-force mode over the full 10-year ceiling and found every dimension over 07 Part XIV's 250 ms hybrid-fetch budget, but quantized and partitioned `vec0` modes were not tested, and the hybrid fetch's own shape (FTS candidates re-ranked by vector is about 64 comparisons, not 500,000) is undecided. The retrieval slice must settle both before "measurably failing" can be claimed. (2) *Local-model migration per task class:* this trigger has never applied to `embedding`. D010 routes `embedding` to a local-preferred provider from inception, and §3 puts embeddings in Phase 2; ADR-055 wiring Ollama for embeddings is not this trigger firing. It still gates `private`/`routine` text generation, unchanged.
 
 ---
 

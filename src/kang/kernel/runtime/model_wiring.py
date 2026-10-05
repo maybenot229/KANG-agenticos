@@ -10,6 +10,11 @@ Split out of `composition.py` when this ADR's own Router/chat wiring
 pushed that file past the size lint's hard limits — a mechanical
 reason, not a new concept, the same trigger ADR-023/ADR-037 already
 used for their own splits.
+
+`build_agent_registry` moved here from `composition.py` on 2026-10-05
+(ADR-055): that file reached its 800-line hard limit with the embedding
+worker's one added input, and the registry belongs beside the agent/chat
+wiring that consumes it. A move, not a behavior change.
 """
 
 from __future__ import annotations
@@ -19,7 +24,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from kang.adapters.anthropic.provider import AnthropicProvider
+from kang.adapters.config.agent_definitions_loader import discover_agent_definitions
 from kang.adapters.config.providers_loader import ProvidersLoadError, load_providers
+from kang.adapters.ollama.provider import OllamaProvider
 from kang.adapters.os_windows.credentials import KeyringCredentialStore
 from kang.adapters.sqlite.model_call_store import SqliteModelCallStore
 from kang.agents.runtime.executor import (
@@ -29,10 +36,16 @@ from kang.agents.runtime.executor import (
 )
 from kang.domain.ports.conversation_store import ConversationStore
 from kang.domain.ports.provider_config import ProvidersConfig
-from kang.kernel.orchestrator.registry import AgentRegistry
+from kang.kernel.orchestrator.registry import AgentRegistry, build_checked_registry
 from kang.kernel.router.router import Router
 
-__all__ = ["ChatRun", "ChatWiringDeps", "build_router", "make_chat_run"]
+__all__ = [
+    "ChatRun",
+    "ChatWiringDeps",
+    "build_agent_registry",
+    "build_router",
+    "make_chat_run",
+]
 
 # (message, context_chips, conversation_id) -> {"reply": str,
 # "degraded": bool, "conversation_id": str}, verbatim — mirrors
@@ -48,7 +61,7 @@ ChatRun = Callable[[str, list[str], str | None], dict]
 def build_router(kang_home: Path, kang, clock) -> Router:
     """ADR-044: the first real wiring of the Model Router into a running
     `Core`. Fail-OPEN, not fail-closed — deliberately the opposite of
-    `composition.py::_build_agent_registry`'s own posture:
+    `build_agent_registry`'s own posture (below):
     `providers.toml` is a live, hand-editable, `%KANG_HOME%`-scoped file
     (D003) Kang might genuinely edit or typo, and ADR-038 D5 already
     decided its OWN fail-closed shape for the Router's own routing
@@ -63,8 +76,25 @@ def build_router(kang_home: Path, kang, clock) -> Router:
         config = load_providers(kang_home / "config" / "providers.toml")
     except ProvidersLoadError:
         config = ProvidersConfig()
-    providers = {"anthropic": AnthropicProvider(KeyringCredentialStore())}
+    providers = {
+        "anthropic": AnthropicProvider(KeyringCredentialStore()),
+        # ADR-055 D2: embedding only; constructing it touches no network.
+        "ollama": OllamaProvider(),
+    }
     return Router(config, providers, SqliteModelCallStore(kang), clock)
+
+
+def build_agent_registry(definitions_dir: Path) -> AgentRegistry:
+    """ADR-043: the first real wiring of AG-004's `AgentRegistry` into a
+    running `Core`. Deliberately not caught — `agents/definitions/`
+    ships inside the package, never hand-edited (unlike
+    `permissions.toml`), so a bad definition here means the shipped
+    code itself is broken; refusing to boot is the honest signal, not a
+    degraded, dormant registry hiding a real defect (ADR-043 D1's own
+    argument). Split out of `_build_core_locked` purely to keep that
+    function under the size lint's line limit (11 §4), not a domain
+    concept of its own; moved from `composition.py` (ADR-055)."""
+    return build_checked_registry(discover_agent_definitions(definitions_dir))
 
 
 @dataclass(frozen=True)

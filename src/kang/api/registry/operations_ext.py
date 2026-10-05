@@ -67,6 +67,8 @@ from kang.api.schemas.memory import (
     MemoryArchiveResponse,
     MemoryDeleteRequest,
     MemoryEditApproveRequest,
+    MemoryEmbedRequest,
+    MemoryEmbedResponse,
     MemoryPinRequest,
     MemoryPinResponse,
     MemoryProposeRequest,
@@ -654,6 +656,20 @@ EXTRA_OPERATIONS: tuple[dict[str, Any], ...] = (
         schemas=OperationSchemas(
             request=MemoryRestoreFromSnapshotRequest,
             response=MemoryRestoreFromSnapshotResponse,
+        ),
+    ),
+    # ---- the embedding worker (ADR-055 D7) --------------------------------
+    # 07 §6.2's kernel "embedding worker", run by the `memory_embed` job
+    # under kernel:scheduler. Writes only derived vec_* rows — never a
+    # memory_record — so it is not a door to the gate's `active` state.
+    _op(
+        "memory.embed",
+        "command",
+        "memory.embed",
+        True,
+        "Embed up to a bounded batch of memory records missing a vector.",
+        schemas=OperationSchemas(
+            request=MemoryEmbedRequest, response=MemoryEmbedResponse
         ),
     ),
 )
