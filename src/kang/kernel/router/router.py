@@ -80,11 +80,19 @@ class Router:
         self._log(entry, spec, "ok", result.tokens_in, result.tokens_out, result)
         return result
 
-    def embed(self, spec: TaskSpec, texts: tuple[str, ...]) -> EmbeddingResult:
+    def embed(
+        self, spec: TaskSpec, texts: tuple[str, ...], model: str | None = None
+    ) -> EmbeddingResult:
         """ADR-055 D1: embed `texts` through `spec`'s chain — the same
         privacy filter, breaker, fallback and `model_call` ledger as
         `route`. `spec.task_class` must be `embedding`; anything else is a
-        caller bug, raised as `ValueError` before any provider is tried."""
+        caller bug, raised as `ValueError` before any provider is tried.
+
+        ADR-056 D6: `model`, when given, keeps only chain entries serving
+        that model. A vector is meaningful only inside its own model's space
+        (DB-004), so a query must be embedded by the model of the version it
+        searches — during a migration the chain lists both models, the
+        worker takes the first, and a query pins the active one."""
         if spec.task_class != "embedding":
             raise ValueError(
                 f"Router.embed needs task_class='embedding', got {spec.task_class!r}"
@@ -92,6 +100,7 @@ class Router:
         entry, result = self._run_chain(
             spec,
             lambda provider, entry: provider.embed(spec, entry.model, texts),
+            model,
         )
         self._log(entry, spec, "ok", result.tokens_in, 0, result)
         return result
@@ -100,8 +109,11 @@ class Router:
         self,
         spec: TaskSpec,
         invoke: Callable[[ModelProvider, ProviderEntry], _Result],
+        model: str | None = None,
     ) -> tuple[ProviderEntry, _Result]:
-        candidates = self._candidates(spec)
+        candidates = [
+            c for c in self._candidates(spec) if model is None or c.model == model
+        ]
         triable = [c for c in candidates if not self._breaker_is_open(c.name)]
         if not triable:
             raise NoProviderAvailable(

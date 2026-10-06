@@ -32,6 +32,10 @@ __all__ = [
     "MemoryDeleteRequest",
     "MemoryEmbedRequest",
     "MemoryEmbedResponse",
+    "MemorySearchHit",
+    "MemorySearchRequest",
+    "MemorySearchResponse",
+    "MemorySearchTerms",
     "MemoryEditApproveRequest",
     "MemoryPinRequest",
     "MemoryPinResponse",
@@ -245,3 +249,58 @@ class MemoryEmbedResponse(BaseModel):
     unserved: list[int]
     degraded: str | None = None
     mismatch: str | None = None
+
+
+# ---- Kang-facing search (ADR-056) ------------------------------------------
+
+
+class MemorySearchRequest(BaseModel):
+    """06 Part X. `mode` is "default" (hybrid over retrievable records) or
+    "deep" (adds archived and superseded, lexical only); "structured" is not
+    built. `types` and `min_tier` are the first-class facets; validated by
+    the handler, as `candidate.list` validates its own `limit`."""
+
+    query: str
+    mode: str = "default"
+    types: list[str] | None = None
+    min_tier: int | None = None
+    limit: int | None = None
+
+
+class MemorySearchTerms(BaseModel):
+    """06 §5.2's five terms, each before weighting — "why was this
+    included?" answered to the decimal."""
+
+    semantic: float
+    lexical: float
+    recency: float
+    importance: float
+    context: float
+
+
+class MemorySearchHit(BaseModel):
+    id: str
+    type: str
+    status: str
+    content: str
+    trust_tier: int
+    sensitivity: str
+    source_kind: str
+    source_detail: str
+    created_at: str
+    updated_at: str
+    pinned: bool
+    score: float
+    terms: MemorySearchTerms
+
+
+class MemorySearchResponse(BaseModel):
+    """`results` holds matches only — never padded (06 Part X). When there
+    are none, `nearest_misses` holds a few closest records, labeled as NOT
+    matches. `degraded` is "semantic_unavailable" when the vector half could
+    not serve (lexical results only, A9)."""
+
+    mode: str
+    results: list[MemorySearchHit]
+    nearest_misses: list[MemorySearchHit]
+    degraded: str | None = None

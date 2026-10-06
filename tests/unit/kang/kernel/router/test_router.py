@@ -396,3 +396,28 @@ def test_embed_propagates_a_refusal_without_falling_back():
     with pytest.raises(ProviderRefused):
         router.embed(EMBED_SPEC, ("x",))
     assert second.embed_calls == []
+
+
+def test_embed_pinned_to_a_model_uses_only_entries_serving_it():
+    # ADR-056 D6: during a migration the chain lists both models; a query
+    # pins the active one and must never be embedded by the other.
+    provider = FakeModelProvider()
+    config = _config(
+        embedding=[
+            ProviderEntry("ollama", "next-model", local_only=True),
+            ProviderEntry("ollama", "nomic-embed-text", local_only=True),
+        ]
+    )
+    router = Router(config, {"ollama": provider}, FakeModelCallStore(), FakeClock())
+    router.embed(EMBED_SPEC, ("q",), model="nomic-embed-text")
+    router.embed(EMBED_SPEC, ("w",))
+    assert [m for _, m, _ in provider.embed_calls] == ["nomic-embed-text", "next-model"]
+
+
+def test_embed_pinned_to_an_unserved_model_has_no_provider():
+    config = _config(embedding=[ProviderEntry("ollama", "m", local_only=True)])
+    router = Router(
+        config, {"ollama": FakeModelProvider()}, FakeModelCallStore(), FakeClock()
+    )
+    with pytest.raises(NoProviderAvailable):
+        router.embed(EMBED_SPEC, ("q",), model="other")

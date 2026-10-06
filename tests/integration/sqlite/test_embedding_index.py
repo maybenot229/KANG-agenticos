@@ -44,16 +44,21 @@ class TestSqliteEmbeddingIndex(EmbeddingIndexContract):
     @pytest.fixture
     def add_version(self, conn):
         def add(ver: int, model: str, dim: int, status: str) -> None:
-            # What a future model-change migration does (ADR-055 D4).
+            # What a future model-change migration does (ADR-055 D4): the
+            # float table and its int8 companion (ADR-057 D3).
             conn.execute(
                 "INSERT INTO embedding_version VALUES (?, ?, ?, ?, ?)",
                 (ver, model, dim, "2026-10-05T00:00:00.000Z", status),
             )
-            conn.execute(
-                f"CREATE VIRTUAL TABLE vec_memory_v{ver} USING vec0("
-                f"record_rowid INTEGER PRIMARY KEY, "
-                f"embedding float[{dim}] distance_metric=cosine)"
-            )
+            for table, kind in (
+                (f"vec_memory_v{ver}", "float"),
+                (f"vec_memory_v{ver}_i8", "int8"),
+            ):
+                conn.execute(
+                    f"CREATE VIRTUAL TABLE {table} USING vec0("
+                    f"record_rowid INTEGER PRIMARY KEY, "
+                    f"embedding {kind}[{dim}] distance_metric=cosine)"
+                )
 
         return add
 

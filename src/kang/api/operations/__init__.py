@@ -105,6 +105,10 @@ from kang.api.operations.project_ops import (
     make_project_list_handler,
 )
 from kang.api.operations.registry_ops import make_registry_get_handler
+from kang.api.operations.search_ops import (
+    MemorySearchDeps,
+    make_memory_search_handler,
+)
 from kang.api.operations.system_ops import (
     make_audit_list_handler,
     make_invocation_list_handler,
@@ -140,6 +144,7 @@ __all__ = [
     "DELETE_REVERSIBILITY",
     "MEMORY_PRINCIPAL",
     "MemoryEmbedDeps",
+    "MemorySearchDeps",
     "MemoryLifecycleDeps",
     "MemoryOpsDeps",
     "make_candidate_list_handler",
@@ -166,6 +171,7 @@ __all__ = [
     "make_job_disable_handler",
     "make_job_enable_handler",
     "make_memory_embed_handler",
+    "make_memory_search_handler",
     "make_message_list_handler",
     "make_milestone_create_handler",
     "make_milestone_drop_handler",

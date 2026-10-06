@@ -92,6 +92,8 @@ The vault contains code-switched, non-English and shorthand-heavy text. `nomic-e
 
 **So the finding is real, load-bearing, and correctly escalated by the spike — and it is a question about the retrieval pipeline's shape before it is a question about the storage technology.** Deciding the shape here, before the slice that owns it exists, is the mistake that produced the gate's own holes (ADR-052). It is carried forward as the retrieval slice's first named input.
 
+**Dated note (2026-10-06).** Decided by ADR-056 D1: independent halves with exact vectors for memory records, measured inside budget on the year-10 corpus (217–239 ms against 250 ms), with `int8` (~90 ms, measured) as the named remedy and its trigger. Vault chunks remain their own slice's question.
+
 ### D6 — What this ADR does not do
 
 No code, no migration, no `embedding_version` row inserted (that is the embeddings slice). No change to DB-004's protocol, the chunk shape, the scorer weights, or 07 Part XIV's budget numbers. No decision on the hybrid fetch's shape (D5). No decision on which port carries the embedding call (D2) — a new `ModelProvider` method, a separate embedding port, and whether it runs through the Router's `model_call` ledger are the embeddings slice's own ADR to make, the same way D5 defers the hybrid fetch's shape to the retrieval slice. No second spike commissioned — if one is wanted for the latency question, that is Kang's call and its own brief.

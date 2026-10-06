@@ -79,6 +79,8 @@ from kang.api.schemas.memory import (
     MemoryRestoreFromSnapshotResponse,
     MemoryRestoreRequest,
     MemoryRestoreResponse,
+    MemorySearchRequest,
+    MemorySearchResponse,
     MemoryUpdateRequest,
     MemoryUpdateResponse,
 )
@@ -670,6 +672,22 @@ EXTRA_OPERATIONS: tuple[dict[str, Any], ...] = (
         "Embed up to a bounded batch of memory records missing a vector.",
         schemas=OperationSchemas(
             request=MemoryEmbedRequest, response=MemoryEmbedResponse
+        ),
+    ),
+    # ---- Kang-facing search (ADR-056) -------------------------------------
+    # 06 Part X. A query, but dispatched on the write executor, not the read
+    # pool (ADR-056 D7): it embeds Kang's query text through the Router,
+    # whose model_call ledger writes on the write connection. first_party_
+    # only: memory content is shown to Kang alone, as candidate.list's is.
+    _op(
+        "memory.search",
+        "query",
+        "memory.read",
+        False,
+        "Search memory: hybrid (default) or deep, with per-term scores.",
+        channel=OperationChannel(first_party_only=True),
+        schemas=OperationSchemas(
+            request=MemorySearchRequest, response=MemorySearchResponse
         ),
     ),
 )

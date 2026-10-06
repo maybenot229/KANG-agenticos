@@ -60,4 +60,10 @@ No change to the scorer, the match floor, the fetch's candidate counts, or `embe
 
 ## Verification
 
-Filled in at the implementation commit with what was actually run.
+**Implemented 2026-10-06 inside ADR-056's slice, before either was committed.**
+
+- Migration `0023` applies on top of `0022`; its pure-SQL backfill was checked against the Python quantization path on hand vectors (including element order and an all-zero vector) and, in `integration/sqlite/test_int8_index.py`, against what the public `store_memory_vectors` writes for the same records in a fresh database — identical bytes.
+- `integration/sqlite/test_int8_index.py`: float and int8 rows written together; a stale, skipped write writes neither; edit, archive and delete remove both; kNN finds an identical vector at distance ≈ 0 with the float table emptied (so it is provably reading the int8 table).
+- The dual-index corpus test and the contract's future-migration helpers now create the int8 companion beside each new version's float table (D3) — both green.
+- The year-10 nightly budget, before and after: hybrid fetch 258–288 ms (red) → 161–163 ms; scored 163–164 ms.
+- Recall on 2,000 real `nomic-embed-text` vectors (50 queries): scaled int8 0.989 mean, 0.953 min, against exact; plain int8 0.933 / 0.875. Measured by a script, not a test (it needs the live Ollama); the numbers are this ADR's Finding 1.

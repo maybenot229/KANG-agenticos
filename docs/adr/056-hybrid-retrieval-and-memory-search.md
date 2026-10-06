@@ -52,6 +52,8 @@ ADR-054 D5 declined to read the spike's latency numbers as the "Vector DB server
 
 Default mode fetches the 64 nearest vectors in the `active` version and the 64 best FTS hits, hydrates their union in one read, applies the facets, and scores. **Trigger for `int8`:** the nightly `test_hybrid_fetch_on_corpus.py` going red, or 13 §4 gate 6 at the v0.2 boundary — whichever comes first. The "Vector DB server" trigger (03 §8) has **not** fired: exact `sqlite-vec` meets the memory budget at the ceiling, and a 2.5× remedy inside `sqlite-vec` is measured and available.
 
+**Dated note (2026-10-06) — this decision's premise was wrong, and its trigger fired before its own commit.** "Measured inside budget" measured the bare kNN (217–239 ms). The nightly test this ADR names then measured the whole fetch through the real stores at 258–288 ms against 250 ms — red. ADR-057 fires the named remedy: kNN now reads a per-vector-scaled int8 companion table (recall@64 0.989 against exact on real `nomic-embed-text` vectors). The fetch shape — independent halves, k=64 each — is unchanged.
+
 ### D2 — The scorer is 06 §5.2, as a pure domain function, every term reported
 
 `domain/memory/retrieval.py::score_candidates(candidates, now, config, use_semantic)`. Terms as built: `sim = clamp(1 − cosine distance, 0, 1)`, 0 without a vector hit; `bm25_n` min-max normalized over this query's lexical hits (best = 1; FTS5's more-negative-is-better inverted), 0 without a hit; recency `e^(−ln 2·Δt/half_life)` from `updated_at`, no decay at half-life 0; `imp = 1.0` when pinned, else the record's `importance`; `ctx = 0` (D9). Ties break by record id; the same inputs give the same ranking to the decimal. The response carries every term before weighting — 06 §5.2's "why was this included?" for Kang now, and the shape the manifests will log later.
@@ -63,6 +65,8 @@ Weights as 06 Appendix A. Half-lives must name all eight types (the taxonomy is 
 ### D4 — A match needs a lexical hit or enough similarity; everything else is at most a labeled nearest miss
 
 `match_min_similarity = 0.5` (`[search]`), a weak, early hypothesis: in the 2026-10-05 live check related facts sat at similarity 0.61–0.75 and unrelated ones at 0.33–0.35 — four records, not a calibration. With no matches, up to three nearest misses are returned in a separate field; results are never padded (06 Part X).
+
+**Dated note (2026-10-06) — corrected before the implementation commit, found by the live check.** As written, "a lexical hit" padded results: Kang's words are OR-ed into the FTS query and FTS5 has no stopwords, so for "who helps the robotics team?" two unrelated facts matched on "the" alone. Correction: `[search] stopwords` (a list in `memory.toml`, English function words shipped, Kang extends it) are dropped from the **lexical** half only; the semantic half still embeds the whole question. After the fix the same live query returned only the two robotics facts. A regression test pins it.
 
 ### D5 — Default and deep modes; structured mode not built
 
@@ -96,4 +100,12 @@ No context manifests, no Context Assembler, no `memory.explain_retrieval`, no `k
 
 ## Verification
 
-Implemented 2026-10-06, same session — see the slice's commit message and the dated notes it carries; this section is filled in at commit with what was actually run.
+**Implemented 2026-10-06, same session, under the same delegation, together with ADR-057.** What was actually run, on Kang's machine:
+
+- Every CI gate in `ci.yml`'s order — results in the implementation commit's message (the numbers there are the run, not an estimate).
+- **New suites:** the scorer's property tests (a 200-candidate generated grid: bounds, exact weighted sum, determinism and id tie-breaks, monotone similarity, pin, half-life, bm25 normalisation, the match rule, the semantic-off mode); the `MemorySearchStore` contract on fake and real (filters, limit, private excluded, more-words-rank-higher) plus FTS5-only cases (stemming; operators, quotes, `NEAR`, `*` and `-` in Kang's text are just text); the search service (semantic and lexical halves, local-only and model-pinned query embedding, matches vs labeled nearest misses, deep mode never embeds, private never returned, facets, degradation on no provider and on a wrong-space vector, migration pinning, the stopword regression); the handler (schema-valid response, invalid requests, fail-closed config, sensitive-read audit by id only, no audit for normal reads, limit clamping); the config loader (shipped values, gate-only file keeps the gate and refuses search, malformed tables refuse); a real-Core suite (every hit equals its stored row field for field; no match ⇒ empty; agent and kernel sessions refused).
+- **Two pinned tests updated, citing this ADR:** the memory-integrity sweep's closed operation list gains `memory.search` (thirteen → fourteen; the sweep dispatches it under every principal); the shipped-`memory.toml` test now expects `[scoring]`/`[search]` — still only keys something reads.
+- **The nightly budget test, run here (it is `nightly`-marked):** first run, exact float kNN — hybrid fetch **258–288 ms against 250 ms: red**, which fired D1's trigger (ADR-057). After ADR-057's int8 index — hybrid fetch **161–163 ms** (≈65% of budget), scored pass **163–164 ms** against 300 ms. 5 passed.
+- **Live, by hand, against the real local Ollama through a real `Core`:** six facts saved and embedded; "who helps the robotics team?" → *Dr. Lee mentors the robotics team* (similarity 0.75) and the robotics submission fact; "when does school finish" → the school-term fact (0.78); "family celebrations" → *My sister's birthday is in November* by meaning alone (0.55, no shared word); "quantum chromodynamics" → no results, three labeled near-misses (≤ 0.43). The first live run exposed the stopword padding corrected above.
+
+**Corrections to this ADR's own text, recorded here rather than by rewriting it:** D1's "measured inside budget" was measured on the bare kNN (the dated note under D1); D4's lexical-hit rule padded results (the dated note under D4).

@@ -196,6 +196,8 @@ The single lookup table this roadmap promised. Sources cited; between triggers, 
 
 **Dated notes (2026-10-05, ADR-054 D5/D7, accepted under Kang's delegated acceptance).** (1) *Vector DB server:* this trigger has **not** fired. The 2026-09-24 spike measured `sqlite-vec`'s default exact, unfiltered, brute-force mode over the full 10-year ceiling and found every dimension over 07 Part XIV's 250 ms hybrid-fetch budget, but quantized and partitioned `vec0` modes were not tested, and the hybrid fetch's own shape (FTS candidates re-ranked by vector is about 64 comparisons, not 500,000) is undecided. The retrieval slice must settle both before "measurably failing" can be claimed. (2) *Local-model migration per task class:* this trigger has never applied to `embedding`. D010 routes `embedding` to a local-preferred provider from inception, and §3 puts embeddings in Phase 2; ADR-055 wiring Ollama for embeddings is not this trigger firing. It still gates `private`/`routine` text generation, unchanged.
 
+**Dated note (2026-10-06, ADR-056 D1).** Measured for memory records: on the year-10 corpus (39,687 vectors, 768 dims) exact `sqlite-vec` kNN takes 217–239 ms — inside 07 Part XIV's 250 ms hybrid-fetch budget — and `int8` quantization within `sqlite-vec` takes ~90 ms. The Vector DB server trigger has still not fired. Vault chunks (500,000 at the ceiling) are the Obsidian indexing slice's to measure.
+
 ---
 
 ## 9. The Version-Boundary Ritual

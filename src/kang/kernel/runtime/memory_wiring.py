@@ -28,9 +28,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from kang.adapters.config.memory_loader import MemoryConfigError, load_memory_config
+from kang.adapters.config.memory_loader import (
+    MemoryConfigError,
+    load_memory_config,
+    load_scoring_config,
+)
 from kang.adapters.sqlite.candidate_queue_store import SqliteCandidateQueueStore
 from kang.adapters.sqlite.embedding_index import SqliteEmbeddingIndex
+from kang.adapters.sqlite.memory_search import SqliteMemorySearchStore
 from kang.adapters.sqlite.memory_store import SqliteMemoryStore
 from kang.adapters.sqlite.transaction import SqliteUnitOfWork
 from kang.api.operations import (
@@ -38,9 +43,11 @@ from kang.api.operations import (
     MemoryEmbedDeps,
     MemoryLifecycleDeps,
     MemoryOpsDeps,
+    MemorySearchDeps,
     make_memory_delete_effect,
     make_memory_embed_handler,
     make_memory_lifecycle_handlers,
+    make_memory_search_handler,
 )
 from kang.domain.ports.backup import BackupService
 from kang.domain.ports.held_action import HeldActionStore
@@ -86,6 +93,7 @@ class MemoryDeps:
     ops: MemoryOpsDeps
     lifecycle: MemoryLifecycleDeps
     embed: MemoryEmbedDeps  # ADR-055 D7
+    search: MemorySearchDeps  # ADR-056
 
 
 def build_memory_deps(inputs: MemoryWiringInputs) -> MemoryDeps:
@@ -130,15 +138,43 @@ def build_memory_deps(inputs: MemoryWiringInputs) -> MemoryDeps:
         embed=inputs.router.embed,
         audit=inputs.audit,
     )
-    return MemoryDeps(ops=ops, lifecycle=lifecycle, embed=embed)
+    return MemoryDeps(
+        ops=ops,
+        lifecycle=lifecycle,
+        embed=embed,
+        search=_search_deps(inputs),
+    )
+
+
+def _search_deps(inputs: MemoryWiringInputs) -> MemorySearchDeps:
+    """ADR-056: `memory.search` over the same live connection. Its own
+    `[scoring]`/`[search]` fail closed only for search (D3): absent or
+    malformed leaves `config=None`, and the gate is untouched."""
+    try:
+        config = load_scoring_config(inputs.kang_home / "config" / "memory.toml")
+    except MemoryConfigError:
+        config = None
+    return MemorySearchDeps(
+        store=SqliteMemorySearchStore(inputs.kang),
+        index=SqliteEmbeddingIndex(inputs.kang),
+        embed=inputs.router.embed,
+        audit=inputs.audit,
+        clock=inputs.clock,
+        config=config,
+    )
 
 
 def memory_handlers(deps: MemoryDeps) -> dict[str, Any]:
     """`composition.py::_build_handlers`'s own entry point into ADR-053's six
-    lifecycle operations and ADR-055's `memory.embed`."""
+    lifecycle operations, ADR-055's `memory.embed` and ADR-056's
+    `memory.search`."""
     return {
         **make_memory_lifecycle_handlers(deps.lifecycle),
         "memory.embed": make_memory_embed_handler(deps.embed),
+        # ADR-056 D7: a query, wired here (the write executor) rather than
+        # in query_routing's read pool — the Router's ledger write needs
+        # the write connection.
+        "memory.search": make_memory_search_handler(deps.search),
     }
 
 

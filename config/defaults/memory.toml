@@ -1,10 +1,11 @@
 # memory.toml — the memory system's tunable (ADR-051 D8; 06_MEMORY Appendix A).
 # Shipped default the installer copies to %KANG_HOME%/config/ (17 §8).
 #
-# Exactly one real key today: the one this slice reads, to compute a
-# candidate's `expires_at` at propose time. `duplicate_cosine` is not shipped
-# (nothing reads it until embeddings exist, ADR-051 D5), and `[retention]`
-# is not shipped (its readers are the janitor slice).
+# `[gate]` is read by the write gate (ADR-051); `[scoring]`/`[search]` by
+# memory.search (ADR-056). Each part fails closed only for its own reader.
+# `duplicate_cosine` is not shipped (the near-duplicate probe is not built,
+# ADR-051 D5), and `[retention]` is not shipped (its readers are the janitor
+# slice).
 #
 # FAILS CLOSED: an absent or malformed file does NOT fall back to a built-in
 # 14 — the gate refuses to run. A gate whose expiry window silently defaults
@@ -14,3 +15,35 @@
 # Pending candidates are marked `expired` after this many
 # days — silence is a veto, not consent (06_MEMORY §4.3).
 candidate_expiry_days = 14
+
+# 06_MEMORY §5.2: score = w_s·sim + w_x·bm25_n + w_r·recency + w_i·imp + w_c·ctx.
+# Every number below is a starting hypothesis, tunable with data (06 App. A).
+[scoring]
+weights = { semantic = 0.40, lexical = 0.20, recency = 0.15, importance = 0.15, context = 0.10 }
+# Days for the recency term to halve; 0 = no decay. episode/fact/lesson/rule/
+# profile are 06 §5.2's own; the rest are ADR-056 D3's hypotheses: the
+# classes 06 §7.1 calls permanent (preference, relationship, reflection) do
+# not decay, and an observation — a 180-day pre-pattern signal — halves in 30.
+half_life_days = { fact = 180, observation = 30, preference = 0, relationship = 0, lesson = 0, rule = 0, profile = 0, reflection = 0 }
+
+[search]
+# 06 Part X: a result is a match only with a lexical hit or a cosine
+# similarity (1 - distance) at least this high; below it, a record can only
+# be a labeled "nearest miss". 0.5 is a weak, early hypothesis (ADR-056 D4):
+# in the 2026-10-05 live check, related facts sat at 0.61-0.75 and unrelated
+# ones at 0.33-0.35 — four records, not a calibration.
+match_min_similarity = 0.5
+# Dropped from the LEXICAL half only (the semantic half reads the whole
+# question). Kang's words are OR-ed, so without this a record sharing only
+# "the" with a question would be a lexical hit — padding (06 Part X).
+# English function words; extend it for any other language you write in.
+stopwords = [
+  "a", "an", "the", "and", "or", "but", "of", "to", "in", "on", "at", "for",
+  "with", "by", "from", "into", "about", "as", "is", "are", "was", "were",
+  "be", "been", "am", "do", "does", "did", "have", "has", "had", "will",
+  "would", "can", "could", "should", "what", "when", "where", "who", "whom",
+  "which", "why", "how", "i", "me", "my", "you", "your", "we", "our", "us",
+  "he", "him", "his", "she", "her", "it", "its", "they", "them", "their",
+  "this", "that", "these", "those", "there", "then", "than", "so", "if",
+  "not", "no", "any", "some", "all", "know", "tell",
+]

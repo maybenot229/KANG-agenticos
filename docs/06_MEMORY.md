@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Living — changes require an ADR; this document is normative for all memory behavior
-**Last updated:** 2026-10-05 (ADR-055: dated note at Part III — when the embedding is computed, and how the vector index follows each transition); 2026-09-24 (ADR-053: dated note at Part III/M-002 — which transitions are live, `memory.delete`'s `archived → deleted` edge, `memory.restore_from_snapshot` as a separate mechanism; ADR-052: dated notes at §1.4 — Tier 2 enforced at the gate — and §4.2 — the pipeline flowchart's node order corrected, the merge edge Kang-only; ADR-051: dated notes at §4.1, §4.2, §12.1 — what the gate builds and refuses, the absent semantic probes, the event-log reading; ADR-048: §2.1D/M-002 —
+**Last updated:** 2026-10-06 (ADR-056: dated notes at §5.2 and Part X — the scorer and `memory.search` as built); 2026-10-05 (ADR-055: dated note at Part III — when the embedding is computed, and how the vector index follows each transition); 2026-09-24 (ADR-053: dated note at Part III/M-002 — which transitions are live, `memory.delete`'s `archived → deleted` edge, `memory.restore_from_snapshot` as a separate mechanism; ADR-052: dated notes at §1.4 — Tier 2 enforced at the gate — and §4.2 — the pipeline flowchart's node order corrected, the merge edge Kang-only; ADR-051: dated notes at §4.1, §4.2, §12.1 — what the gate builds and refuses, the absent semantic probes, the event-log reading; ADR-048: §2.1D/M-002 —
 candidate/rejected are quarantine-table states, not `memory_record` states)
 **Upstream (immutable):** `00_VISION.md`, `01_PRINCIPLES.md`, `02_PRODUCT_REQUIREMENTS.md`, `04_ARCHITECTURE.md` (esp. Decision 007)
 **Downstream (will depend on this):** `07_DATABASE.md`, `05_AGENTS.md`, `08_PLUGIN_SYSTEM.md`, `12_API.md`
@@ -323,6 +323,8 @@ $$score(m) = w_s \cdot sim(q,m) + w_x \cdot bm25_n(q,m) + w_r \cdot e^{-\lambda 
 
 All weights + λ live in `memory.toml`. **Retrieval logs the per-term scores for every included record** (see 5.4) — tuning is data-driven, and "why was this included?" is answerable to the decimal.
 
+**Dated note (2026-10-06, ADR-056 D2/D3).** As built (`domain/memory/retrieval.py`): `sim` is `1 − cosine distance` clamped to [0, 1]; `bm25_n` is min-max over the query's lexical hits, best = 1; recency runs from `updated_at`; `imp` is 1.0 when pinned, else the record's `importance` — the access-frequency component is not built; `ctx` is 0 until the link layer exists. Half-lives for the types this table does not name are ADR-056 D3's hypotheses (permanent classes per §7.1 do not decay; `observation` halves in 30 days). Per-term scores are returned with every search result; logging them into manifests is the Context Assembler's slice.
+
 Filters applied *before* scoring: `status = active` (unless deep-search), sensitivity ≤ caller clearance (Part XII), type ∈ caller's allowed views (Part XI), tier constraints if caller demands (e.g., Critic may request Tier ≥1 only).
 
 **Alternatives considered (scoring).** Pure vector top-k (rejected: misses exact terms, no recency/importance semantics — the standard RAG failure); LLM-as-reranker over large candidate sets (deferred: cost/latency per assembly; MAY be added as an optional final stage for `deep_reasoning` tasks — the pipeline has the slot); learned ranking model (rejected for now: no training data exists; revisit year 2+ with retrieval logs as the dataset — this is a designed future, see Part XV).
@@ -479,6 +481,8 @@ Distinct from agent retrieval: Kang searching his own memory in the browser UI.
 - **Structured mode:** direct filters/queries over structured entities (no scoring — exact).
 - **Failure honesty:** zero-hit ⇒ "nothing in memory matches" + nearest-miss suggestions clearly labeled as *not matches*. The search UI never pads results to seem useful (P3 applies to interfaces too).
 - Latency budgets: §XIII.
+
+**Dated note (2026-10-06, ADR-056).** `memory.search` is built for default and deep modes. Default: hybrid over `active` + `under_review`, non-`private` records — the 64 nearest vectors and the 64 best FTS hits, scored by §5.2; a result is a *match* only with a lexical hit or a similarity of at least `[search] match_min_similarity`, and with no matches up to three nearest misses come back in their own field, labeled. Deep: adds `archived` and `superseded`, lexical only. Structured mode is not built. The query text is embedded only by a local provider, in the `active` version's own model; when it cannot be, results are lexical with a `degraded` marker. Type and tier facets are built; date facets and the UI are not. First-party only; a search that returns a `sensitive` record is audited by id (§12.3).
 
 ---
 

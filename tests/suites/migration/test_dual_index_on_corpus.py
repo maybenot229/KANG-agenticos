@@ -84,16 +84,18 @@ def test_a_model_change_migrates_without_a_blackout_and_cuts_over_once(conn):
     _drain(index, _router("nomic-embed-text", FakeModelProvider()), 2000)
     embeddable = index.memory_coverage(1).embeddable
 
-    # What a model-change migration does (ADR-055 D4): register v2 and its
-    # table. providers.toml then serves the new model.
+    # What a model-change migration does (ADR-055 D4, ADR-057 D3): register
+    # v2, its float table and its int8 companion. providers.toml then serves
+    # the new model.
     conn.execute(
         "INSERT INTO embedding_version VALUES "
         "(2, 'next-model', 16, '2026-10-05T00:00:00.000Z', 'migrating')"
     )
-    conn.execute(
-        "CREATE VIRTUAL TABLE vec_memory_v2 USING vec0("
-        "record_rowid INTEGER PRIMARY KEY, embedding float[16] distance_metric=cosine)"
-    )
+    for table, kind in (("vec_memory_v2", "float"), ("vec_memory_v2_i8", "int8")):
+        conn.execute(
+            f"CREATE VIRTUAL TABLE {table} USING vec0(record_rowid INTEGER "
+            f"PRIMARY KEY, embedding {kind}[16] distance_metric=cosine)"
+        )
     provider = FakeModelProvider()
     provider.embed_dim = 16
     router = _router("next-model", provider)
