@@ -1,0 +1,19 @@
+# chat-general — 06_MEMORY Part XI's "Chat (general)" recipe (ADR-058 D2).
+# Shipped with the code like the agent definitions: context is behaviour,
+# and behaviour changes get reviewed (05 AG-009). Bump `version` on any edit —
+# every manifest records which version built it.
+#
+# 06 Part XI: "broad but shallow: k small per view; defaults". Chat sees
+# every memory type at normal clearance (sensitive records need an explicit
+# `memory.read:sensitive` grant, which chat does not hold), any tier and any
+# confidence, with 06 §5.2's default weights.
+
+id = "chat-general"
+version = 1
+view = "chat-view"
+types = ["profile", "preference", "fact", "relationship", "lesson", "rule", "observation", "reflection"]
+clearance = "normal"
+tier_floor = 0
+confidence_floor = 0.0
+budget_tokens = 1200
+k = 8

@@ -35,7 +35,9 @@ from kang.agents.runtime.executor import (
     run_chat_turn,
 )
 from kang.domain.ports.conversation_store import ConversationStore
+from kang.domain.ports.invocation import InvocationStore
 from kang.domain.ports.provider_config import ProvidersConfig
+from kang.kernel.context.assembler import AssemblyRequest, ContextAssembler
 from kang.kernel.orchestrator.registry import AgentRegistry, build_checked_registry
 from kang.kernel.router.router import Router
 
@@ -55,7 +57,7 @@ __all__ = [
 # known to agree. May raise ConversationNotFound (domain.ports) for an
 # unknown client-supplied conversation_id — chat_ops.py's own handler
 # catches it.
-ChatRun = Callable[[str, list[str], str | None], dict]
+ChatRun = Callable[[str, list[str], str | None, str], dict]
 
 
 def build_router(kang_home: Path, kang, clock) -> Router:
@@ -110,6 +112,9 @@ class ChatWiringDeps:
     sessions: object
     new_id: object
     clock: object
+    # ADR-058 D7: the kernel Context Assembler and where its manifest lands.
+    assembler: ContextAssembler
+    invocations: InvocationStore
 
 
 def make_chat_run(wiring: ChatWiringDeps) -> ChatRun:
@@ -136,8 +141,24 @@ def make_chat_run(wiring: ChatWiringDeps) -> ChatRun:
         conversations=wiring.conversations,
     )
 
+    def assembling(agent, correlation_id: str):
+        if agent.recipe is None:
+            return None
+
+        def assemble(message: str) -> str:
+            assembly = wiring.assembler.assemble(
+                AssemblyRequest(agent.id, agent.recipe, message, correlation_id)
+            )
+            wiring.invocations.attach_manifest(correlation_id, assembly.manifest)
+            return assembly.context
+
+        return assemble
+
     def chat_run(
-        message: str, context_chips: list[str], conversation_id: str | None
+        message: str,
+        context_chips: list[str],
+        conversation_id: str | None,
+        correlation_id: str,
     ) -> dict:
         agent = wiring.agent_registry.get("chat")
         if agent is None:
@@ -146,6 +167,13 @@ def make_chat_run(wiring: ChatWiringDeps) -> ChatRun:
                 "the AgentRegistry — a wiring defect, not a runtime "
                 "condition to degrade past"
             )
-        return run_chat_turn(agent, message, context_chips, conversation_id, deps)
+        return run_chat_turn(
+            agent,
+            message,
+            context_chips,
+            conversation_id,
+            deps,
+            assembling(agent, correlation_id),
+        )
 
     return chat_run

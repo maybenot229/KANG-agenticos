@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import sqlite3
 
+from kang.adapters.sqlite.transaction import writing
 from kang.domain.ports.invocation import Invocation, InvocationNotFound
 
 __all__ = ["SqliteInvocationStore"]
@@ -79,6 +80,19 @@ class SqliteInvocationStore:
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise
+
+    def attach_manifest(self, correlation_id: str, manifest: str) -> None:
+        # ADR-058 D5. `writing` joins an open transaction if a handler holds
+        # one, else runs its own — the manifest lands before the model call.
+        with writing(self._conn):
+            cursor = self._conn.execute(
+                "UPDATE invocation SET manifest = ? WHERE id = ("
+                "SELECT id FROM invocation WHERE correlation_id = ? "
+                "ORDER BY started LIMIT 1)",
+                (manifest, correlation_id),
+            )
+            if cursor.rowcount == 0:
+                raise InvocationNotFound(correlation_id)
 
     def by_correlation(self, correlation_id: str) -> Invocation:
         row = self._conn.execute(

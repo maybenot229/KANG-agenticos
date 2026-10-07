@@ -56,3 +56,12 @@ class FakeMemorySearchStore:
     def records(self, record_ids: Sequence[str]) -> tuple[MemoryRecord, ...]:
         snapshot = self._memory.snapshot()
         return tuple(snapshot[i] for i in sorted(set(record_ids)) if i in snapshot)
+
+    def standing(self, statuses: Sequence[str]) -> tuple[MemoryRecord, ...]:
+        return tuple(
+            r
+            for _, r in sorted(self._memory.snapshot().items())
+            if r.status in statuses
+            and r.sensitivity != "private"
+            and (r.type in ("rule", "profile", "preference") or r.pinned)
+        )

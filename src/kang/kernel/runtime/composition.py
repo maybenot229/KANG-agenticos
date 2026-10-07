@@ -325,6 +325,8 @@ def _build_handlers(w: _HandlerWiring) -> dict:
                     sessions=w.sessions,
                     new_id=w.new_id,
                     clock=w.clock,
+                    assembler=w.memory.assembler,
+                    invocations=w.stores.invocations,
                 )
             )
         ),

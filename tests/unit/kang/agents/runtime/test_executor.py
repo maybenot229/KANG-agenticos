@@ -443,3 +443,38 @@ def test_run_chat_turn_continuing_a_conversation_includes_its_own_prior_history(
     assert "first turn" in prompt
     assert "a reply" in prompt  # the first turn's own real reply text
     assert "second turn" in prompt
+
+
+# ---- the Context Assembler in a chat turn (ADR-058 D5/D6/D7) ---------------
+
+_OK = ModelResult(
+    text="ok", structured=None, tokens_in=1, tokens_out=1, cost_usd=0.0, latency_ms=1
+)
+
+
+def test_run_chat_turn_assembles_before_the_model_and_cites_memory_in_the_prompt():
+    order = []
+    route = _RecordingRoute(_OK)
+
+    def assemble(message: str) -> str:
+        order.append(("assemble", message))
+        return "[MEM:m1] term ends in June — stated, 2026-09-21, tier 2"
+
+    def routed(spec, prompt):
+        order.append(("route", None))
+        return route(spec, prompt)
+
+    run_chat_turn(
+        CHAT_AGENT, "when is the break?", [], None, _chat_turn_deps(routed), assemble
+    )
+    assert order == [("assemble", "when is the break?"), ("route", None)]
+    (_, prompt) = route.calls[0]
+    assert "## What KANG remembers (cite as [MEM:id])" in prompt
+    assert "[MEM:m1] term ends in June" in prompt
+
+
+def test_run_chat_turn_without_an_assembler_leaves_the_prompt_unchanged():
+    route = _RecordingRoute(_OK)
+    run_chat_turn(CHAT_AGENT, "hi", [], None, _chat_turn_deps(route))
+    (_, prompt) = route.calls[0]
+    assert "What KANG remembers" not in prompt

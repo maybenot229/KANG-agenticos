@@ -18,13 +18,21 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-from kang.domain.ports.memory_config import MemoryConfig, ScoringConfig, ScoringWeights
+from kang.domain.ports.memory_config import (
+    ASSEMBLY_CLASSES,
+    AssemblyConfig,
+    MemoryConfig,
+    ScoringConfig,
+    ScoringWeights,
+)
 from kang.domain.ports.memory_store import MEMORY_TYPES
 
 __all__ = [
     "MemoryConfigError",
+    "load_assembly_config",
     "load_memory_config",
     "load_scoring_config",
+    "parse_assembly_config",
     "parse_memory_config",
     "parse_scoring_config",
 ]
@@ -118,3 +126,34 @@ def load_scoring_config(path: Path) -> ScoringConfig:
     except OSError as exc:
         raise MemoryConfigError(f"memory.toml unreadable at {path}: {exc}") from exc
     return parse_scoring_config(text)
+
+
+def parse_assembly_config(toml_text: str) -> AssemblyConfig:
+    """`[assembly] budget_shares` (06 Appendix A; ADR-058 D3): one
+    non-negative share per priority class, summing to 1 (within 1e-9).
+    Raises MemoryConfigError — never a default."""
+    try:
+        data = tomllib.loads(toml_text)
+    except tomllib.TOMLDecodeError as exc:
+        raise MemoryConfigError(f"memory.toml is not valid TOML: {exc}") from exc
+    assembly = data.get("assembly")
+    shares = assembly.get("budget_shares") if isinstance(assembly, dict) else None
+    if not isinstance(shares, dict) or set(shares) != set(ASSEMBLY_CLASSES):
+        raise MemoryConfigError(
+            f"memory.toml [assembly] budget_shares must name exactly "
+            f"{ASSEMBLY_CLASSES} (copy it from config/defaults/memory.toml)"
+        )
+    if not all(_number(v) and v >= 0 for v in shares.values()):
+        raise MemoryConfigError("[assembly] budget_shares must be non-negative")
+    if abs(sum(shares.values()) - 1.0) > 1e-9:
+        raise MemoryConfigError("[assembly] budget_shares must sum to 1")
+    return AssemblyConfig({k: float(shares[k]) for k in ASSEMBLY_CLASSES})
+
+
+def load_assembly_config(path: Path) -> AssemblyConfig:
+    """Load `[assembly]` from `path`. Raises MemoryConfigError."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise MemoryConfigError(f"memory.toml unreadable at {path}: {exc}") from exc
+    return parse_assembly_config(text)

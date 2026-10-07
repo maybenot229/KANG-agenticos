@@ -33,7 +33,9 @@ __all__ = ["ChatRun", "make_chat_send_handler"]
 # root's own closure over a real AgentDefinition, ChatTurnDeps, and
 # run_chat_turn. May raise ConversationNotFound for an unknown
 # client-supplied conversation_id.
-ChatRun = Callable[[str, list[str], str | None], dict[str, Any]]
+# (message, context_chips, conversation_id, correlation_id) — the last
+# added by ADR-058 D7 so the context manifest lands on this invocation.
+ChatRun = Callable[[str, list[str], str | None, str], dict[str, Any]]
 
 
 def make_chat_send_handler(chat: ChatRun) -> Handler:
@@ -46,7 +48,7 @@ def make_chat_send_handler(chat: ChatRun) -> Handler:
         context_chips = params.get("context_chips", [])
         conversation_id = params.get("conversation_id")
         try:
-            return chat(message, context_chips, conversation_id)
+            return chat(message, context_chips, conversation_id, context.correlation_id)
         except ConversationNotFound as exc:
             raise ApiError("invalid_request", str(exc)) from exc
 

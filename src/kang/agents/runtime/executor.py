@@ -165,6 +165,7 @@ def _compose_prompt(
     history: tuple[Message, ...],
     context_chips: list[str],
     message: str,
+    memory_context: str | None = None,
 ) -> str:
     """One flat string — `ModelProvider.call()` accepts no separate
     system/user channel (confirmed reading `AnthropicProvider.call()`:
@@ -176,8 +177,16 @@ def _compose_prompt(
     describe *this* turn, not the past ones."""
     chips_block = "\n".join(f"- {chip}" for chip in context_chips) or "(none)"
     history_block = "\n".join(f"{m.role}: {m.content}" for m in history) or "(none yet)"
+    # ADR-058 D6: the Context Assembler's cited records, when the agent has
+    # a recipe — labeled so the model never mistakes memory for Kang's words.
+    memory_block = (
+        ""
+        if memory_context is None
+        else f"## What KANG remembers (cite as [MEM:id])\n{memory_context}\n\n"
+    )
     return (
         f"{persona}\n\n"
+        f"{memory_block}"
         f"## Prior conversation\n{history_block}\n\n"
         f"## Current context (Kang's own chips)\n{chips_block}\n\n"
         f"## Kang's message\n{message}\n"
@@ -190,6 +199,7 @@ def run_cognitive_agent(
     context_chips: list[str],
     history: tuple[Message, ...],
     deps: CognitiveExecutorDeps,
+    memory_context: str | None = None,
 ) -> AgentRunResult:
     """Run one cognitive agent's single conversational turn (ADR-044 D2)
     — the mirror of `run_mechanical_agent`, for a model call instead of
@@ -237,7 +247,7 @@ def run_cognitive_agent(
     deps.sessions.create(session)
 
     persona = deps.read_prompt(agent)
-    prompt = _compose_prompt(persona, history, context_chips, message)
+    prompt = _compose_prompt(persona, history, context_chips, message, memory_context)
     spec = TaskSpec(
         task_class="deep_reasoning",
         privacy_tier="normal",
@@ -275,6 +285,7 @@ def run_chat_turn(
     context_chips: list[str],
     conversation_id: str | None,
     deps: ChatTurnDeps,
+    assemble: Callable[[str], str] | None = None,
 ) -> dict:
     """One real, persisted multi-turn exchange (ADR-046) — the
     conversation-lifecycle orchestration `run_cognitive_agent` itself
@@ -292,7 +303,12 @@ def run_chat_turn(
 
     Returns a plain dict matching `ChatSendResponse`'s own shape
     exactly (`reply`, `degraded`, `conversation_id`) — `chat_ops.py`'s
-    handler returns this verbatim, no reshaping needed."""
+    handler returns this verbatim, no reshaping needed.
+
+    `assemble` (ADR-058 D7) maps Kang's message to the Context Assembler's
+    rendered memory context for this turn; the composition root binds it
+    to the agent's recipe and this turn's correlation id. None (an agent
+    with no recipe) leaves the prompt as it was."""
     clock = deps.cognitive.clock
     new_id = deps.cognitive.new_id
 
@@ -307,7 +323,13 @@ def run_chat_turn(
         conversation_id, new_id(), "kang", message, clock.now().isoformat()
     )
 
-    result = run_cognitive_agent(agent, message, context_chips, history, deps.cognitive)
+    # ADR-058 D5/D7: phase 3 — the context manifest is built (and, by the
+    # composition root's closure, written to the invocation row) before the
+    # model is ever called, so a degraded turn still has one.
+    memory_context = assemble(message) if assemble is not None else None
+    result = run_cognitive_agent(
+        agent, message, context_chips, history, deps.cognitive, memory_context
+    )
     reply = result.response["reply"]
     degraded = result.response["degraded"]
 

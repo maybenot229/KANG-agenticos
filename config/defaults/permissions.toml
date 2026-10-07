@@ -128,6 +128,13 @@
 # record. `memory.propose:rule`/`:profile` are ungrantable (pairing lint) and
 # refused again by the gate. `candidates.expire` is candidate.expire's scope
 # (D9, 06 §4.3's veto sweep) — the agent's second real tool.
+# ADR-058 D4 (2026-10-07): chat's first memory grant — read-only, its
+# own view, normal clearance (no `memory.read:sensitive`). The Context
+# Assembler checks it before reading anything for chat; without it chat
+# runs with no memory context and its manifest records `refused: scope`.
+# Pairing lint: chat holds no `web.fetch`.
+"agent:chat" = ["memory.read:chat-view"]
+
 "agent:memory_steward" = [
   "conversations.purge",
   "memory.propose",

@@ -47,3 +47,11 @@ class MemorySearchStore(Protocol):
     def records(self, record_ids: Sequence[str]) -> tuple[MemoryRecord, ...]:
         """The rows for `record_ids` in one read; unknown ids are absent."""
         ...
+
+    def standing(self, statuses: Sequence[str]) -> tuple[MemoryRecord, ...]:
+        """ADR-058 D3's P1 candidates in one read: every non-`private`
+        record whose status is in `statuses` and which is a `rule`, a
+        `profile`, a `preference`, or pinned — ordered by id. Unscored:
+        standing context is included by kind, not by relevance (06 Part
+        XI)."""
+        ...

@@ -60,6 +60,13 @@ class InvocationStore(Protocol):
         """Record the outcome. Idempotent re-finish is a no-op-safe overwrite."""
         ...
 
+    def attach_manifest(self, correlation_id: str, manifest: str) -> None:
+        """ADR-058 D5: record the context manifest on the invocation for
+        `correlation_id` — written before the first model call (05 §3
+        phase 3), so a degraded or failed turn still carries one. Raises
+        InvocationNotFound if no such invocation was started."""
+        ...
+
     def by_correlation(self, correlation_id: str) -> Invocation:
         """The invocation for this correlation_id, or raise
         InvocationNotFound — explain's primary source (12 §12)."""

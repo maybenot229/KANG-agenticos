@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Normative — every agent-related component MUST conform; changes require an ADR
-**Last updated:** 2026-09-24 (Appendix D: dated note — `memory.delete` is now live, ADR-053; Appendix A: added `chat` as agent #16, ADR-044)
+**Last updated:** 2026-10-07 (ADR-058: dated note at AG-009 — built for chat); 2026-09-24 (Appendix D: dated note — `memory.delete` is now live, ADR-053; Appendix A: added `chat` as agent #16, ADR-044)
 **Upstream (binding):** `00_VISION.md`, `01_PRINCIPLES.md`, `02_PRODUCT_REQUIREMENTS.md`, `04_ARCHITECTURE.md` (D010, D011, D013, D014, D015), `06_MEMORY.md`, `07_DATABASE.md`
 **Downstream:** `08_PLUGIN_SYSTEM.md`, `12_API.md`, `16_SYNC.md`
 
@@ -192,6 +192,8 @@ Rules: every mode produces an `invocation` row (07 §5.5); synchronous modes MAY
 Normative filters applied in order: `status=active` → sensitivity ≤ clearance (§8) → type ∈ recipe views → tier ≥ recipe floor → confidence ≥ recipe floor (default 0; the Critic sets 0 deliberately — it wants contested material, ⚠-tagged) → scoring → budget.
 
 Freshness: the manifest records the store snapshot timestamp; recipes MAY declare `max_staleness` for cached inputs (calendar cache, web cache) — stale inputs beyond bound are refreshed or *flagged in the manifest*, never silently used.
+
+**Dated note (2026-10-07, ADR-058).** Built for chat. The assembler checks the agent's `memory.read:{recipe view}` grant before reading anything (no grant: empty assembly, `refused: scope` in the manifest); the filter order above is implemented as written, with `under_review` admitted ⚠-tagged; the manifest is written to the invocation row before the model call; and the determinism claim is proven on the year-1 synthetic corpus (`tests/suites/determinism/test_manifest_determinism.py`).
 
 **Why kernel-owned.** An agent assembling its own context can (a) exceed its memory scopes by clever querying and (b) make its behavior irreproducible. Centralizing assembly makes scopes enforceable and every answer reconstructible (the manifest *is* the explanation substrate — P5).
 

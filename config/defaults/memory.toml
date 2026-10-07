@@ -2,7 +2,7 @@
 # Shipped default the installer copies to %KANG_HOME%/config/ (17 §8).
 #
 # `[gate]` is read by the write gate (ADR-051); `[scoring]`/`[search]` by
-# memory.search (ADR-056). Each part fails closed only for its own reader.
+# memory.search (ADR-056); `[assembly]` by the Context Assembler (ADR-058). Each part fails closed only for its own reader.
 # `duplicate_cosine` is not shipped (the near-duplicate probe is not built,
 # ADR-051 D5), and `[retention]` is not shipped (its readers are the janitor
 # slice).
@@ -47,3 +47,10 @@ stopwords = [
   "this", "that", "these", "those", "there", "then", "than", "so", "if",
   "not", "no", "any", "some", "all", "know", "tell",
 ]
+
+# 06 Part XI: each priority class's share of an assembly's token budget
+# (P0 deterministic state, P1 standing context, P2 scored semantic, P3 vault,
+# P4 episodic). Unused budget cascades to the next class down. Read by the
+# Context Assembler (ADR-058); fails closed for assembly only.
+[assembly]
+budget_shares = { p0 = 0.30, p1 = 0.15, p2 = 0.30, p3 = 0.15, p4 = 0.10 }

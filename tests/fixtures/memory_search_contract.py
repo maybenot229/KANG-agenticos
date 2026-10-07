@@ -68,3 +68,25 @@ class MemorySearchStoreContract:
         rows = search.records(["c", "a", "nope"])
         assert [r.id for r in rows] == ["a", "c"]
         assert rows[0] == memory.get("a")
+
+    def test_standing_returns_rules_profile_preference_and_pinned_by_id(
+        self, memory, search
+    ):
+        # ADR-058 D3's P1 candidates.
+        memory.insert_record(record(id="f", content="a plain fact"))
+        memory.insert_record(record(id="pin", content="pinned fact", pinned=True))
+        memory.insert_record(record(id="rule", content="a rule", type="rule"))
+        memory.insert_record(record(id="pref", content="x", type="preference"))
+        memory.insert_record(
+            record(id="arch", content="old rule", type="rule", status="archived")
+        )
+        memory.insert_record(
+            record(
+                id="priv",
+                content="[encrypted]",
+                type="rule",
+                sensitivity="private",
+                content_enc=b"c",
+            )
+        )
+        assert [r.id for r in search.standing(LIVE)] == ["pin", "pref", "rule"]

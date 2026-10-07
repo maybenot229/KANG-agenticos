@@ -11,7 +11,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-__all__ = ["MemoryConfig", "ScoringConfig", "ScoringWeights"]
+__all__ = [
+    "ASSEMBLY_CLASSES",
+    "AssemblyConfig",
+    "MemoryConfig",
+    "ScoringConfig",
+    "ScoringWeights",
+]
+
+# 06 Part XI's five priority classes, highest first.
+ASSEMBLY_CLASSES = ("p0", "p1", "p2", "p3", "p4")
 
 
 @dataclass(frozen=True)
@@ -43,3 +52,11 @@ class ScoringConfig:
     # half of a search. Kang's words are OR-ed, so without this a record
     # sharing only "the" with the query is a lexical hit — padding.
     stopwords: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True)
+class AssemblyConfig:
+    """06 Appendix A `[assembly]` (ADR-058 D3): each priority class's share
+    of an assembly's token budget, summing to 1."""
+
+    budget_shares: dict[str, float]

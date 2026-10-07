@@ -77,3 +77,16 @@ class SqliteMemorySearchStore:
             list(record_ids),
         ).fetchall()
         return tuple(_row_to_record(row) for row in rows)
+
+    def standing(self, statuses: Sequence[str]) -> tuple[MemoryRecord, ...]:
+        if not statuses:
+            return ()
+        rows = self._conn.execute(
+            f"SELECT {_COLUMNS} FROM memory_record "
+            f"WHERE status IN ({_placeholders(statuses)}) "
+            "AND sensitivity <> 'private' "
+            "AND (type IN ('rule', 'profile', 'preference') OR pinned = 1) "
+            "ORDER BY id",
+            list(statuses),
+        ).fetchall()
+        return tuple(_row_to_record(row) for row in rows)

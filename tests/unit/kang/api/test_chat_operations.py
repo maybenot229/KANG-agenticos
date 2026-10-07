@@ -22,8 +22,8 @@ CONTEXT = HandlerContext(
 def test_handler_passes_message_chips_and_conversation_id_through_verbatim():
     calls = []
 
-    def chat(message, context_chips, conversation_id) -> dict:
-        calls.append((message, context_chips, conversation_id))
+    def chat(message, context_chips, conversation_id, correlation_id) -> dict:
+        calls.append((message, context_chips, conversation_id, correlation_id))
         return {"reply": "a reply", "degraded": False, "conversation_id": "conv-1"}
 
     handler = make_chat_send_handler(chat)
@@ -32,7 +32,9 @@ def test_handler_passes_message_chips_and_conversation_id_through_verbatim():
         {"message": "hi", "context_chips": ["a", "b"], "conversation_id": "conv-1"},
     )
 
-    assert calls == [("hi", ["a", "b"], "conv-1")]
+    # ADR-058 D7: the correlation id rides along so the context manifest
+    # lands on this invocation.
+    assert calls == [("hi", ["a", "b"], "conv-1", "corr-1")]
     assert response == {
         "reply": "a reply",
         "degraded": False,
@@ -43,18 +45,18 @@ def test_handler_passes_message_chips_and_conversation_id_through_verbatim():
 def test_handler_defaults_missing_chips_and_conversation_id():
     calls = []
 
-    def chat(message, context_chips, conversation_id) -> dict:
-        calls.append((message, context_chips, conversation_id))
+    def chat(message, context_chips, conversation_id, correlation_id) -> dict:
+        calls.append((message, context_chips, conversation_id, correlation_id))
         return {"reply": "ok", "degraded": False, "conversation_id": "conv-new"}
 
     handler = make_chat_send_handler(chat)
     handler(CONTEXT, {"message": "hi"})
 
-    assert calls == [("hi", [], None)]
+    assert calls == [("hi", [], None, "corr-1")]
 
 
 def test_handler_returns_the_chat_run_response_exactly_including_degraded():
-    def chat(message, context_chips, conversation_id) -> dict:
+    def chat(message, context_chips, conversation_id, correlation_id) -> dict:
         return {"reply": "unavailable", "degraded": True, "conversation_id": "conv-1"}
 
     handler = make_chat_send_handler(chat)
@@ -68,7 +70,7 @@ def test_handler_returns_the_chat_run_response_exactly_including_degraded():
 
 
 def test_handler_converts_conversation_not_found_to_invalid_request():
-    def chat(message, context_chips, conversation_id) -> dict:
+    def chat(message, context_chips, conversation_id, correlation_id) -> dict:
         raise ConversationNotFound(f"no conversation {conversation_id!r}")
 
     handler = make_chat_send_handler(chat)

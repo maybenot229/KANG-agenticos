@@ -28,6 +28,10 @@ class FakeInvocationStore:
             self._by_id[invocation_id], outcome=outcome, finished=finished
         )
 
+    def attach_manifest(self, correlation_id: str, manifest: str) -> None:
+        invocation = self.by_correlation(correlation_id)
+        self._by_id[invocation.id] = replace(invocation, manifest=manifest)
+
     def by_correlation(self, correlation_id: str) -> Invocation:
         for invocation in self._by_id.values():
             if invocation.correlation_id == correlation_id:

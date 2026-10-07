@@ -15,7 +15,11 @@ kind = "cognitive"
 mandate = "Converse with Kang using client-supplied context chips; no tool access or specialist escalation yet."
 triggers = ["kang"]
 tools = []
-scopes = []
+# Corrected by ADR-058 (2026-10-07): chat now reads memory through the
+# Context Assembler — recipe `chat-general` (src/kang/agents/assembly/),
+# and the one grant that recipe needs, mirrored in permissions.toml.
+scopes = ["memory.read:chat-view"]
+recipe = "chat-general"
 timeout_s = 60
 retry = 0
 degradation = "Chat is unavailable right now — no model could be reached. Never a fabricated reply."

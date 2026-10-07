@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Living — changes require an ADR; this document is normative for all memory behavior
-**Last updated:** 2026-10-06 (ADR-056: dated notes at §5.2 and Part X — the scorer and `memory.search` as built); 2026-10-05 (ADR-055: dated note at Part III — when the embedding is computed, and how the vector index follows each transition); 2026-09-24 (ADR-053: dated note at Part III/M-002 — which transitions are live, `memory.delete`'s `archived → deleted` edge, `memory.restore_from_snapshot` as a separate mechanism; ADR-052: dated notes at §1.4 — Tier 2 enforced at the gate — and §4.2 — the pipeline flowchart's node order corrected, the merge edge Kang-only; ADR-051: dated notes at §4.1, §4.2, §12.1 — what the gate builds and refuses, the absent semantic probes, the event-log reading; ADR-048: §2.1D/M-002 —
+**Last updated:** 2026-10-07 (ADR-058: dated notes at §5.4 and Part XI — the Context Assembler and the content-free manifest as built); 2026-10-06 (ADR-056: dated notes at §5.2 and Part X — the scorer and `memory.search` as built); 2026-10-05 (ADR-055: dated note at Part III — when the embedding is computed, and how the vector index follows each transition); 2026-09-24 (ADR-053: dated note at Part III/M-002 — which transitions are live, `memory.delete`'s `archived → deleted` edge, `memory.restore_from_snapshot` as a separate mechanism; ADR-052: dated notes at §1.4 — Tier 2 enforced at the gate — and §4.2 — the pipeline flowchart's node order corrected, the merge edge Kang-only; ADR-051: dated notes at §4.1, §4.2, §12.1 — what the gate builds and refuses, the absent semantic probes, the event-log reading; ADR-048: §2.1D/M-002 —
 candidate/rejected are quarantine-table states, not `memory_record` states)
 **Upstream (immutable):** `00_VISION.md`, `01_PRINCIPLES.md`, `02_PRODUCT_REQUIREMENTS.md`, `04_ARCHITECTURE.md` (esp. Decision 007)
 **Downstream (will depend on this):** `07_DATABASE.md`, `05_AGENTS.md`, `08_PLUGIN_SYSTEM.md`, `12_API.md`
@@ -351,6 +351,8 @@ manifest {
 }
 ```
 
+**Dated note (2026-10-07, ADR-058 D5).** Built for chat: the manifest is canonical JSON written to the invocation row (`invocation.manifest`, the field `explain.invocation` returns) before the model is called. It is **content-free** — record ids, score terms, tiers, token counts, and a SHA-256 of the query — so the 180-day "full → ids-only" pruning above has nothing to prune for these manifests, and a deleted record leaves only its id behind (covenant 3). Fields: `schema`, `invocation`, `agent`, `recipe {id, version}`, `assembled_at`, `query_sha256`, `budget {tokens, allowance, used}`, `standing`, `relevance`, `deterministic`/`vault`/`episodic` (empty, `not_built`), `truncated`, `suppressed` (counts by reason), `semantic`, `refused`.
+
 This is the mechanical substance behind P5: *any* KANG statement traces to invocation → manifest → records → provenance. Manifests retain 180 days (config), content-free (ids only) thereafter.
 
 Agent-facing formatting: memory enters the prompt as quoted, id-tagged blocks (`[MEM:01H…] content — source, date, tier`). The agent contract (`05_AGENTS.md`) requires attributing memory-derived claims to their tags; the runtime spot-checks attribution on `deep_reasoning` outputs (sampled, logged).
@@ -511,6 +513,8 @@ The Context Assembler executes a **recipe** per agent/task: which deterministic 
 | **Critic** | the artifact under review + its stated goals | `evidence_for/against` expansions, lessons, retrospectives, contested records **included** (⚠-tagged) | tier-filter ≥1 | The Critic deliberately sees contradictions others are shielded from |
 | **Chat (general)** | today's plan, active entities mentioned | broad but shallow: k small per view | defaults | Escalates to a specialist recipe when routed (D011) |
 | **Faith** | reading plan state, memorization queue | faith-scoped records ONLY; `private` clearance per grant | — | Hard-isolated view; see Part XII. Faith is load-bearing not decorative for Kang (`docs/guides/user-profile-intake-2026-07.md`) — confirming evidence for this isolation being worth building, not speculative. |
+
+**Dated note (2026-10-07, ADR-058).** Built: the kernel Context Assembler (`kernel/context/assembler.py`, pure core in `domain/memory/assembly.py`) and one recipe, `chat-general` (`src/kang/agents/assembly/`). P1 (every admissible `rule`, then pinned records, then `profile`/`preference`, by id) and P2 (§5.2's scored hybrid matches, score desc then id) are filled; P0, P3 and P4 have no producer yet and are recorded empty. Shares come from `[assembly] budget_shares`; unused budget cascades down; truncation is a bottom-up cut per class, recorded. The other agents' recipes in the table above are not written yet.
 
 **Conflict handling in assembly:** if retrieved records contradict (`contradicts` link or NLI flag), the assembler includes **both** with the ⚠ marker and the agent contract requires acknowledging the tension — agents never get a silently pre-resolved world. (Exception: P0 exact state has no contradictions by construction — single source of truth.)
 

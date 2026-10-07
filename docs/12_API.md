@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Author:** Kang, with Claude (Founding Architect)
 **Status:** Normative — the definitive contract between the Core and every client, forever; changes require an ADR
-**Last updated:** 2026-10-06 (ADR-056: dated note at §10 — `memory.search`); 2026-10-05 (ADR-055: dated note at §10 — `memory.embed`); 2026-09-24 (ADR-053: dated note at §10 — the record lifecycle and deletion covenant, and `memory.restore` vs. `memory.restore_from_snapshot`; ADR-052: dated note at §10 — `memory.edit_approve` may set `trust_tier`; ADR-051: dated note at §10 — which memory operations exist)
+**Last updated:** 2026-10-07 (ADR-058: dated note at §12 — chat manifests); 2026-10-06 (ADR-056: dated note at §10 — `memory.search`); 2026-10-05 (ADR-055: dated note at §10 — `memory.embed`); 2026-09-24 (ADR-053: dated note at §10 — the record lifecycle and deletion covenant, and `memory.restore` vs. `memory.restore_from_snapshot`; ADR-052: dated note at §10 — `memory.edit_approve` may set `trust_tier`; ADR-051: dated note at §10 — which memory operations exist)
 **Upstream (binding):** all prior documents; especially `04_ARCHITECTURE.md` (D002), `05_AGENTS.md`, `06_MEMORY.md`, `07_DATABASE.md`, `08_PLUGIN_SYSTEM.md`, `09_UI_DESIGN.md` (UI-P1), `10_SECURITY.md`
 **Downstream:** every frontend, CLI, plugin SDK, sidecar, and future client ever written.
 
@@ -201,6 +201,8 @@ First-class, versioned, stability-guaranteed:
 - `explain.memory {record_id}` → the six provenance answers, structured.
 - If reconstruction is impossible: `internal` error with the mandated honesty (`explanation unavailable — this is a bug`) — the API MUST NOT synthesize a narrative (A4).
 - explain.invocation MUST NOT depend on the event log — its ≥180-day guarantee would silently break at day 91 (the event log's compaction boundary); it reconstructs from invocation rows, manifests, and audit in permanent storage.
+
+**Dated note (2026-10-07, ADR-058 D5).** `explain.invocation` now returns a real `manifest` for `chat.send` turns: the Context Assembler's content-free manifest, written to that invocation's row before the model call — present even when the turn degrades.
 
 ## 13. Health, Audit, Notification, Export
 

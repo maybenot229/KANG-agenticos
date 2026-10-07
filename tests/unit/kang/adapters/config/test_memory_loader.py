@@ -32,7 +32,8 @@ def test_the_shipped_default_holds_only_keys_something_reads():
     data = tomllib.loads(
         (REPO_ROOT / "config" / "defaults" / "memory.toml").read_text(encoding="utf-8")
     )
-    assert set(data) == {"gate", "scoring", "search"}
+    # ADR-058: [assembly] is read by the Context Assembler.
+    assert set(data) == {"gate", "scoring", "search", "assembly"}
     assert data["gate"] == {"candidate_expiry_days": 14}
     assert set(data["scoring"]) == {"weights", "half_life_days"}
     assert set(data["search"]) == {"match_min_similarity", "stopwords"}
@@ -136,3 +137,34 @@ def test_a_malformed_scoring_table_refuses_rather_than_defaulting(broken):
 
 def test_stopwords_are_case_folded():
     assert parse_scoring_config(SCORING_OK).stopwords == frozenset({"the", "of"})
+
+
+# ---- [assembly] (ADR-058 D3) ------------------------------------------------
+
+
+def test_the_shipped_budget_shares_are_06_appendix_a():
+    from kang.adapters.config.memory_loader import load_assembly_config
+
+    config = load_assembly_config(REPO_ROOT / "config" / "defaults" / "memory.toml")
+    assert config.budget_shares == {
+        "p0": 0.30,
+        "p1": 0.15,
+        "p2": 0.30,
+        "p3": 0.15,
+        "p4": 0.10,
+    }
+
+
+@pytest.mark.parametrize(
+    "shares",
+    [
+        "{ p0 = 0.3, p1 = 0.15, p2 = 0.3, p3 = 0.15 }",  # a class missing
+        "{ p0 = 0.5, p1 = 0.15, p2 = 0.3, p3 = 0.15, p4 = 0.1 }",  # sums past 1
+        "{ p0 = -0.1, p1 = 0.35, p2 = 0.3, p3 = 0.35, p4 = 0.1 }",  # negative
+    ],
+)
+def test_malformed_budget_shares_refuse(shares):
+    from kang.adapters.config.memory_loader import parse_assembly_config
+
+    with pytest.raises(MemoryConfigError):
+        parse_assembly_config(f"[assembly]\nbudget_shares = {shares}\n")

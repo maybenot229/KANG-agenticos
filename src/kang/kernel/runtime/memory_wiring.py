@@ -30,9 +30,11 @@ from typing import Any, Callable
 
 from kang.adapters.config.memory_loader import (
     MemoryConfigError,
+    load_assembly_config,
     load_memory_config,
     load_scoring_config,
 )
+from kang.adapters.config.recipes_loader import discover_recipes
 from kang.adapters.sqlite.candidate_queue_store import SqliteCandidateQueueStore
 from kang.adapters.sqlite.embedding_index import SqliteEmbeddingIndex
 from kang.adapters.sqlite.memory_search import SqliteMemorySearchStore
@@ -53,6 +55,7 @@ from kang.domain.ports.backup import BackupService
 from kang.domain.ports.held_action import HeldActionStore
 from kang.kernel.audit.service import AuditService
 from kang.kernel.bus.bus import EventBus
+from kang.kernel.context.assembler import AssemblerDeps, ContextAssembler
 from kang.kernel.permissions.engine import PermissionEngine
 from kang.kernel.router.router import Router
 
@@ -94,6 +97,7 @@ class MemoryDeps:
     lifecycle: MemoryLifecycleDeps
     embed: MemoryEmbedDeps  # ADR-055 D7
     search: MemorySearchDeps  # ADR-056
+    assembler: ContextAssembler  # ADR-058
 
 
 def build_memory_deps(inputs: MemoryWiringInputs) -> MemoryDeps:
@@ -138,11 +142,13 @@ def build_memory_deps(inputs: MemoryWiringInputs) -> MemoryDeps:
         embed=inputs.router.embed,
         audit=inputs.audit,
     )
+    search = _search_deps(inputs)
     return MemoryDeps(
         ops=ops,
         lifecycle=lifecycle,
         embed=embed,
-        search=_search_deps(inputs),
+        search=search,
+        assembler=_assembler(inputs, search),
     )
 
 
@@ -161,6 +167,36 @@ def _search_deps(inputs: MemoryWiringInputs) -> MemorySearchDeps:
         audit=inputs.audit,
         clock=inputs.clock,
         config=config,
+    )
+
+
+# ADR-058 D2: shipped recipes, beside the agent definitions.
+ASSEMBLY_DIR = Path(__file__).resolve().parents[2] / "agents" / "assembly"
+
+
+def _assembler(
+    inputs: MemoryWiringInputs, search: MemorySearchDeps
+) -> ContextAssembler:
+    """ADR-058: the kernel Context Assembler over the same connection, the
+    same scoring config `memory.search` uses, and its own `[assembly]`
+    budget shares — each failing closed for assembly only (the assembler
+    records `refused: config` rather than defaulting). Recipes are shipped
+    code: a malformed one raises and refuses boot, like an agent definition."""
+    try:
+        assembly = load_assembly_config(inputs.kang_home / "config" / "memory.toml")
+    except MemoryConfigError:
+        assembly = None
+    return ContextAssembler(
+        AssemblerDeps(
+            store=search.store,
+            index=search.index,
+            embed=search.embed,
+            scoring=search.config,
+            assembly=assembly,
+            recipes=discover_recipes(ASSEMBLY_DIR),
+            permissions=inputs.permission_engine,
+            clock=inputs.clock,
+        )
     )
 
 
